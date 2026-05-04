@@ -36,6 +36,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
+	"github.com/brainlet/brainkit/modules/packages/scaffold"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -61,7 +64,7 @@ bus.on("facts", (msg) => {
         facts: [
             "brainkit packages live on disk as a plain directory.",
             "tsconfig.json + types/ gives the IDE first-class autocomplete.",
-            "packages.Deploy(packages.FromDir(path)) ships whatever's on disk.",
+            "packageclient.Deploy(packageclient.FromDir(path)) ships whatever's on disk.",
         ],
     });
 });
@@ -126,18 +129,18 @@ func run(out string, keep bool) error {
 
 	// ── Step 1: scaffold a fresh package on disk ─────────────────
 	fmt.Printf("[1/5] scaffolding package at %s\n", out)
-	if err := packages.ScaffoldPackage(out, "greeter", "index.ts", initialSource); err != nil {
+	if err := packagescaffold.ScaffoldPackage(out, "greeter", "index.ts", initialSource); err != nil {
 		return fmt.Errorf("scaffold: %w", err)
 	}
 	listDir(out)
 
-	// ── Step 2: deploy via packages.FromDir ─────────────────────
-	fmt.Println("[2/5] deploying packages.FromDir(...)")
-	pkg, err := packages.FromDir(out)
+	// ── Step 2: deploy via packageclient.FromDir ─────────────────────
+	fmt.Println("[2/5] deploying packageclient.FromDir(...)")
+	pkg, err := packageclient.FromDir(out)
 	if err != nil {
-		return fmt.Errorf("packages.FromDir: %w", err)
+		return fmt.Errorf("packageclient.FromDir: %w", err)
 	}
-	if _, err := packages.Deploy(ctx, kit, pkg); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, pkg); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 
@@ -152,8 +155,8 @@ func run(out string, keep bool) error {
 	if err := os.WriteFile(filepath.Join(out, "index.ts"), []byte(editedSource), 0o644); err != nil {
 		return fmt.Errorf("edit: %w", err)
 	}
-	// packages.Deploy hot-replaces by name — same dir, new content.
-	if _, err := packages.Deploy(ctx, kit, pkg); err != nil {
+	// packageclient.Deploy hot-replaces by name — same dir, new content.
+	if _, err := packageclient.Deploy(ctx, kit, pkg); err != nil {
 		return fmt.Errorf("redeploy: %w", err)
 	}
 
@@ -180,7 +183,7 @@ func run(out string, keep bool) error {
 	if err := os.WriteFile(filepath.Join(out, "index.ts"), []byte(entryWithHelperSource), 0o644); err != nil {
 		return fmt.Errorf("rewrite entry: %w", err)
 	}
-	if _, err := packages.Deploy(ctx, kit, pkg); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, pkg); err != nil {
 		return fmt.Errorf("redeploy with sibling: %w", err)
 	}
 
@@ -192,7 +195,7 @@ func run(out string, keep bool) error {
 
 	// ── Step 5: teardown ────────────────────────────────────────
 	fmt.Println("[5/5] tearing down the deployment")
-	if err := packages.Teardown(ctx, kit, "greeter"); err != nil {
+	if err := packageclient.Teardown(ctx, kit, "greeter"); err != nil {
 		return fmt.Errorf("teardown: %w", err)
 	}
 	if _, err := callGreet(kit, ctx, "dana"); err == nil {

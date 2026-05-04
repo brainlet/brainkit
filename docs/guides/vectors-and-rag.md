@@ -9,6 +9,8 @@ separate setup.
 ## Wire vector stores from Go
 
 ```go
+import _ "github.com/brainlet/brainkit/storagebridges/sqlite"
+
 kit, err := brainkit.New(brainkit.Config{
     Namespace: "rag-demo",
     Transport: brainkit.Memory(),
@@ -29,6 +31,12 @@ Three constructors ship out of the box:
 | `brainkit.SQLiteVector(path)` | libsql / SQLite via embedded bridge. |
 | `brainkit.PgVectorStore(dsn)` | Postgres with the `pgvector` extension. |
 | `brainkit.MongoDBVectorStore(uri, dbName)` | MongoDB Atlas Vector Search. |
+
+`SQLiteVector` is a pure config value. Binaries that let deployed
+`.ts` code resolve SQLite vectors must also link the optional bridge
+with `_ "github.com/brainlet/brainkit/storagebridges/sqlite"`.
+Import `_ "github.com/brainlet/brainkit/storagebridges"` only when
+you intentionally want the aggregate bridge set.
 
 Runtime management is owned by `modules/registry`:
 

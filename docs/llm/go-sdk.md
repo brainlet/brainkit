@@ -19,7 +19,7 @@ Two packages form the public Go surface:
 - `sdk` — bus-level contracts and helpers that do not depend on a concrete `Kit`: `Runtime` interfaces, typed-message contracts, event helpers (`Emit`/`SubscribeTo`), handler reply helpers (`Reply`/`SendChunk`), envelopes, typed errors. Normal request/reply uses `brainkit.Call`, `brainkit.CallStream`, or package-owned `CallXxx` wrappers.
 - `sdk/protocol` — diagnostics-only raw reply-topic helpers (`Publish`/`PublishTo`/`SendToService`) for protocol bridges and tests that intentionally own reply topics.
 
-A third package, `brainkit/server`, composes a `Kit` with the standard module set — documented in `go-config.md`.
+A third package, `brainkit/server`, composes a `Kit` with explicit modules and named standard profiles — documented in `go-config.md`.
 
 ---
 
@@ -244,7 +244,7 @@ func (k *Kit) List(ctx context.Context) ([]DeploymentInfo, error)
 ### 4.5 Packages
 
 ```go
-type Package = packages.Package
+type Package = packageclient.Package
 
 type Package struct {
     Name    string
@@ -254,14 +254,14 @@ type Package struct {
 }
 
 // Inline — name, entry filename, single source string.
-func packages.Inline(name, entry, source string) Package
+func packageclient.Inline(name, entry, source string) Package
 
-// Directory containing manifest.json + source files. Bundled via esbuild
-// at deploy time.
-func packages.FromDir(dir string) (Package, error)
+// Directory containing manifest.json + source files. Bundled by the registered
+// package builder at deploy time.
+func packageclient.FromDir(dir string) (Package, error)
 
 // Single .ts file. Name = filename stem, imports resolved at deploy.
-func packages.FromFile(path string) (Package, error)
+func packageclient.FromFile(path string) (Package, error)
 ```
 
 ### 4.6 Runtime Admin Modules
@@ -446,7 +446,7 @@ Representative subset:
 ```go
 // Package lifecycle lives in modules/packages/packagemsg.
 type PackageDeployMsg struct {
-    Path     string            `json:"path,omitempty"`     // dir/file path (bundled via esbuild)
+    Path     string            `json:"path,omitempty"`     // dir/file path (bundled by package builder)
     Manifest json.RawMessage   `json:"manifest,omitempty"` // inline name+entry
     Files    map[string]string `json:"files,omitempty"`    // inline file map
 }
@@ -597,10 +597,10 @@ resp, err := toolmsg.CallToolList(kit, ctx, toolmsg.ToolListMsg{})
 ### Deploy a `.ts` package, call its mailbox
 
 ```go
-pkg := packages.Inline("echo", "echo.ts", `
+pkg := packageclient.Inline("echo", "echo.ts", `
     bus.on("ask", (msg) => msg.reply({ text: msg.payload.prompt }));
 `)
-if _, err := packages.Deploy(ctx, kit, pkg); err != nil { log.Fatal(err) }
+if _, err := packageclient.Deploy(ctx, kit, pkg); err != nil { log.Fatal(err) }
 
 reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](kit, ctx,
     sdk.CustomMsg{Topic: "ts.echo.ask", Payload: json.RawMessage(`{"prompt":"hi"}`)},

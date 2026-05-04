@@ -4,13 +4,41 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
+	"gopkg.in/yaml.v3"
 )
+
+func TestLightFactoryRejectsYAMLPath(t *testing.T) {
+	_, err := (Factory{}).Build(bkmodule.BuildContext{
+		Decode: scheduleYAMLDecode(t, "path: /tmp/schedules.db\n"),
+	})
+	if err == nil {
+		t.Fatal("Build with path succeeded; want standard factory hint")
+	}
+	if !strings.Contains(err.Error(), "modules/schedules/standard") {
+		t.Fatalf("Build error = %v, want modules/schedules/standard hint", err)
+	}
+}
+
+func scheduleYAMLDecode(t *testing.T, text string) func(any) error {
+	t.Helper()
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(text), &doc); err != nil {
+		t.Fatalf("parse yaml: %v", err)
+	}
+	return func(v any) error {
+		if len(doc.Content) == 0 {
+			return nil
+		}
+		return doc.Content[0].Decode(v)
+	}
+}
 
 func TestModuleCloseContextReturnsScheduleHandlerLeaseError(t *testing.T) {
 	want := errors.New("detach schedule handler")
@@ -50,7 +78,7 @@ func TestModuleCloseContextReturnsScheduleHandlerLeaseError(t *testing.T) {
 
 func TestModuleCloseContextClosesOwnedStoreOnce(t *testing.T) {
 	store := &scheduleCloseStore{}
-	module := &Module{cfg: Config{Store: store, ownsStore: true}}
+	module := &Module{cfg: Config{Store: store, OwnStore: true}}
 
 	if err := module.CloseContext(context.Background()); err != nil {
 		t.Fatalf("close module: %v", err)
@@ -58,7 +86,7 @@ func TestModuleCloseContextClosesOwnedStoreOnce(t *testing.T) {
 	if got := store.closeCount(); got != 1 {
 		t.Fatalf("owned store close count = %d, want 1", got)
 	}
-	if module.cfg.Store != nil || module.cfg.ownsStore {
+	if module.cfg.Store != nil || module.cfg.OwnStore {
 		t.Fatal("owned store was not detached after close")
 	}
 
@@ -89,7 +117,7 @@ func TestModuleCloseContextKeepsOwnedStoreWhenStoreCloseFails(t *testing.T) {
 	want := errors.New("close schedule store")
 	ctx := context.WithValue(context.Background(), scheduleCloseContextKey{}, "close")
 	store := &scheduleCloseStore{closeErr: want}
-	module := &Module{cfg: Config{Store: store, ownsStore: true}}
+	module := &Module{cfg: Config{Store: store, OwnStore: true}}
 
 	err := module.CloseContext(ctx)
 	if !errors.Is(err, want) {
@@ -101,8 +129,8 @@ func TestModuleCloseContextKeepsOwnedStoreWhenStoreCloseFails(t *testing.T) {
 	if got := store.closeCount(); got != 1 {
 		t.Fatalf("owned store close count = %d, want 1", got)
 	}
-	if module.cfg.Store != store || !module.cfg.ownsStore {
-		t.Fatalf("store config = (%#v, owns=%v), want retained owned store", module.cfg.Store, module.cfg.ownsStore)
+	if module.cfg.Store != store || !module.cfg.OwnStore {
+		t.Fatalf("store config = (%#v, owns=%v), want retained owned store", module.cfg.Store, module.cfg.OwnStore)
 	}
 
 	store.setCloseErr(nil)
@@ -112,7 +140,7 @@ func TestModuleCloseContextKeepsOwnedStoreWhenStoreCloseFails(t *testing.T) {
 	if got := store.closeCount(); got != 2 {
 		t.Fatalf("owned store close count after retry = %d, want 2", got)
 	}
-	if module.cfg.Store != nil || module.cfg.ownsStore {
+	if module.cfg.Store != nil || module.cfg.OwnStore {
 		t.Fatal("owned store was not detached after successful retry")
 	}
 }
@@ -124,7 +152,7 @@ func TestModuleCloseContextSkipsOwnedStoreWhenSchedulerCloseTimesOut(t *testing.
 		release: make(chan struct{}),
 	}
 	scheduler := newScheduler(pub, store, nil, nil, nil, nil)
-	module := &Module{cfg: Config{Store: store, ownsStore: true}, scheduler: scheduler}
+	module := &Module{cfg: Config{Store: store, OwnStore: true}, scheduler: scheduler}
 
 	if _, err := scheduler.Schedule(context.Background(), ScheduleConfig{
 		ID:         "tick",
@@ -149,8 +177,8 @@ func TestModuleCloseContextSkipsOwnedStoreWhenSchedulerCloseTimesOut(t *testing.
 	if got := store.closeCount(); got != 0 {
 		t.Fatalf("owned store close count = %d, want 0 while scheduler fire is active", got)
 	}
-	if module.cfg.Store != store || !module.cfg.ownsStore {
-		t.Fatalf("store config = (%#v, owns=%v), want retained owned store", module.cfg.Store, module.cfg.ownsStore)
+	if module.cfg.Store != store || !module.cfg.OwnStore {
+		t.Fatalf("store config = (%#v, owns=%v), want retained owned store", module.cfg.Store, module.cfg.OwnStore)
 	}
 
 	close(pub.release)
@@ -160,7 +188,7 @@ func TestModuleCloseContextSkipsOwnedStoreWhenSchedulerCloseTimesOut(t *testing.
 	if got := store.closeCount(); got != 1 {
 		t.Fatalf("owned store close count after scheduler joined = %d, want 1", got)
 	}
-	if module.cfg.Store != nil || module.cfg.ownsStore {
+	if module.cfg.Store != nil || module.cfg.OwnStore {
 		t.Fatal("owned store was not detached after scheduler joined")
 	}
 }
@@ -169,7 +197,7 @@ func TestModuleDebugSnapshotReportsClosingDuringSlowStoreClose(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	store := &scheduleCloseStore{closeStarted: started, closeRelease: release}
-	module := &Module{cfg: Config{Store: store, ownsStore: true}}
+	module := &Module{cfg: Config{Store: store, OwnStore: true}}
 
 	done := make(chan error, 1)
 	go func() {
@@ -207,7 +235,7 @@ func TestModuleDebugSnapshotReportsClosingDuringSlowStoreClose(t *testing.T) {
 func TestModuleCloseContextReturnsDeadlineWhenOwnedStoreIgnoresContext(t *testing.T) {
 	release := make(chan struct{})
 	store := &scheduleCloseStore{closeRelease: release}
-	module := &Module{cfg: Config{Store: store, ownsStore: true}}
+	module := &Module{cfg: Config{Store: store, OwnStore: true}}
 	t.Cleanup(func() {
 		select {
 		case <-release:

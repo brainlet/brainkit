@@ -40,6 +40,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -85,7 +87,7 @@ func run(apiKey, modelID, request, askPrompt string) error {
 
 	// ── Step 1: deploy the architect ──────────────────────────
 	architectCode := fmt.Sprintf(architectTemplate, modelID, modelID)
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("architect", "architect.ts", architectCode)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("architect", "architect.ts", architectCode)); err != nil {
 		return fmt.Errorf("deploy architect: %w", err)
 	}
 	fmt.Println("[1/3] architect deployed")

@@ -105,12 +105,12 @@ import (
     "github.com/brainlet/brainkit"
     bkmodule "github.com/brainlet/brainkit/module"
     pluginsmod "github.com/brainlet/brainkit/modules/plugins"
-    "github.com/brainlet/brainkit/transports"
+    "github.com/brainlet/brainkit/transports/embeddednats"
 )
 
 kit, err := brainkit.New(brainkit.Config{
     Namespace: "plugin-host-demo",
-    Transport: transports.EmbeddedNATS(),
+    Transport: embeddednats.New(),
     FSRoot:    "/var/lib/host",
     Modules: []bkmodule.Module{
         pluginsmod.NewModule(pluginsmod.Config{

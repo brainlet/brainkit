@@ -29,13 +29,13 @@ reach any other Kit's namespace.
 // Kit A — target
 target, _ := brainkit.New(brainkit.Config{
     Namespace: "analytics-prod",
-    Transport: transports.NATS(natsURL),
+    Transport: nats.New(natsURL),
     FSRoot:    ".",
 })
 defer target.Close()
 
 // Deploy a handler that answers the quarterly report topic.
-_, _ = packages.Deploy(ctx, target, packages.Inline("report-svc", "report.ts", `
+_, _ = packageclient.Deploy(ctx, target, packageclient.Inline("report-svc", "report.ts", `
     bus.on("quarterly", (msg) => {
         msg.reply({ revenue: 1234567, quarter: msg.payload.quarter });
     });
@@ -44,7 +44,7 @@ _, _ = packages.Deploy(ctx, target, packages.Inline("report-svc", "report.ts", `
 // Kit B — caller (same NATS)
 caller, _ := brainkit.New(brainkit.Config{
     Namespace: "orchestrator",
-    Transport: transports.NATS(natsURL),
+    Transport: nats.New(natsURL),
     FSRoot:    ".",
     Modules: []module.Module{
         topology.NewModule(topology.Config{
@@ -124,7 +124,7 @@ d := discovery.NewModule(discovery.ModuleConfig{
     TTL:       30 * time.Second,
 })
 brainkit.New(brainkit.Config{
-    Transport: transports.NATS(url),
+    Transport: nats.New(url),
     Modules: []module.Module{
         d,
         topology.NewModule(topology.Config{Discovery: d}),
@@ -195,10 +195,10 @@ between them:
 
 - **Memory** and **EmbeddedNATS** default configurations are per-Kit
   and cannot see each other. Two Kits booted with
-  `transports.EmbeddedNATS()` each spin up their own NATS server — they
+  `embeddednats.New()` each spin up their own NATS server — they
   do not cross. `examples/multi-kit/main.go` intentionally shows only
   the resolution step under that constraint.
-- **NATS JetStream** (`transports.NATS(url)`) pointed at the same server
+- **NATS JetStream** (`nats.New(url)`) pointed at the same server
   works out of the box. `examples/cross-kit/main.go` boots a standalone
   `nats-server/v2` in-process and shares its URL.
 - **AMQP** and **Redis Streams** work the same way — both Kits need to

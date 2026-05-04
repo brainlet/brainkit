@@ -4,8 +4,8 @@
 // brand-new brainkit agent from a freeform request. When the
 // forge returns approved source, Go scaffolds a proper on-disk
 // package (manifest.json + tsconfig.json + types/* + index.ts)
-// via packages.ScaffoldPackage, deploys it from that directory
-// via packages.FromDir, and calls the forged agent
+// via packagescaffold.ScaffoldPackage, deploys it from that directory
+// via packageclient.FromDir, and calls the forged agent
 // through its public bus topic.
 //
 // The scaffolded directory survives the process so you can open
@@ -49,6 +49,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
+	"github.com/brainlet/brainkit/modules/packages/scaffold"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -122,7 +125,7 @@ func run(apiKey, request, askPrompt, outRoot string, keep bool) error {
 	defer cancel()
 
 	// ── Step 1: deploy the forge pipeline ───────────────────────
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("agent-forge", "forge.ts", forgeSource)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("agent-forge", "forge.ts", forgeSource)); err != nil {
 		return fmt.Errorf("deploy forge: %w", err)
 	}
 	fmt.Println("[1/4] forge pipeline deployed")
@@ -180,16 +183,16 @@ func run(apiKey, request, askPrompt, outRoot string, keep bool) error {
 	}
 
 	fmt.Printf("[3/4] scaffolding forged agent at %s\n", packageDir)
-	if err := packages.ScaffoldPackage(packageDir, result.Name, "index.ts", result.Code); err != nil {
+	if err := packagescaffold.ScaffoldPackage(packageDir, result.Name, "index.ts", result.Code); err != nil {
 		return fmt.Errorf("scaffold: %w", err)
 	}
 	listScaffold(packageDir)
 
-	pkg, err := packages.FromDir(packageDir)
+	pkg, err := packageclient.FromDir(packageDir)
 	if err != nil {
-		return fmt.Errorf("packages.FromDir: %w", err)
+		return fmt.Errorf("packageclient.FromDir: %w", err)
 	}
-	if _, err := packages.Deploy(ctx, kit, pkg); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, pkg); err != nil {
 		return fmt.Errorf("deploy forged agent: %w", err)
 	}
 	topic := "ts." + result.Name + ".ask"

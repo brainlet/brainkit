@@ -291,7 +291,7 @@ func (r *TestRunner) executeTestCode(ctx context.Context, name, code string, kin
 	start := time.Now()
 	suite := &SuiteResult{File: name}
 
-	// Strip ES imports from test code (same as packages.Deploy does for .ts)
+	// Strip ES imports from test code (same as package deploy does for .ts)
 	// The "test" module exports come from Compartment endowments
 	cleanCode := code
 	if strings.HasSuffix(name, ".ts") {

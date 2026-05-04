@@ -19,6 +19,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	workflowmod "github.com/brainlet/brainkit/modules/workflow"
 	"github.com/brainlet/brainkit/modules/workflow/workflowmsg"
 	"github.com/brainlet/brainkit/sdk"
@@ -88,7 +90,7 @@ func run() error {
 
 		kit.register("workflow", "research-pipeline", wf);
 	`
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("workflows-demo", "wf.ts", tsCode)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("workflows-demo", "wf.ts", tsCode)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

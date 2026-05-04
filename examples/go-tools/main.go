@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/presets/standard"
@@ -98,7 +98,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("go-tools-demo", "demo.ts", tsCode)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("go-tools-demo", "demo.ts", tsCode)); err != nil {
 		return fmt.Errorf("deploy demo.ts: %w", err)
 	}
 

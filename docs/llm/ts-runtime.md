@@ -1,13 +1,13 @@
 # TypeScript Runtime — API Reference
 
-Dense reference for the `.ts` deployment surface in brainkit: the SES Compartment endowments installed on every `packages.Deploy(...)` source. Canonical source: `internal/jsruntime/runtime/kit_runtime.js`, `internal/jsruntime/runtime/bus.js`, `internal/jsruntime/runtime/infrastructure.js`, `internal/jsruntime/runtime/resolve.js`, `internal/jsruntime/runtime/approval.js`, and the `.d.ts` bundle shipped at `internal/dts/runtime/kit.d.ts`. Runtime version: v1.0.0-rc.1.
+Dense reference for the `.ts` deployment surface in brainkit: the SES Compartment endowments installed on every `packageclient.Deploy(...)` source from `modules/packages/client`. Canonical source: `internal/jsruntime/runtime/kit_runtime.js`, `internal/jsruntime/runtime/bus.js`, `internal/jsruntime/runtime/infrastructure.js`, `internal/jsruntime/runtime/resolve.js`, `internal/jsruntime/runtime/approval.js`, and the `.d.ts` bundle shipped at `internal/dts/runtime/kit.d.ts`. Runtime version: v1.0.0-rc.1.
 
 ---
 
 ## 1. Execution model
 
-1. A `.ts` file reaches the runtime via `packages.Deploy(ctx, kit, packages.Package*)` (Go) or `bus.call("package.deploy", ...)` (JS).
-2. TypeScript is transpiled (types stripped, runtime JS preserved) by esbuild.
+1. A `.ts` file reaches the runtime via `packageclient.Deploy(ctx, kit, packageclient.Package*)` (Go) or `bus.call("package.deploy", ...)` (JS).
+2. TypeScript is transpiled (types stripped, runtime JS preserved) by the registered package builder; Brainkit's standard builder is `modules/packages/bundlers/esbuild`.
 3. ES `import` statements are stripped. All symbols arrive through Compartment endowments.
 4. The deployment runs inside a frozen SES Compartment. `globalThis` is the per-deployment endowment map; pre-lockdown (`Date.now`, `Math.random`) is preserved behind the SES taming.
 5. The deployment's mailbox is `ts.<source>.<topic>`, where `<source>` is the file path with `.ts` stripped and `/` → `.`. Subscriptions via `bus.on(localTopic, …)` are scoped here; external callers use `bus.call("ts.<source>.<topic>", …)` / `bus.callService("<source>", "<topic>", …)` for request/reply, or `bus.publish(...)` / `bus.sendTo(...)` only for fire-and-forget events.
@@ -640,6 +640,6 @@ bus.on("bootstrap", async (msg) => {
 | Unhandled exception during module evaluation | Deploy returns an error; module is not registered; resources registered before the throw are unwound via Go TeardownFile. |
 | `bus.on(localTopic, …)` reused in the same package | Throws `BrainkitError("TOPIC_COLLISION")`. |
 | `kit.register(type, …)` with invalid type | Throws `Error("kit.register: invalid type ...")`. |
-| Teardown (`packages.Teardown(ctx, kit, name)`) | Go sweeps subscriptions, schedules, registered resources; cleanup callbacks run. JS refs map is cleared. |
+| Teardown (`packageclient.Teardown(ctx, kit, name)`) | Go sweeps subscriptions, schedules, registered resources; cleanup callbacks run. JS refs map is cleared. |
 
 The runtime tracks every resource registered during evaluation. On teardown or redeploy the Go side calls the registered cleanup functions in LIFO order so `bus.subscribe`, `bus.schedule`, and `kit.register` do not leak across generations.

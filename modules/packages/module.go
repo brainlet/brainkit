@@ -6,9 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
 	"github.com/brainlet/brainkit/internal/secrets"
@@ -16,7 +13,6 @@ import (
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
 	runtimecap "github.com/brainlet/brainkit/modulecap/runtime"
-	coredeploy "github.com/brainlet/brainkit/modules/packages/internal/deploy"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
@@ -26,11 +22,18 @@ import (
 // Module exposes package deployment commands. Construct via New and include in
 // brainkit.Config.Modules when a Kit should accept package.deploy traffic.
 type Module struct {
-	domain *Domain
+	domain  *Domain
+	builder PackageBuilder
 }
 
 // New creates the packages module.
-func New() *Module { return &Module{} }
+func New(opts ...Option) *Module {
+	m := &Module{}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
 
 // ID reports the hot-mount module identifier.
 func (m *Module) ID() string { return "packages" }
@@ -49,7 +52,11 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 	runtimeID, _ := bkmodule.Capability[string](host, bkmodule.CapabilityRuntimeID)
 	audit, _ := bkmodule.Capability[*auditpkg.Recorder](host, bkmodule.CapabilityAuditRecorder)
 
-	m.domain = NewDomain(deployer, secretStore, pluginCheckerFactory)
+	builder := m.builder
+	if builder == nil {
+		builder = currentPackageBuilder()
+	}
+	m.domain = NewDomain(deployer, secretStore, pluginCheckerFactory, withDomainPackageBuilder(builder))
 	m.domain.attachLifecycle(host.Messages(), audit, runtimeID)
 	host.Scope().Defer(func(context.Context) error {
 		m.domain = nil
@@ -126,30 +133,10 @@ type busPublisher interface {
 	PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error)
 }
 
-// deployerAdapter adapts runtimecap.ArtifactDeployer to the internal deploy
-// package.
-type deployerAdapter struct {
-	deployer    runtimecap.ArtifactDeployer
-	packageName string
-}
-
-func (d *deployerAdapter) Deploy(ctx context.Context, source, code string) error {
-	var opts []types.DeployOption
-	if d.packageName != "" {
-		opts = append(opts, types.WithPackageName(d.packageName))
-	}
-	_, err := d.deployer.DeployArtifact(ctx, source, code, opts...)
-	return err
-}
-
-func (d *deployerAdapter) Teardown(ctx context.Context, source string) error {
-	_, err := d.deployer.Teardown(ctx, source)
-	return err
-}
-
 // Domain handles package.deploy/teardown/list/info bus commands.
 type Domain struct {
 	deployer             runtimecap.ArtifactDeployer
+	builder              PackageBuilder
 	secretStore          secrets.SecretStore
 	pluginCheckerFactory func() bkmodule.PluginChecker
 
@@ -158,17 +145,36 @@ type Domain struct {
 	runtimeID string
 
 	mu       syncx.Mutex
-	deployed map[string]*coredeploy.Package
+	deployed map[string]*deployedPackage
+}
+
+type deployedPackage struct {
+	Name    string
+	Version string
+	Source  string
+}
+
+type domainOption func(*Domain)
+
+func withDomainPackageBuilder(builder PackageBuilder) domainOption {
+	return func(d *Domain) {
+		d.builder = builder
+	}
 }
 
 // NewDomain builds a package deployment command domain.
-func NewDomain(deployer runtimecap.ArtifactDeployer, secretStore secrets.SecretStore, pluginCheckerFactory func() bkmodule.PluginChecker) *Domain {
-	return &Domain{
+func NewDomain(deployer runtimecap.ArtifactDeployer, secretStore secrets.SecretStore, pluginCheckerFactory func() bkmodule.PluginChecker, opts ...domainOption) *Domain {
+	d := &Domain{
 		deployer:             deployer,
+		builder:              currentPackageBuilder(),
 		secretStore:          secretStore,
 		pluginCheckerFactory: pluginCheckerFactory,
-		deployed:             make(map[string]*coredeploy.Package),
+		deployed:             make(map[string]*deployedPackage),
 	}
+	for _, opt := range opts {
+		opt(d)
+	}
+	return d
 }
 
 // attachLifecycle wires the bus, audit recorder, and runtime ID for deploy
@@ -219,131 +225,40 @@ func (d *Domain) emitTeardowned(ctx context.Context, source string, removed int)
 
 // Deploy handles package.deploy.
 func (d *Domain) Deploy(ctx context.Context, req packagemsg.PackageDeployMsg) (*packagemsg.PackageDeployResp, error) {
-	// Inline path: Files provided without a filesystem Path deploy directly.
-	if req.Path == "" && len(req.Files) > 0 {
-		return d.deployInline(ctx, req)
-	}
-
-	if req.Path == "" {
+	if req.Path == "" && len(req.Files) == 0 {
 		return nil, &sdkerrors.ValidationError{Field: "path", Message: "path or files is required"}
 	}
-
-	manifestData, _ := os.ReadFile(filepath.Join(req.Path, "manifest.json"))
-	var pkgName string
-	if len(manifestData) > 0 {
-		var m struct {
-			Name string `json:"name"`
-		}
-		_ = json.Unmarshal(manifestData, &m)
-		pkgName = m.Name
+	if d.builder == nil {
+		return nil, missingPackageBuilderError()
 	}
 
-	adapter := &deployerAdapter{deployer: d.deployer, packageName: pkgName}
-	pkg, err := coredeploy.DeployPackage(ctx, adapter, req.Path, d.resolvePluginChecker(), d.newSecretChecker())
+	pkg, err := d.builder.BuildPackage(ctx, BuildRequest{
+		Path:     req.Path,
+		Manifest: req.Manifest,
+		Files:    req.Files,
+	}, d.resolvePluginChecker(), d.newSecretChecker())
 	if err != nil {
 		return nil, err
 	}
 
-	d.mu.Lock()
-	d.deployed[pkg.Name] = pkg
-	d.mu.Unlock()
-
-	resources, _ := d.resourcesFrom(pkg.Source)
-	d.emitDeployed(ctx, pkg.Source, resources)
-
-	return &packagemsg.PackageDeployResp{
-		Deployed:  true,
-		Name:      pkg.Name,
-		Version:   pkg.Version,
-		Source:    pkg.Source,
-		Resources: resourceInfosToMessages(resources),
-	}, nil
-}
-
-// resourcesFrom queries the deployer for resources from a source if possible.
-func (d *Domain) resourcesFrom(source string) ([]types.ResourceInfo, error) {
-	type resourcer interface {
-		ResourcesFrom(source string) ([]types.ResourceInfo, error)
-	}
-	if r, ok := d.deployer.(resourcer); ok {
-		return r.ResourcesFrom(source)
-	}
-	return nil, nil
-}
-
-// deployInline deploys a package from in-memory files.
-func (d *Domain) deployInline(ctx context.Context, req packagemsg.PackageDeployMsg) (*packagemsg.PackageDeployResp, error) {
-	var manifest struct {
-		Name     string                   `json:"name"`
-		Version  string                   `json:"version"`
-		Entry    string                   `json:"entry"`
-		Requires *coredeploy.Requirements `json:"requires,omitempty"`
-	}
-	if len(req.Manifest) > 0 {
-		if err := json.Unmarshal(req.Manifest, &manifest); err != nil {
-			return nil, &sdkerrors.ValidationError{Field: "manifest", Message: err.Error()}
-		}
-	}
-	if manifest.Name == "" {
-		return nil, &sdkerrors.ValidationError{Field: "manifest.name", Message: "is required"}
-	}
-	if manifest.Entry == "" {
-		return nil, &sdkerrors.ValidationError{Field: "manifest.entry", Message: "is required"}
-	}
-	if _, ok := req.Files[manifest.Entry]; !ok {
-		return nil, &sdkerrors.ValidationError{Field: "files", Message: fmt.Sprintf("entry %q not found", manifest.Entry)}
-	}
-
-	if manifest.Requires != nil {
-		pm := coredeploy.PackageManifest{
-			Name: manifest.Name, Version: manifest.Version, Entry: manifest.Entry, Requires: manifest.Requires,
-		}
-		if err := coredeploy.ValidateDeps(pm, d.resolvePluginChecker(), d.newSecretChecker()); err != nil {
-			return nil, err
-		}
-	}
-
-	// Bundle through esbuild so relative imports resolve against the sibling
-	// files the client sent. Standalone .ts files still bundle to strip
-	// TypeScript annotations.
-	code, err := coredeploy.BundleInMemory(req.Files, manifest.Entry)
-	if err != nil {
-		return nil, &sdkerrors.DeployError{
-			Source: manifest.Entry,
-			Phase:  "transpile",
-			Cause:  fmt.Errorf("bundle: %w", err),
-		}
-	}
-
-	trimmed := strings.TrimSpace(code)
-	if len(trimmed) == 0 || trimmed == ";" {
-		return nil, &sdkerrors.DeployError{
-			Source: manifest.Entry,
-			Phase:  "bundle",
-			Cause:  fmt.Errorf("bundle produced empty output; check for unsupported import patterns"),
-		}
-	}
-
-	source := manifest.Name + filepath.Ext(manifest.Entry)
 	var opts []types.DeployOption
-	if manifest.Name != "" {
-		opts = append(opts, types.WithPackageName(manifest.Name))
+	if pkg.Name != "" {
+		opts = append(opts, types.WithPackageName(pkg.Name))
 	}
-	resources, err := d.deployer.DeployArtifact(ctx, source, code, opts...)
+	resources, err := d.deployer.DeployArtifact(ctx, pkg.Source, pkg.Code, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	pkg := &coredeploy.Package{
-		Name:    manifest.Name,
-		Version: manifest.Version,
-		Source:  source,
-	}
 	d.mu.Lock()
-	d.deployed[pkg.Name] = pkg
+	d.deployed[pkg.Name] = &deployedPackage{
+		Name:    pkg.Name,
+		Version: pkg.Version,
+		Source:  pkg.Source,
+	}
 	d.mu.Unlock()
 
-	d.emitDeployed(ctx, source, resources)
+	d.emitDeployed(ctx, pkg.Source, resources)
 
 	return &packagemsg.PackageDeployResp{
 		Deployed:  true,
@@ -380,7 +295,7 @@ func (d *Domain) List(_ context.Context, _ packagemsg.PackageListDeployedMsg) (*
 	deployments := d.deployer.ListDeployments()
 
 	d.mu.Lock()
-	meta := make(map[string]*coredeploy.Package, len(d.deployed))
+	meta := make(map[string]*deployedPackage, len(d.deployed))
 	for _, p := range d.deployed {
 		meta[p.Source] = p
 	}
@@ -413,7 +328,7 @@ func (d *Domain) Info(_ context.Context, req packagemsg.PackageDeployInfoMsg) (*
 	}, nil
 }
 
-func (d *Domain) newSecretChecker() coredeploy.SecretChecker {
+func (d *Domain) newSecretChecker() SecretChecker {
 	if d.secretStore == nil {
 		return denyAllSecretChecker{}
 	}
@@ -441,7 +356,7 @@ type denyAllPluginChecker struct{}
 
 func (denyAllPluginChecker) IsPluginRunning(string) bool { return false }
 
-func (d *Domain) resolvePluginChecker() coredeploy.PluginChecker {
+func (d *Domain) resolvePluginChecker() PluginChecker {
 	if d.pluginCheckerFactory == nil {
 		return denyAllPluginChecker{}
 	}

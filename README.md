@@ -20,7 +20,7 @@ Embed a Kit, deploy an agent, call a tool:
 ```go
 kit, _ := brainkit.New(brainkit.Config{
     Namespace: "myapp",
-    Transport: transports.EmbeddedNATS(),
+    Transport: embeddednats.New(),
     Providers: []brainkit.ProviderConfig{
         brainkit.OpenAI(os.Getenv("OPENAI_API_KEY")),
     },
@@ -37,7 +37,7 @@ defer kit.Close()
 
 // Deploy an agent. No restart, no build step. bus.on("ask", ...) listens
 // on `ts.math.ask` — deployment-namespaced automatically.
-packages.Deploy(ctx, kit, packages.Inline("math", "math.ts", `
+packageclient.Deploy(ctx, kit, packageclient.Inline("math", "math.ts", `
     import { Agent } from "agent";
     import { model, tool, bus } from "kit";
     bus.on("ask", async (msg) => {
@@ -152,10 +152,12 @@ go run . --config brainkit.yaml
 ## Modules
 
 All opt-in. Enable by passing modules to `Config.Modules`; nothing runs you
-didn't ask for. The standard command set is intentionally visible code:
-`presets/standard.CommandSet()` returns `jsruntime`, `agents`, `reference`,
-`control`, `eval`, `health`, `messaging`, `metrics`, `registry`, `secrets`,
-`tools`, and `packages`.
+didn't ask for. The standard presets are intentionally visible code:
+`presets/standard/core.Set()` returns the light command/control plane,
+`presets/standard/runtime.Set()` adds JS runtime/eval without source-package
+builders, `presets/standard/packages.Set()` adds package deployment plus the
+standard esbuild builder, and `presets/standard.CommandSet()` keeps the
+aggregate command/runtime set.
 
 | Module | Maturity | What it adds |
 |---|---|---|

@@ -7,7 +7,9 @@ import (
 )
 
 // TransportConfig configures the bus transport. Create with EmbeddedNATS(),
-// NATS(), AMQP(), Redis(), or Memory().
+// NATS(), AMQP(), Redis(), or Memory(). Non-memory backends require importing
+// a backend package such as transports/embeddednats, transports/nats,
+// transports/amqp, transports/redis, or the aggregate transports package.
 type TransportConfig struct {
 	typ      string
 	natsURL  string
@@ -55,7 +57,7 @@ func buildConfiguredTransport(cfg TransportConfig, namespace, fsRoot string) (an
 	builder := transportBuilders.m[kind]
 	transportBuilders.RUnlock()
 	if builder == nil {
-		return nil, fmt.Errorf("brainkit: transport %q requires importing github.com/brainlet/brainkit/transports", kind)
+		return nil, fmt.Errorf("brainkit: transport %q requires importing a backend package such as github.com/brainlet/brainkit/transports/%s or the aggregate github.com/brainlet/brainkit/transports", kind, transportImportHint(kind))
 	}
 
 	natsStoreDir := ""
@@ -126,4 +128,15 @@ func Redis(url string) TransportConfig {
 // Fast and synchronous — use for tests that don't need real pub/sub.
 func Memory() TransportConfig {
 	return TransportConfig{typ: "memory"}
+}
+
+func transportImportHint(kind string) string {
+	switch kind {
+	case "embedded":
+		return "embeddednats"
+	case "nats", "amqp", "redis":
+		return kind
+	default:
+		return "embeddednats"
+	}
 }

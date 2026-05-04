@@ -11,38 +11,43 @@ converge on the same typed topic: `package.deploy`.
 
 ## Building a Package
 
-`packages.Package` is a value type with three producers:
+`packageclient.Package` is a value type from `modules/packages/client` with
+three producers:
 
 ```go
 // Inline: single file of source as a string.
-packages.Inline("greeter", "greeter.ts",
+packageclient.Inline("greeter", "greeter.ts",
     `bus.on("hello", (m) => m.reply({ greeting: "hi " + m.payload.name }));`)
 
-// File on disk: single `.ts`. Imports are bundled by esbuild at
-// deploy time on the handler side.
-packages.FromFile("./services/greeter.ts")
+// File on disk: single `.ts`. Imports are bundled at deploy time by
+// the server-side package builder.
+packageclient.FromFile("./services/greeter.ts")
 
 // Directory with manifest.json: multi-file package, version,
 // additional files. The handler reads the manifest and bundles
 // the entry.
-packages.FromDir("./services/greeter")
+packageclient.FromDir("./services/greeter")
 ```
 
 Each producer returns a `Package{Name, Version, Entry, Files, path}`
 value. `path` is set only by the `FromDir`/`FromFile` producers and
-tells the handler to bundle from disk; `Files` is set by `packages.Inline`
+tells the handler to bundle from disk; `Files` is set by `packageclient.Inline`
 and carries the source verbatim.
 
-`packages.Deploy` sends the package as a `packagemsg.PackageDeployMsg`:
+`packageclient.Deploy` sends the package as a `packagemsg.PackageDeployMsg`:
 
 ```go
-resp, err := packages.Deploy(ctx, kit, pkg)
+resp, err := packageclient.Deploy(ctx, kit, pkg)
 // → DeployResult{Name, Version, Source, Resources}
 ```
 
 `PackageDeployMsg` carries either `Path` (filesystem-backed) or
-`Manifest + Files` (inline). The handler owns all bundling logic —
-the Go caller never runs esbuild. See
+`Manifest + Files` (inline). The handler owns source preparation through
+the registered package builder. The standard package profiles import
+`modules/packages/bundlers/esbuild`; the narrower runtime profiles mount only
+JS runtime/eval and can omit package source deployment entirely. A custom binary
+that mounts `packages.New()` without a builder rejects source package deploys
+with an explicit configuration error. See
 `modules/packages/packagemsg/package_messages.go`.
 
 ## Entry Points: Go, CLI, In-JS
@@ -52,9 +57,9 @@ The same bus topic powers three very different callers:
 ### Go library
 
 ```go
-pkg, err := packages.FromDir("./services/greeter")
+pkg, err := packageclient.FromDir("./services/greeter")
 if err == nil {
-    _, err = packages.Deploy(ctx, kit, pkg)
+    _, err = packageclient.Deploy(ctx, kit, pkg)
 }
 ```
 
@@ -88,12 +93,12 @@ The deploy handler runs the package through six stages:
 
 ### 1. Bundle / load
 
-When `PackageDeployMsg.Path` is set, the handler reads
-`manifest.json` (if any), resolves the entry, and runs esbuild inline
-(pure-Go port) to produce one normalized JavaScript artifact with
-relative dependencies inlined. When `PackageDeployMsg.Files` is set,
-the package module runs the same bundling pipeline against the in-memory
-file graph.
+When `PackageDeployMsg.Path` is set, the registered package builder reads
+`manifest.json` (if any), resolves the entry, and produces one normalized
+JavaScript artifact with relative dependencies inlined. When
+`PackageDeployMsg.Files` is set, the same builder runs against the in-memory
+file graph. Brainkit's standard builder is
+`modules/packages/bundlers/esbuild`.
 
 ### 2. Artifact normalization
 
@@ -181,8 +186,8 @@ records an entry under the current package. The tracked types are:
 | `memory`       | `kit.register("memory", name, memRef)`                | Remove from JS memory registry.                 |
 | `subscription` | `bus.on(topic, h)` or `bus.subscribe(topic, h)`       | Unsubscribe from transport + drop JS handler.   |
 
-Resources appear in `packages.DeployResult.Resources` so the caller can see
-what was registered. `packages.List(ctx, kit)` returns the names and status
+Resources appear in `packageclient.DeployResult.Resources` so the caller can see
+what was registered. `packageclient.List(ctx, kit)` returns the names and status
 of every currently deployed package.
 
 ## Addressing a Deployment
@@ -216,12 +221,12 @@ brainkit call ts.greeter.hello --payload '{"name":"world"}'
 ## Lifecycle: Teardown, Redeploy, Get, List
 
 ```go
-err := packages.Teardown(ctx, kit, "greeter")        // revert every registered resource
-info, ok, _ := packages.Get(ctx, kit, "greeter")     // status + version
-pkgs, _ := packages.List(ctx, kit)                   // everything currently deployed
+err := packageclient.Teardown(ctx, kit, "greeter")        // revert every registered resource
+info, ok, _ := packageclient.Get(ctx, kit, "greeter")     // status + version
+pkgs, _ := packageclient.List(ctx, kit)                   // everything currently deployed
 ```
 
-Redeploy is a `packages.Deploy` on an existing package name — the handler tears
+Redeploy is a `packageclient.Deploy` on an existing package name — the handler tears
 down the old instance and brings up the new one in a single bus call.
 `DeployResult.Resources` reflects the newly registered set. Teardown
 is idempotent; tearing down a name that does not exist returns
@@ -243,13 +248,13 @@ deploy a package as part of a step.
 ```
 
 `version` is optional. `entry` is required for inline and dir-based
-packages; `packages.FromFile` synthesizes a manifest with the filename
+packages; `packageclient.FromFile` synthesizes a manifest with the filename
 stem as `name` and the basename as `entry`.
 
 ## Common Pitfalls
 
 - **Missing deadline.** `Call[PackageDeployMsg, ...]` requires a deadline;
-  `packages.Deploy` sets 30s by default, but if you call the bus directly with
+  `packageclient.Deploy` sets 30s by default, but if you call the bus directly with
   no context timeout it errors out immediately. Pass
   `WithCallTimeout(d)` or a context with a deadline.
 - **Circular packages.** A package that deploys another that deploys

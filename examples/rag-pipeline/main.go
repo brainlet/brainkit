@@ -30,6 +30,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -96,7 +98,7 @@ func run(rerank bool) error {
 	defer cancel()
 
 	fmt.Println("[1/4] deploying rag-pipeline")
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("rag-pipeline", "rag.ts", ragSource)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("rag-pipeline", "rag.ts", ragSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

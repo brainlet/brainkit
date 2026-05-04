@@ -8,7 +8,8 @@ import (
     "github.com/brainlet/brainkit/server"
 
     "github.com/brainlet/brainkit/modules/audit"
-    auditstores "github.com/brainlet/brainkit/modules/audit/stores"
+    auditpostgres "github.com/brainlet/brainkit/modules/audit/stores/postgres"
+    auditsqlite "github.com/brainlet/brainkit/modules/audit/stores/sqlite"
     "github.com/brainlet/brainkit/modules/discovery"
     "github.com/brainlet/brainkit/modules/gateway"
     "github.com/brainlet/brainkit/modules/harness"
@@ -19,14 +20,15 @@ import (
     "github.com/brainlet/brainkit/modules/topology"
     "github.com/brainlet/brainkit/modules/tracing"
     "github.com/brainlet/brainkit/modules/workflow"
-    "github.com/brainlet/brainkit/transports"
+    "github.com/brainlet/brainkit/transports/embeddednats"
+    "github.com/brainlet/brainkit/transports/nats"
 )
 ```
 
 Two construction paths:
 
 - `brainkit.New(brainkit.Config)` — bare runtime. Minimal modules, zero opinions.
-- `server.New(server.Config)` — composed server: Kit + standard module set (gateway, tracing, probes, audit, optional plugins) behind one lifecycle.
+- `server.New(server.Config)` — composed server: Kit + explicit modules behind one lifecycle. YAML module names are registered by importing named `server/standard/...` profiles.
 
 Both take the same underlying `brainkit.ProviderConfig`, `brainkit.StorageConfig`, `brainkit.VectorConfig`, and `brainkit.TransportConfig` values — `server.Config` forwards them to the Kit verbatim.
 
@@ -250,8 +252,8 @@ tracing.NewSQLiteTraceStore(db *sql.DB, opts ...SQLiteTraceStoreOption) (*SQLite
 tracing.WithRetention(d time.Duration) SQLiteTraceStoreOption
 
 // audit
-auditstores.NewSQLite(dbPath string) (*auditstores.SQLite, error)
-auditstores.NewPostgres(connStr string) (*auditstores.Postgres, error)
+auditsqlite.New(dbPath string) (*auditsqlite.Store, error)
+auditpostgres.New(connStr string) (*auditpostgres.Store, error)
 
 // discovery
 discovery.NewStaticFromConfig(configs []PeerConfig) *Static
@@ -348,6 +350,12 @@ Storages: map[string]brainkit.StorageConfig{
 ```
 
 Deployments reach the pool via `storage("main")` in `.ts` code.
+SQLite storage resolution needs the optional SQLite bridge linked into
+the binary:
+
+```go
+import _ "github.com/brainlet/brainkit/storagebridges/sqlite"
+```
 
 Runtime registration is owned by `modules/registry`:
 
@@ -381,7 +389,10 @@ brainkit.PgVectorStore(connStr string) VectorConfig
 brainkit.MongoDBVectorStore(uri, dbName string) VectorConfig
 ```
 
-Deployments reach the pool via `vectorStore("name")` in `.ts` code. Runtime registration follows the same `modules/registry` shape:
+Deployments reach the pool via `vectorStore("name")` in `.ts` code.
+SQLite vector resolution uses the same optional
+`storagebridges/sqlite` bridge import as SQLite storage. Runtime
+registration follows the same `modules/registry` shape:
 
 ```go
 registrymsg.CallVectorAdd(kit, ctx, registrymsg.VectorAddMsg{...})
@@ -695,9 +706,9 @@ Secret interpolation: env values of the form `$secret:NAME` are resolved by the 
 ## 12. Package scaffolding `.d.ts` bundles
 
 ```go
-// modules/packages owns package scaffolding and writes the embedded
+// modules/packages/scaffold owns package scaffolding and writes the embedded
 // TypeScript declaration files into the generated package directory.
-err := packages.ScaffoldPackage(dir, "name", "index.ts", source)
+err := packagescaffold.ScaffoldPackage(dir, "name", "index.ts", source)
 ```
 
 Each is a `string` whose value is the exact .d.ts text shipped with the runtime.
@@ -763,7 +774,7 @@ func quickstart.New(namespace, fsRoot string, opts ...Option) (*server.Server, e
 type quickstart.Option func(*server.Config)
 func quickstart.WithListen(addr string) Option                  // override :8080
 func quickstart.WithSecretKey(key string) Option
-func quickstart.WithPackages(pkgs ...packages.Package) Option
+func quickstart.WithPackages(pkgs ...packageclient.Package) Option
 func quickstart.WithExtraModules(mods ...module.Module) Option
 ```
 
@@ -771,7 +782,7 @@ Defaults applied by `QuickStart`:
 
 | Field | Value |
 |-------|-------|
-| `Transport` | `transports.EmbeddedNATS()` |
+| `Transport` | `embeddednats.New()` |
 | `gateway` module | listen `":8080"` |
 | standard command modules | on |
 | `Store` | SQLite at `<fsRoot>/kit.db` |
@@ -782,7 +793,7 @@ Defaults applied by `QuickStart`:
 func configfile.Load(path string) (server.Config, error)
 ```
 
-Reads a YAML file, expands `$VAR` / `${VAR}` against `os.Getenv`, and projects onto `server.Config`. Import `server/standard` for built-in YAML module names. Unknown transport / provider types return errors; unknown storage / vector types default to `InMemoryStorage()` / `SQLiteVector(v.Path)`.
+Reads a YAML file, expands `$VAR` / `${VAR}` against `os.Getenv`, and projects onto `server.Config`. Import named `server/standard/...` profiles for built-in YAML module names (`commands`, `server`, `observability`, `automation`, `integrations`, `dev`, or `full`), `server/configfile/transportbackends/...` for YAML transport backends, `server/configfile/storebackends/...` for the KitStore backing `kit_store_path`, `server/configfile/packageboot` for top-level `packages:` auto-deploy, and `storagebridges/sqlite` when SQLite storage or vector entries should be reachable from deployed `.ts` code. Unknown transport / provider types return errors; unknown storage / vector types default to `InMemoryStorage()` / `SQLiteVector(v.Path)`.
 
 YAML shape:
 
@@ -849,7 +860,7 @@ plugins:
       PGURL: ${PG_DSN}
 
 packages:
-  - path: ./packages/api          # packages.FromDir(...)
+  - path: ./packages/api          # packageclient.FromDir(...)
 ```
 
 Provider types accepted by `configfile.Load`: `openai`, `anthropic`, `google`, `mistral`, `groq`, `deepseek`, `xai`, `cohere`, `perplexity`, `togetherai`, `fireworks`, `cerebras`. Unknown types return `"server: unknown provider type %q"`.
@@ -878,7 +889,7 @@ defer kit.Close()
 ```go
 srv, err := server.New(server.Config{
     Namespace: "prod",
-    Transport: transports.NATS("nats://nats:4222", transports.WithNATSName("prod")),
+    Transport: nats.New("nats://nats:4222", nats.WithNATSName("prod")),
     FSRoot:    "/var/lib/brainkit",
     SecretKey: os.Getenv("BRAINKIT_SECRET_KEY"),
 
@@ -920,13 +931,13 @@ srv, err := server.New(server.Config{
         }}),
     },
     // mustAuditStore / mustTraceStore above are your helpers —
-    // typically one-liners that call stores.NewSQLite / sql.Open +
+    // typically one-liners that call stores/sqlite.New / sql.Open +
     // tracing.NewSQLiteTraceStore and log.Fatal on error. For the
     // YAML-driven path, the registry factories construct these
     // stores for you from `modules.audit.path` / `modules.tracing.path`.
 
     OnStart: []server.StartHook{
-        packageboot.Deploy(must(packages.FromDir("./packages/api"))),
+        packageboot.Deploy(must(packageclient.FromDir("./packages/api"))),
     },
 })
 if err != nil { return err }
@@ -940,6 +951,12 @@ _ = srv.Start(ctx) // blocks until signal or ctx cancels
 ### 14.3 YAML-driven startup
 
 ```go
+import _ "github.com/brainlet/brainkit/server/configfile/transportbackends/nats"
+import _ "github.com/brainlet/brainkit/server/configfile/packageboot"
+import _ "github.com/brainlet/brainkit/server/configfile/storebackends/sqlite"
+import _ "github.com/brainlet/brainkit/server/standard/commands"
+import _ "github.com/brainlet/brainkit/server/standard/server"
+
 cfg, err := configfile.Load("/etc/brainkit/config.yaml")
 if err != nil { log.Fatal(err) }
 srv, err := server.New(cfg)
@@ -953,7 +970,7 @@ log.Fatal(srv.Start(ctx))
 ```go
 srv, err := server.New(server.Config{
     Namespace: "svc",
-    Transport: transports.EmbeddedNATS(),
+    Transport: embeddednats.New(),
     FSRoot:    tmp,
     Modules: []module.Module{
         gateway.New(gateway.Config{Listen: ":8080"}),

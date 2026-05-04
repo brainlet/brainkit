@@ -9,6 +9,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	secretsmod "github.com/brainlet/brainkit/modules/secrets"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"

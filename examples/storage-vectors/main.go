@@ -26,7 +26,10 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/sdk"
+	_ "github.com/brainlet/brainkit/storagebridges/sqlite"
 )
 
 func main() {
@@ -132,7 +135,7 @@ func demoKV(ctx context.Context, kit *brainkit.Kit) error {
 			msg.reply({ found: thread !== null, thread });
 		});
 	`
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("kv-demo", "kv.ts", code)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("kv-demo", "kv.ts", code)); err != nil {
 		return fmt.Errorf("deploy kv.ts: %w", err)
 	}
 
@@ -190,7 +193,7 @@ func demoVectors(ctx context.Context, kit *brainkit.Kit) error {
 			msg.reply({ hits: hits.map((h) => ({ id: h.id, score: h.score, text: h.metadata.text })) });
 		});
 	`
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("vec-demo", "vec.ts", code)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("vec-demo", "vec.ts", code)); err != nil {
 		return fmt.Errorf("deploy vec.ts: %w", err)
 	}
 

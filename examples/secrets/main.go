@@ -18,7 +18,7 @@ import (
 	"github.com/brainlet/brainkit"
 	secretsmod "github.com/brainlet/brainkit/modules/secrets"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
-	"github.com/brainlet/brainkit/stores"
+	storesqlite "github.com/brainlet/brainkit/stores/sqlite"
 )
 
 func main() {
@@ -31,7 +31,7 @@ func run() error {
 	tmp := mustTempDir()
 	defer cleanupTemp(tmp)
 
-	store, err := stores.NewSQLite(filepath.Join(tmp, "kit.db"))
+	store, err := storesqlite.New(filepath.Join(tmp, "kit.db"))
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}

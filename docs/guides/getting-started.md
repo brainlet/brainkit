@@ -37,6 +37,8 @@ import (
     "github.com/brainlet/brainkit"
     bkmodule "github.com/brainlet/brainkit/module"
     "github.com/brainlet/brainkit/modules/packages"
+    "github.com/brainlet/brainkit/modules/packages/client"
+    _ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
     "github.com/brainlet/brainkit/sdk"
 )
 
@@ -55,7 +57,7 @@ func main() {
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
-    if _, err := packages.Deploy(ctx, kit, packages.Inline(
+    if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline(
         "greeter", "greeter.ts",
         `bus.on("hello", (msg) => msg.reply({ greeting: "hello, " + msg.payload.name }));`,
     )); err != nil {
@@ -93,7 +95,7 @@ What each piece does:
   [transport-backends.md](transport-backends.md).
 - `FSRoot` is the filesystem sandbox for deployed `.ts` code. The
   Kit never reads or writes outside that directory.
-- `packages.Inline(name, entry, code)` wraps a single source string as
+- `packageclient.Inline(name, entry, code)` wraps a single source string as
   a deployable package. A deployed `.ts` service bound to
   `ts.<name>.<topic>` — here `ts.greeter.hello`.
 - `brainkit.Call[Req, Resp]` is the typed generic call helper. It
@@ -146,6 +148,8 @@ Pass named backends in `Storages`; deployed `.ts` code resolves them
 by name via `storage("name")`.
 
 ```go
+import _ "github.com/brainlet/brainkit/storagebridges/sqlite"
+
 kit, err := brainkit.New(brainkit.Config{
     Namespace: "my-app",
     Transport: brainkit.Memory(),
@@ -159,7 +163,9 @@ kit, err := brainkit.New(brainkit.Config{
 Available backends: `SQLiteStorage`, `PostgresStorage`,
 `MongoDBStorage`, `UpstashStorage`, `InMemoryStorage`. Vector
 backends (`SQLiteVector`, `PgVectorStore`, `MongoDBVectorStore`) go
-in `Vectors`. See [storage-and-memory.md](storage-and-memory.md) and
+in `Vectors`. The SQLite runtime bridge is optional and must be linked
+by binaries that expose SQLite storage/vector entries to deployed `.ts`
+code. See [storage-and-memory.md](storage-and-memory.md) and
 [vectors-and-rag.md](vectors-and-rag.md).
 
 ## Register a typed Go tool
@@ -241,7 +247,11 @@ import (
 
     "github.com/brainlet/brainkit/server"
     "github.com/brainlet/brainkit/server/configfile"
-    _ "github.com/brainlet/brainkit/server/standard"
+    _ "github.com/brainlet/brainkit/server/configfile/packageboot"
+    _ "github.com/brainlet/brainkit/server/configfile/storebackends/sqlite"
+    _ "github.com/brainlet/brainkit/server/configfile/transportbackends/embeddednats"
+    _ "github.com/brainlet/brainkit/server/standard/commands"
+    _ "github.com/brainlet/brainkit/server/standard/server"
 )
 
 func main() {

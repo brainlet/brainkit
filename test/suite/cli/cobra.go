@@ -20,6 +20,7 @@ import (
 	bkgw "github.com/brainlet/brainkit/modules/gateway"
 	healthmod "github.com/brainlet/brainkit/modules/health"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

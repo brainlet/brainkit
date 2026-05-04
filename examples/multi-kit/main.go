@@ -16,7 +16,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/topology"
-	"github.com/brainlet/brainkit/transports"
+	"github.com/brainlet/brainkit/transports/embeddednats"
 )
 
 func main() {
@@ -25,7 +25,7 @@ func main() {
 	// serves its own mailbox.
 	target, err := brainkit.New(brainkit.Config{
 		Namespace: "analytics-prod",
-		Transport: transports.EmbeddedNATS(),
+		Transport: embeddednats.New(),
 		FSRoot:    ".",
 	})
 	if err != nil {
@@ -38,7 +38,7 @@ func main() {
 	// through WithCallTo("analytics") resolve to that namespace.
 	caller, err := brainkit.New(brainkit.Config{
 		Namespace: "orchestrator",
-		Transport: transports.EmbeddedNATS(),
+		Transport: embeddednats.New(),
 		FSRoot:    ".",
 		Modules: []bkmodule.Module{
 			topology.NewModule(topology.Config{

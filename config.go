@@ -28,8 +28,10 @@ type Config struct {
 
 	// Transport configures the bus backend. One per Kit.
 	// Zero value = Memory() (in-process GoChannel, no external backend linked).
-	// Import github.com/brainlet/brainkit/transports before using
-	// EmbeddedNATS(), NATS(url), AMQP(url), or Redis(url).
+	// Import a transport backend package such as
+	// github.com/brainlet/brainkit/transports/embeddednats or the aggregate
+	// github.com/brainlet/brainkit/transports before using EmbeddedNATS(),
+	// NATS(url), AMQP(url), or Redis(url).
 	Transport TransportConfig
 
 	// FSRoot is the filesystem sandbox for deployed .ts code.
@@ -88,8 +90,8 @@ type Config struct {
 	// workflow, and harness declare a jsruntime dependency, but they do not
 	// import the concrete runtime. Binaries must import
 	// github.com/brainlet/brainkit/modules/jsruntime, mount jsruntime.New(), or
-	// use github.com/brainlet/brainkit/presets/standard so that dependency can
-	// be satisfied.
+	// use github.com/brainlet/brainkit/presets/standard/runtime so that
+	// dependency can be satisfied.
 	JSRuntime bool
 
 	// MaxStackSize for the QuickJS runtime in bytes. Default: 1MB.

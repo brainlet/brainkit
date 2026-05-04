@@ -13,7 +13,9 @@ import (
 	"github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/server"
 	"github.com/brainlet/brainkit/server/configfile"
-	"github.com/brainlet/brainkit/transports"
+	_ "github.com/brainlet/brainkit/server/configfile/storebackends/sqlite"
+	_ "github.com/brainlet/brainkit/server/configfile/transportbackends/embeddednats"
+	"github.com/brainlet/brainkit/transports/embeddednats"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,13 +38,13 @@ func TestNewRejectsMissingFields(t *testing.T) {
 
 	_, err = server.New(server.Config{
 		Namespace: "x",
-		Transport: transports.EmbeddedNATS(),
+		Transport: embeddednats.New(),
 	})
 	require.Error(t, err, "FSRoot required")
 
 	_, err = server.New(server.Config{
 		Namespace: "x",
-		Transport: transports.EmbeddedNATS(),
+		Transport: embeddednats.New(),
 		FSRoot:    t.TempDir(),
 	})
 	require.Error(t, err, "gateway module required")
@@ -57,7 +59,7 @@ func TestStartStopLifecycle(t *testing.T) {
 
 	srv, err := server.New(server.Config{
 		Namespace: "server-lifecycle",
-		Transport: transports.EmbeddedNATS(),
+		Transport: embeddednats.New(),
 		FSRoot:    tmp,
 		Modules: []bkmodule.Module{
 			gateway.New(gateway.Config{Listen: addr}),
@@ -93,7 +95,7 @@ func TestKit(t *testing.T) {
 
 	srv, err := server.New(server.Config{
 		Namespace: "server-accessors",
-		Transport: transports.EmbeddedNATS(),
+		Transport: embeddednats.New(),
 		FSRoot:    tmp,
 		Modules: []bkmodule.Module{
 			gateway.New(gateway.Config{Listen: addr}),

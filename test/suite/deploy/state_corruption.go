@@ -14,6 +14,7 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/stores"

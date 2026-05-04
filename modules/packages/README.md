@@ -2,6 +2,9 @@
 
 Package deployment command surface for `.ts` packages. This module owns package
 deploy/teardown/list/info commands and emits deployment lifecycle events.
+Caller-side helpers live in `modules/packages/client`, package source values in
+`modules/packages/source`, and on-disk scaffolding in `modules/packages/scaffold`
+so helper-only importers do not link the module/domain graph.
 
 ## Bus commands
 
@@ -25,7 +28,9 @@ deploy/teardown/list/info commands and emits deployment lifecycle events.
 
 ## Runtime resources
 
-Owns package command handlers and the package bundling pipeline under
+Owns package command handlers and delegates package preparation to an explicit
+package builder. The standard builder is registered by
+`modules/packages/bundlers/esbuild` and uses the package format helpers under
 `modules/packages/internal/deploy`. Deployed JS artifacts/resources are created
 through the JS runtime artifact-deployer capability and are marked as
 normalized JS artifacts before runtime handoff.

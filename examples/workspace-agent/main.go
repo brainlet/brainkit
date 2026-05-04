@@ -42,6 +42,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -107,7 +109,7 @@ export function greet(name: string): string {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
 
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("workspace-agent", "workspace.ts", workspaceSource)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("workspace-agent", "workspace.ts", workspaceSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	fmt.Println("[1/5] workspace-agent deployed")

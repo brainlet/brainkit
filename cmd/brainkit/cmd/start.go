@@ -9,7 +9,11 @@ import (
 
 	"github.com/brainlet/brainkit/server"
 	"github.com/brainlet/brainkit/server/configfile"
-	_ "github.com/brainlet/brainkit/server/standard"
+	_ "github.com/brainlet/brainkit/server/configfile/packageboot"
+	_ "github.com/brainlet/brainkit/server/configfile/storebackends"
+	_ "github.com/brainlet/brainkit/server/configfile/transportbackends"
+	_ "github.com/brainlet/brainkit/server/standard/full"
+	_ "github.com/brainlet/brainkit/storagebridges/sqlite"
 	"github.com/spf13/cobra"
 )
 
@@ -23,10 +27,10 @@ until SIGINT or SIGTERM. The config file shape is documented at
 brainkit/server/testdata/example.yaml; environment variables
 referenced as $VAR or ${VAR} are substituted at load time.
 
-The composed Server wires the standard module set (gateway,
-probes, tracing, audit) and registers POST /api/bus +
-POST /api/stream on the gateway — the canonical entry points
-used by "brainkit deploy", "brainkit call", "brainkit inspect".`,
+The CLI links the full standard YAML module catalog; the config
+chooses which modules to mount. Gateway modules register POST
+/api/bus and POST /api/stream — the canonical entry points used
+by "brainkit deploy", "brainkit call", "brainkit inspect".`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load `./.env` into the process environment so the yaml's
 			// `$VAR` references (OPENAI_API_KEY, etc.) resolve without

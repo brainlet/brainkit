@@ -10,7 +10,7 @@ import (
 type ScheduleConfig = types.ScheduleConfig
 
 // Store is the narrow persistence surface the module needs. brainkit's
-// KitStore (returned by stores.NewSQLite) satisfies it structurally,
+// KitStore (returned by stores/sqlite.New) satisfies it structurally,
 // so the common case is `Config{Store: kitStore}`.
 type Store interface {
 	SaveSchedule(s types.PersistedSchedule) error
@@ -28,5 +28,7 @@ type Config struct {
 	// module Mount, and ClaimScheduleFire is used for multi-replica dedup.
 	Store Store
 
-	ownsStore bool
+	// OwnStore tells the module to close Store during unmount. Leave false
+	// when the store is borrowed from the Kit or another owner.
+	OwnStore bool
 }

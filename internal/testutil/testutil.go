@@ -16,7 +16,7 @@ import (
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
-	_ "github.com/brainlet/brainkit/storagebridges"
+	_ "github.com/brainlet/brainkit/storagebridges/sqlite"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 

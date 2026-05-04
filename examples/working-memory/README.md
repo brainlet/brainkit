@@ -47,6 +47,8 @@ for the same user.
 The example uses SQLite under the Kit's `FSRoot`:
 
 ```go
+import _ "github.com/brainlet/brainkit/storagebridges/sqlite"
+
 Storages: map[string]brainkit.StorageConfig{
     "default": brainkit.SQLiteStorage(filepath.Join(tmp, "memory.db")),
 },

@@ -34,6 +34,8 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -86,7 +88,7 @@ func run() error {
 			msg.reply({ received: true });
 		});
 	`
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("streaming-demo", "stream.ts", tsCode)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("streaming-demo", "stream.ts", tsCode)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

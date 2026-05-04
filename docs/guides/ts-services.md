@@ -22,9 +22,9 @@ Every deployment has a stable namespace:
   request/response. Use `bus.callServiceStream(...)` when the
   callee sends chunks before the terminal reply.
 
-The deployment name is the first argument to `packages.Inline`, the
+The deployment name is the first argument to `packageclient.Inline`, the
 `name` field in a package `manifest.yaml`, or the directory basename
-for `packages.FromDir`.
+for `packageclient.FromDir`.
 
 ## Endowments
 
@@ -59,7 +59,7 @@ Symmetric with the Go surface:
 | `brainkit.CallStream` | `bus.callStream(topic, payload, { timeoutMs, onChunk })` |
 | `brainkit.CallStream` to a service topic | `bus.callServiceStream(service, topic, payload, { timeoutMs, onChunk })` |
 | `WithCallTo("peer")` | `bus.callTo("peer", topic, payload, { timeoutMs })` / `bus.callToStream(...)` |
-| `packages.Deploy` handler | `bus.on(topic, handler)` |
+| `packageclient.Deploy` handler | `bus.on(topic, handler)` |
 
 ### bus.on — subscribe to the mailbox
 

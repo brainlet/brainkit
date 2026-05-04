@@ -32,7 +32,7 @@ import (
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/transports"
+	"github.com/brainlet/brainkit/transports/embeddednats"
 )
 
 // pluginSourceDir is the path to examples/plugin-author relative
@@ -63,7 +63,7 @@ func run() error {
 
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "plugin-host-demo",
-		Transport: transports.EmbeddedNATS(),
+		Transport: embeddednats.New(),
 		FSRoot:    binDir,
 		Modules: []bkmodule.Module{
 			pluginsmod.NewModule(pluginsmod.Config{

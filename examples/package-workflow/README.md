@@ -31,7 +31,7 @@ Flags:
 
 ## What the example proves
 
-1. **Scaffold**. `packages.ScaffoldPackage(dir, name, entry, source)`
+1. **Scaffold**. `packagescaffold.ScaffoldPackage(dir, name, entry, source)`
    writes the same layout the CLI does:
    ```
    package-workflow-demo/
@@ -48,13 +48,13 @@ Flags:
    The package is ready for any TypeScript-aware IDE the second
    it's on disk — no `npm install`, no setup.
 
-2. **Deploy from directory**. `packages.FromDir(dir)` returns
-   a `Package` the packages module can install. `packages.Deploy(ctx, kit, pkg)` reads
+2. **Deploy from directory**. `packageclient.FromDir(dir)` returns
+   a `Package` the packages module can install. `packageclient.Deploy(ctx, kit, pkg)` reads
    the manifest + bundles the sources + evaluates the entry in
    its own SES compartment.
 
 3. **Edit + redeploy**. Rewrite the entry file on disk, call
-   `packages.Deploy` again with the same `Package`. brainkit
+   `packageclient.Deploy` again with the same `Package`. brainkit
    hot-replaces the compartment — subscriptions, registered
    agents/tools/workflows from the previous version are torn
    down, new ones take over.
@@ -65,7 +65,7 @@ Flags:
    from the entry lands inside the same compartment and shares
    its endowments.
 
-5. **Teardown**. `packages.Teardown(ctx, kit, "greeter")` removes the
+5. **Teardown**. `packageclient.Teardown(ctx, kit, "greeter")` removes the
    package. Any subsequent call to `ts.greeter.*` errors out
    with a timeout (no handler).
 
@@ -77,14 +77,14 @@ Flags:
           manifest.json  (69 bytes)
           tsconfig.json  (412 bytes)
           types/agent.d.ts …
-[2/5] deploying packages.FromDir(...)
+[2/5] deploying packageclient.FromDir(...)
         ts.greeter.greet reply: Hello, alice!
 [3/5] editing index.ts on disk (adding a 'facts' handler)
         ts.greeter.greet reply (edited): Hello, bob! The weather is fine.
         ts.greeter.facts reply:
           • brainkit packages live on disk as a plain directory.
           • tsconfig.json + types/ gives the IDE first-class autocomplete.
-          • packages.Deploy(packages.FromDir(path)) ships whatever's on disk.
+          • packageclient.Deploy(packageclient.FromDir(path)) ships whatever's on disk.
 [4/5] adding a sibling file (greetings.ts) + updating index.ts to import it
         ts.greeter.greet reply (with sibling): Howdy, carol. …
 [5/5] tearing down the deployment
@@ -105,7 +105,7 @@ gets full autocomplete out of the box. No npm, no setup.
 ```go
 import "github.com/brainlet/brainkit"
 
-err := packages.ScaffoldPackage(
+err := packagescaffold.ScaffoldPackage(
     "./my-greeter",      // dir — created if missing
     "greeter",           // package name written into manifest.json
     "index.ts",          // entry filename
@@ -116,7 +116,7 @@ err := packages.ScaffoldPackage(
 Options:
 
 ```go
-packages.ScaffoldPackage(dir, name, entry, source, packages.ScaffoldOptions{
+packagescaffold.ScaffoldPackage(dir, name, entry, source, packagescaffold.ScaffoldOptions{
     Version:     "1.2.0",
     Description: "A tiny greeter with facts",
     Extra: map[string]string{
@@ -137,15 +137,15 @@ accidentally break the IDE-facing layout.
 
 | Helper | When |
 |---|---|
-| `packages.Inline(name, entry, source)` | One-off deploys, tests, examples where the source is a literal string in the Go file. No disk layout. |
-| `packages.FromFile(path)` | You have a single `.ts` file on disk but don't need the full manifest + types shape. Manifest is synthesized from the filename. |
-| `packages.FromDir(dir)` | You have a full scaffold on disk (this example). Manifest + tsconfig + types/ already exist. The shape `brainkit new package` produces. |
+| `packageclient.Inline(name, entry, source)` | One-off deploys, tests, examples where the source is a literal string in the Go file. No disk layout. |
+| `packageclient.FromFile(path)` | You have a single `.ts` file on disk but don't need the full manifest + types shape. Manifest is synthesized from the filename. |
+| `packageclient.FromDir(dir)` | You have a full scaffold on disk (this example). Manifest + tsconfig + types/ already exist. The shape `brainkit new package` produces. |
 
 ## Under the hood
 
 - The Go `ScaffoldPackage` helper is the exact code the CLI's
   `brainkit new package` runs. One source of truth.
-- The embedded `.d.ts` content is written by `packages.ScaffoldPackage`
+- The embedded `.d.ts` content is written by `packagescaffold.ScaffoldPackage`
   from the same declarations the runtime ships as its reference corpus.
 - Because the types are shipped with every scaffold, an upgrade
   of brainkit in your Go go.mod automatically refreshes every

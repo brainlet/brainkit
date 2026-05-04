@@ -18,6 +18,7 @@ import (
 	healthmod "github.com/brainlet/brainkit/modules/health"
 	metricsmod "github.com/brainlet/brainkit/modules/metrics"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"

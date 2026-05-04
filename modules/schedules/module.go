@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/closejob"
-	internalstore "github.com/brainlet/brainkit/internal/store"
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
@@ -142,7 +141,7 @@ func (m *Module) CloseContext(ctx context.Context) error {
 	lease := m.scheduleHandlerLease
 	scheduler := m.scheduler
 	store := m.cfg.Store
-	ownsStore := m.cfg.ownsStore
+	ownsStore := m.cfg.OwnStore
 	m.mu.RUnlock()
 
 	leaseClosed := lease == nil
@@ -155,7 +154,7 @@ func (m *Module) CloseContext(ctx context.Context) error {
 			m.scheduleHandlerLease = nil
 			m.scheduleHandlerLeaseActive.Store(false)
 			store = m.cfg.Store
-			ownsStore = m.cfg.ownsStore
+			ownsStore = m.cfg.OwnStore
 			m.mu.Unlock()
 		}
 	} else {
@@ -179,7 +178,7 @@ func (m *Module) CloseContext(ctx context.Context) error {
 				m.mu.Lock()
 				if m.cfg.Store == store {
 					m.cfg.Store = nil
-					m.cfg.ownsStore = false
+					m.cfg.OwnStore = false
 				}
 				m.mu.Unlock()
 			}
@@ -205,34 +204,29 @@ func closeScheduleStore(ctx context.Context, store Store) error {
 // compile-time assertion that Scheduler satisfies the engine-side interface.
 var _ types.ScheduleHandler = (*Scheduler)(nil)
 
-// YAML is the config shape decoded by the registry factory.
-//
-// `path`, when set, opens a dedicated SQLite database at that path.
-// When empty, schedules share the Kit's main store (kit.db).
+// YAML is the light factory config shape. The light schedules package does not
+// open stores; import modules/schedules/standard for YAML `path` support.
 type YAML struct {
 	Path string `yaml:"path"`
 }
 
-// Factory is the registered ModuleFactory for schedules.
+// Factory is the light ModuleFactory for schedules. It builds the runtime
+// module without opening any store. Assembly packages may register this
+// factory directly, or import modules/schedules/standard for the heavier YAML
+// factory that can open a dedicated SQLite store.
 type Factory struct{}
 
-// Build opens the dedicated store when Path is set, otherwise leaves
-// cfg.Store nil so Mount falls back to the shared KitStore.
+// Build returns the schedules module without opening a store. If Path is set,
+// use modules/schedules/standard instead.
 func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	var y YAML
 	if err := ctx.Decode(&y); err != nil {
 		return nil, err
 	}
-	cfg := Config{}
 	if y.Path != "" {
-		store, err := internalstore.NewSQLiteKitStore(y.Path)
-		if err != nil {
-			return nil, fmt.Errorf("schedules: open store %q: %w", y.Path, err)
-		}
-		cfg.Store = store
-		cfg.ownsStore = true
+		return nil, fmt.Errorf("schedules: YAML path support requires importing github.com/brainlet/brainkit/modules/schedules/standard")
 	}
-	return NewModule(cfg), nil
+	return NewModule(Config{}), nil
 }
 
 // Describe surfaces module metadata for module manifests.
@@ -258,5 +252,3 @@ func (Factory) Describe() bkmodule.Descriptor {
 		},
 	}
 }
-
-func init() { bkmodule.Register("schedules", Factory{}) }

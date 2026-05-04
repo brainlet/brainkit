@@ -21,12 +21,12 @@ import (
     "github.com/brainlet/brainkit"
     bkmodule "github.com/brainlet/brainkit/module"
     pluginsmod "github.com/brainlet/brainkit/modules/plugins"
-    "github.com/brainlet/brainkit/transports"
+    "github.com/brainlet/brainkit/transports/embeddednats"
 )
 
 kit, _ := brainkit.New(brainkit.Config{
     Namespace: "demo",
-    Transport: transports.EmbeddedNATS(),
+    Transport: embeddednats.New(),
     Modules: []bkmodule.Module{
         pluginsmod.NewModule(pluginsmod.Config{
             Plugins: []pluginsmod.PluginConfig{{
@@ -38,7 +38,7 @@ kit, _ := brainkit.New(brainkit.Config{
 })
 ```
 
-After `packages.Deploy` or a bus `tools.call` for `echo`, the host
+After `packageclient.Deploy` or a bus `tools.call` for `echo`, the host
 dispatches to this plugin over the WS control plane.
 
 ## Run + verify end-to-end

@@ -3,8 +3,26 @@ package store
 import (
 	"fmt"
 
+	"github.com/brainlet/brainkit/internal/store/postgres"
+	"github.com/brainlet/brainkit/internal/store/sqlite"
 	"github.com/brainlet/brainkit/internal/types"
 )
+
+// SQLiteKitStore is the SQLite KitStore backend.
+type SQLiteKitStore = sqlite.SQLiteKitStore
+
+// PostgresKitStore is the PostgreSQL KitStore backend.
+type PostgresKitStore = postgres.PostgresKitStore
+
+// NewSQLiteKitStore creates a SQLite-backed KitStore at path.
+func NewSQLiteKitStore(path string) (*SQLiteKitStore, error) {
+	return sqlite.NewSQLiteKitStore(path)
+}
+
+// NewPostgresKitStore creates a PostgreSQL-backed KitStore for connStr.
+func NewPostgresKitStore(connStr string) (*PostgresKitStore, error) {
+	return postgres.NewPostgresKitStore(connStr)
+}
 
 // Config configures the store backends.
 type Config struct {

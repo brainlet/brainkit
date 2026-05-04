@@ -8,12 +8,14 @@ import (
 	"github.com/brainlet/brainkit"
 	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/server"
 )
 
 // Add appends the packages module when needed and installs an OnStart hook that
 // deploys each package before the server supervisor blocks.
-func Add(cfg *server.Config, pkgs ...packages.Package) {
+func Add(cfg *server.Config, pkgs ...packageclient.Package) {
 	if cfg == nil || len(pkgs) == 0 {
 		return
 	}
@@ -24,10 +26,10 @@ func Add(cfg *server.Config, pkgs ...packages.Package) {
 }
 
 // Deploy returns a server start hook that deploys packages in order.
-func Deploy(pkgs ...packages.Package) server.StartHook {
+func Deploy(pkgs ...packageclient.Package) server.StartHook {
 	return func(ctx context.Context, kit *brainkit.Kit) error {
 		for _, pkg := range pkgs {
-			if _, err := packages.Deploy(ctx, kit, pkg); err != nil {
+			if _, err := packageclient.Deploy(ctx, kit, pkg); err != nil {
 				return fmt.Errorf("server: deploy package: %w", err)
 			}
 		}

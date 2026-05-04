@@ -7,12 +7,12 @@ import (
 
 	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/modules/gateway"
-	"github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/server"
 	"github.com/brainlet/brainkit/server/packageboot"
-	"github.com/brainlet/brainkit/stores"
-	"github.com/brainlet/brainkit/transports"
+	storesqlite "github.com/brainlet/brainkit/stores/sqlite"
+	"github.com/brainlet/brainkit/transports/embeddednats"
 )
 
 // New creates a Server with sensible defaults: EmbeddedNATS, SQLite store
@@ -23,7 +23,7 @@ func New(namespace, fsRoot string, opts ...Option) (*server.Server, error) {
 	if fsRoot == "" {
 		return nil, fmt.Errorf("server/quickstart: fsRoot is required")
 	}
-	store, err := stores.NewSQLite(filepath.Join(fsRoot, "kit.db"))
+	store, err := storesqlite.New(filepath.Join(fsRoot, "kit.db"))
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +32,7 @@ func New(namespace, fsRoot string, opts ...Option) (*server.Server, error) {
 	cfg := server.Config{
 		Namespace: namespace,
 		FSRoot:    fsRoot,
-		Transport: transports.EmbeddedNATS(),
+		Transport: embeddednats.New(),
 		Store:     store,
 		Modules:   mods,
 	}
@@ -66,7 +66,7 @@ func WithSecretKey(key string) Option {
 }
 
 // WithPackages auto-deploys packages on Start.
-func WithPackages(pkgs ...packages.Package) Option {
+func WithPackages(pkgs ...packageclient.Package) Option {
 	return func(c *server.Config) { packageboot.Add(c, pkgs...) }
 }
 

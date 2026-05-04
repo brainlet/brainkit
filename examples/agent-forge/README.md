@@ -5,7 +5,7 @@ multi-agent pipeline that designs, writes, and reviews a
 brand-new brainkit agent from a freeform request. When the forge
 returns approved source, Go scaffolds a real on-disk package
 (`manifest.json` + `tsconfig.json` + `types/*.d.ts` + `index.ts`),
-deploys it via `packages.FromDir`, and calls the forged
+deploys it via `packageclient.FromDir`, and calls the forged
 agent through its public bus topic.
 
 One `.ts` file wires, in a single compartment, every major
@@ -15,7 +15,7 @@ running in parallel, and the embedded reference corpus
 (`reference.get("everything")`).
 
 The Go side handles disk + deploy via the reusable
-`packages.ScaffoldPackage` helper — the exact same layout the
+`packagescaffold.ScaffoldPackage` helper — the exact same layout the
 `brainkit new package` CLI produces. After a forge run you can
 `cd` into the scaffolded dir and open it in any IDE with full
 TypeScript autocomplete, no `npm install` required.
@@ -52,7 +52,7 @@ shape-result step                            │
 Go process (main.go)
    │   ScaffoldPackage(./forged-agents/<name>/, name, "index.ts", code)
    │       writes manifest.json + tsconfig.json + types/*.d.ts + index.ts
-   │   packages.FromDir(./forged-agents/<name>/) → packages.Deploy(...)
+   │   packageclient.FromDir(./forged-agents/<name>/) → packageclient.Deploy(...)
    │
    ▼
 ts.<name>.ask

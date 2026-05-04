@@ -18,6 +18,8 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 )
 
 func main() {
@@ -47,7 +49,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if _, err := packages.Deploy(ctx, kit, packages.Inline(
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline(
 		"greeter", "greeter.ts",
 		`bus.on("hello", (msg) => {
 			const name = (msg.payload && msg.payload.name) || "stranger";

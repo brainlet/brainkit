@@ -35,6 +35,8 @@ import (
 	"github.com/brainlet/brainkit/audio/local"
 	"github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 )
 
 //go:embed web
@@ -92,7 +94,7 @@ func run(addr string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("voice-realtime", "voice.ts", voiceSource)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("voice-realtime", "voice.ts", voiceSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

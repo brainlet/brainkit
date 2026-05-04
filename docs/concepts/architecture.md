@@ -50,9 +50,11 @@ is:
 - **Config builders.** `Memory()`, `EmbeddedNATS()`, `NATS(url)`,
   `AMQP(url)`, `Redis(url)`; `OpenAI(key)`, `Anthropic(key)`, … for the
   12 supported providers.
-- **Package deployment helpers.** `modules/packages` owns
-  `packages.Inline`, `packages.FromDir`, `packages.FromFile`, and
-  `packages.Deploy(ctx, kit, pkg)`.
+- **Package deployment helpers.** `modules/packages/client` owns
+  `packageclient.Inline`, `packageclient.FromDir`, `packageclient.FromFile`, and
+  `packageclient.Deploy(ctx, kit, pkg)`. The `modules/packages` module owns the
+  hot-mount command handlers. Source bundling is provided by an explicit
+  package builder such as `modules/packages/bundlers/esbuild`.
 - **Bus calls.** The generic
   `Call[Req, Resp any](kit, ctx, req, opts…) (Resp, error)` plus
   `CallStream[Req, Chunk, Resp any]` for servers that emit chunks
@@ -154,7 +156,7 @@ Loading a module is declarative:
 ```go
 kit, _ := brainkit.New(brainkit.Config{
     Namespace: "edge",
-    Transport: transports.EmbeddedNATS(),
+    Transport: embeddednats.New(),
     Modules: []module.Module{
         gateway.New(gateway.Config{Listen: ":8080"}),
         topology.NewModule(topology.Config{
@@ -169,11 +171,11 @@ Modules never reach into each other. They compose through the bus.
 ## Transports
 
 `Config.Transport` is a struct value, not a string. Memory lives in the root
-package; network backends are linked by importing
-`github.com/brainlet/brainkit/transports`:
+package; network backends are linked by importing backend-specific packages
+such as `github.com/brainlet/brainkit/transports/nats`:
 
 ```go
-Transport: transports.NATS("nats://localhost:4222"),
+Transport: nats.New("nats://localhost:4222"),
 ```
 
 The constructors return typed `TransportConfig` values:
@@ -181,10 +183,10 @@ The constructors return typed `TransportConfig` values:
 | Constructor       | Kind         | Use case                            |
 | ----------------- | ------------ | ----------------------------------- |
 | `brainkit.Memory()` | `"memory"` | Single-process, fastest path. |
-| `transports.EmbeddedNATS()` | `"embedded"` | Single-process, JetStream semantics. |
-| `transports.NATS(url)` | `"nats"` | Multi-Kit production, JetStream. |
-| `transports.AMQP(url)` | `"amqp"` | RabbitMQ, topic sanitizer. |
-| `transports.Redis(url)` | `"redis"` | Redis Streams. |
+| `embeddednats.New()` | `"embedded"` | Single-process, JetStream semantics. |
+| `nats.New(url)` | `"nats"` | Multi-Kit production, JetStream. |
+| `amqp.New(url)` | `"amqp"` | RabbitMQ, topic sanitizer. |
+| `redis.New(url)` | `"redis"` | Redis Streams. |
 
 Leaving `Transport` zero defaults to `Memory()` inside `New`. The
 kernel and router are wired in the same place regardless of kind;
@@ -197,16 +199,17 @@ backend applies.
 A deployment is a `.ts` (or `.js`) package plus a manifest:
 
 ```go
-packages.Deploy(ctx, kit, packages.Inline(
+packageclient.Deploy(ctx, kit, packageclient.Inline(
     "greeter", "greeter.ts",
     `bus.on("hello", (msg) => msg.reply({ greeting: "hi " + msg.payload.name }));`,
 ))
 ```
 
 Under the hood, `Deploy` publishes a `packagemsg.PackageDeployMsg` on the
-`package.deploy` topic. The packages module bundles and normalizes the package
-into a JavaScript artifact, then hands it to the JS runtime artifact deployer.
-The runtime loads it into a fresh SES Compartment and exposes every
+`package.deploy` topic. The packages module asks the registered package builder
+to bundle and normalize the package into a JavaScript artifact, then hands it
+to the JS runtime artifact deployer. The runtime loads it into a fresh SES
+Compartment and exposes every
 `bus.on(topic, …)` at `ts.<pkg>.<topic>`. Any subsequent Kit call to that topic
 enters the Compartment, runs the JS handler, and replies through the bus. See
 [deployment-pipeline.md](deployment-pipeline.md).
@@ -216,12 +219,17 @@ enters the Compartment, runs the JS handler, and replies through the bus. See
 Four typed registries are seeded by Kit config:
 
 ```go
+import _ "github.com/brainlet/brainkit/storagebridges/sqlite"
+
 brainkit.New(brainkit.Config{
     Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
     Storages: map[string]brainkit.StorageConfig{"main": brainkit.SQLiteStorage("./kit.db")},
     Vectors:  map[string]brainkit.VectorConfig{"docs": brainkit.SQLiteVector("./vectors.db")},
 })
 ```
+
+SQLite storage/vector entries are config values at root, while the
+runtime bridge is optional wiring linked by `storagebridges/sqlite`.
 
 Each registry owns its own table of named backends. Deployed `.ts` code
 sees the same table through `globalThis.__kit_providers` and calls it

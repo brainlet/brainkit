@@ -54,6 +54,8 @@ RAM; kill the process and the snapshot is gone.
 The example wires SQLite under the Kit's `FSRoot`:
 
 ```go
+import _ "github.com/brainlet/brainkit/storagebridges/sqlite"
+
 Storages: map[string]brainkit.StorageConfig{
     "default": brainkit.SQLiteStorage(filepath.Join(tmp, "workflow.db")),
 },

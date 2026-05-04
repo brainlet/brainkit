@@ -29,6 +29,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -77,7 +79,7 @@ func run(key string, save, check bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("evals", "evals.ts", evalsSource)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("evals", "evals.ts", evalsSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	fmt.Println("[1/3] evals deployed")

@@ -63,8 +63,8 @@ type ArtifactDeployer interface {
 }
 
 // TSRunner evaluates direct JS/TS snippets in the active runtime. It is not a
-// package/file-graph bundler; package normalization belongs to modules/packages
-// or tooling before deploy handoff.
+// package/file-graph bundler; package normalization belongs to the package
+// builder registered for modules/packages or to tooling before deploy handoff.
 type TSRunner interface {
 	EvalTS(ctx context.Context, source, code string) (string, error)
 }

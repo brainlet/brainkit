@@ -11,6 +11,7 @@ and hands the result to Mastra classes (`Memory`, `LibSQLStore`,
 import (
     "path/filepath"
     "github.com/brainlet/brainkit"
+    _ "github.com/brainlet/brainkit/storagebridges/sqlite"
 )
 
 kit, err := brainkit.New(brainkit.Config{
@@ -32,6 +33,12 @@ Five storage builders ship out of the box:
 | `brainkit.MongoDBStorage(uri, dbName)` | MongoDB via `node-mongodb-native` driver. |
 | `brainkit.UpstashStorage(url, token)` | Upstash REST storage. |
 | `brainkit.InMemoryStorage()` | Ephemeral in-process, lost on close. |
+
+`SQLiteStorage` is a pure config value. Binaries that let deployed
+`.ts` code resolve SQLite storage must also link the optional bridge
+with `_ "github.com/brainlet/brainkit/storagebridges/sqlite"`.
+Import `_ "github.com/brainlet/brainkit/storagebridges"` only when
+you intentionally want the aggregate bridge set.
 
 Manage the registry at runtime by mounting `modules/registry` and calling
 `registrymsg.StorageAddMsg`, `RegistryListMsg`, and `StorageRemoveMsg`:

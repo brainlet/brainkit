@@ -13,8 +13,8 @@
 //
 // Ownership boundary: the workflow NEVER deploys. It returns the
 // reviewed source plus spec back to Go, which scaffolds a real
-// on-disk package via packages.ScaffoldPackage, deploys it with
-// packages.FromDir, and calls it. Keeps every generated
+// on-disk package via packagescaffold.ScaffoldPackage, deploys it with
+// packageclient.FromDir, and calls it. Keeps every generated
 // agent inspectable in an IDE (tsconfig.json + types/ included).
 //
 // Handlers exposed:
@@ -392,7 +392,7 @@ const reviewAndPatchStep = createStep({
 // The forge used to call bus.call("package.deploy", …) from
 // inside JS. Moving it out keeps the workflow honest — Go owns
 // where files live on disk, scaffolds a proper package dir via
-// packages.ScaffoldPackage, and deploys via packages.FromDir. So
+// packagescaffold.ScaffoldPackage, and deploys via packageclient.FromDir. So
 // this last step just shapes the terminal workflow output and
 // hands the final code back to the Go caller.
 const shapeResultStep = createStep({

@@ -11,10 +11,10 @@ import (
     "github.com/brainlet/brainkit"
     bkmodule "github.com/brainlet/brainkit/module"
     "github.com/brainlet/brainkit/modules/audit"
-    auditstores "github.com/brainlet/brainkit/modules/audit/stores"
+    auditsqlite "github.com/brainlet/brainkit/modules/audit/stores/sqlite"
 )
 
-store, _ := auditstores.NewSQLite("/var/brainkit/audit.db")
+store, _ := auditsqlite.New("/var/brainkit/audit.db")
 
 brainkit.New(brainkit.Config{
     Modules: []bkmodule.Module{
@@ -34,13 +34,15 @@ brainkit.New(brainkit.Config{
 
 ## Stores
 
-- `stores.SQLite` — embedded SQLite backing.
-- `stores.Postgres` — Postgres backing built on the shared sqlc
+- `stores/sqlite.Store` — embedded SQLite backing.
+- `stores/postgres.Store` — Postgres backing built on the shared sqlc
   queries.
 
 The `server/standard` YAML factory imports `modules/audit/standard`, which
-wires the default SQLite/Postgres store constructors. Direct embedded callers
-import only the stores package they need.
+wires the default SQLite store constructor. Import
+`modules/audit/standard/postgres` in config-driven binaries that need
+`modules.audit.type: postgres`. Direct embedded callers import only the stores
+package they need.
 
 ## Capabilities
 

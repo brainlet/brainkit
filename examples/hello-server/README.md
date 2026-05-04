@@ -23,8 +23,14 @@ curl http://127.0.0.1:8080/health
 
 - `configfile.Load` reads the YAML, substitutes `$VAR` / `${VAR}`
   against `os.Environ`, and projects onto the runtime `Config`.
-- `server.New` composes the standard module set — gateway, probes,
-  tracing, audit — behind a single lifecycle.
+- The example imports `server/configfile/storebackends/sqlite` because
+  `kit_store_path` defaults to `<fs_root>/kit.db`.
+- The example imports `server/configfile/packageboot` so top-level
+  `packages:` entries can auto-deploy when you scale the YAML up.
+- `server.New` composes the YAML-selected modules behind a single
+  lifecycle. This example imports the `server/standard/commands` and
+  `server/standard/server` profiles, enough for command modules,
+  package deploy, gateway, and probes.
 - `brainkit new server <name>` stamps this same shape into a new
   module when you want to ship it as a service.
 

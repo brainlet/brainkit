@@ -24,7 +24,7 @@ import (
 	"github.com/brainlet/brainkit/modules/workflow"
 	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
-	_ "github.com/brainlet/brainkit/storagebridges"
+	_ "github.com/brainlet/brainkit/storagebridges/sqlite"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/internal/protocoltest"
 )

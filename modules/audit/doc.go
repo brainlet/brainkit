@@ -5,7 +5,7 @@
 //
 // Usage:
 //
-//	store, _ := auditstores.NewSQLite(path)
+//	store, _ := auditsqlite.New(path)
 //	kit, _ := brainkit.New(brainkit.Config{
 //	    Modules: []bkmodule.Module{
 //	        audit.NewModule(audit.Config{Store: store}),

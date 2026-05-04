@@ -9,8 +9,9 @@ type StorageConfig = types.StorageConfig
 type VectorConfig = types.VectorConfig
 
 // Storage convenience constructors. SQLiteStorage and SQLiteVector require
-// importing github.com/brainlet/brainkit/storagebridges in the binary that
-// creates the Kit.
+// importing github.com/brainlet/brainkit/storagebridges/sqlite or the aggregate
+// github.com/brainlet/brainkit/storagebridges in the binary that creates the
+// Kit.
 var (
 	SQLiteStorage      = types.SQLiteStorage
 	PostgresStorage    = types.PostgresStorage

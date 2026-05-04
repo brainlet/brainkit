@@ -11,11 +11,11 @@ This directory is the reference. The five files in `llm/` are dense, API-only pa
 - **Kit**: a single `*Kit` value created via `brainkit.New(brainkit.Config{...})`. Implements `sdk.Runtime` (publish / subscribe / reply / stream), `sdk.CrossNamespaceRuntime` (routed `To:` targeting), and `sdk.Replier` (correlated replies). Zero-value defaults — `Transport: brainkit.Memory()` if unset, embedded AMQP / NATS / Redis helpers are opt-in.
 - **Bus**: async pub/sub with typed `brainkit.Call[Req, Resp]` / `brainkit.CallStream[Req, Chunk, Resp]` helpers for Kit-specific behavior and generated package-owned `CallXxx(rt, ctx, msg, opts...)` wrappers for shipped message types. Module code can use matching `CallXxxWithCaller(caller, ctx, msg, opts...)` wrappers with the narrow request/reply capability. SDK-owned wrappers live in `sdk/typed_gen.go`; module-owned wrappers live with their module message package.
 - **SES compartments**: every deployed `.ts` file runs in its own hardened compartment with a tamed global surface (frozen `Date`, per-source module namespace `ts.<source>.<topic>`, no network / child-process access). Endowments are injected per-source: `bus`, `kit`, `model`, `embeddingModel`, `provider`, `storage`, `vectorStore`, `registry`, `tools`, `tool`, `fs` (Node.js shape), `mcp`, `output`, `secrets`, `generateWithApproval`, the full `"ai"` module and the full `"agent"` (Mastra) module.
-- **Transports**: `brainkit.Memory()` (default, zero-value) is linked by the root package. Import `github.com/brainlet/brainkit/transports` for `transports.EmbeddedNATS()`, `transports.NATS(url)`, `transports.AMQP(url)`, or `transports.Redis(url)`. Topic sanitisers vary per backend; the Go surface is uniform.
+- **Transports**: `brainkit.Memory()` (default, zero-value) is linked by the root package. Import backend-specific packages such as `transports/embeddednats`, `transports/nats`, `transports/amqp`, or `transports/redis` for network transports. The aggregate `transports` package still exists, but it links every network backend. Topic sanitisers vary per backend; the Go surface is uniform.
 - **Providers**: 12 built-in constructors (OpenAI, Anthropic, Google, Mistral, Groq, DeepSeek, XAI, Cohere, Perplexity, TogetherAI, Fireworks, Cerebras). `WithBaseURL(...)` / `WithHeaders(...)` options on every one.
 - **Storage & vectors**: 5 storage constructors (SQLite, Postgres, MongoDB, Upstash, InMemory) and 3 vector constructors (SQLite, PgVector, MongoDB). Registered as a named pool the runtime can look up by name.
-- **Modules**: 24 shipped module packages composed via `Config.Modules`. `presets/standard.CommandSet()` mounts the lightweight command/runtime set (`jsruntime`, `agents`, `reference`, `control`, `eval`, `health`, `messaging`, `metrics`, `registry`, `secrets`, `tools`, `packages`). Additional modules own resource-heavy or integration-specific surfaces such as `gateway`, `mcp`, `plugins`, `schedules`, `audit`, `tracing`, `probes`, `discovery`, `topology`, `workflow`, `testing`, and `harness`.
-- **server**: thin HTTP wrapper (`server.New`) for bringing a Kit up behind an HTTP gateway. `server/configfile` reads YAML with `$VAR` / `${VAR}` expansion; import `server/standard` for built-in YAML module names. `server/quickstart` holds the batteries-included preset. Not required — embed the Kit directly from Go in any long-running process.
+- **Modules**: 24 shipped module packages composed via `Config.Modules`. `presets/standard/core.Set()` mounts the light command/control plane; `presets/standard/runtime.Set()` adds JS runtime/eval without source-package builders; `presets/standard/packages.Set()` adds package deployment plus the standard esbuild package builder; `presets/standard.CommandSet()` remains the aggregate command/runtime set. Additional modules own resource-heavy or integration-specific surfaces such as `gateway`, `mcp`, `plugins`, `schedules`, `audit`, `tracing`, `probes`, `discovery`, `topology`, `workflow`, `testing`, and `harness`.
+- **server**: thin HTTP wrapper (`server.New`) for bringing a Kit up behind an HTTP gateway. `server/configfile` reads YAML with `$VAR` / `${VAR}` expansion; import named `server/standard/...` profiles for built-in YAML module names, `server/configfile/transportbackends/...` for YAML transport backends, `server/configfile/storebackends/...` for KitStore backends, and `server/configfile/packageboot` for top-level `packages:` auto-deploy. `server/standard/full` is the all-module catalog; `server/quickstart` holds the batteries-included preset. Not required — embed the Kit directly from Go in any long-running process.
 
 See `concepts/architecture.md` for the full diagram and `concepts/deployment-pipeline.md` for the transpile → strip-imports → SES-lockdown path.
 
@@ -29,14 +29,14 @@ All agents, tools, workflows and memories are created by **deploying a `.ts` fil
 // Create a Kit
 kit, _ := brainkit.New(brainkit.Config{
     Namespace: "myapp",
-    Transport: transports.EmbeddedNATS(),
+    Transport: embeddednats.New(),
     FSRoot:    "/var/lib/myapp",
     Providers: []brainkit.ProviderConfig{brainkit.OpenAI(os.Getenv("OPENAI_API_KEY"))},
 })
 defer kit.Close()
 
 // Deploy a .ts package
-_, _ = packages.Deploy(ctx, kit, packages.Inline(
+_, _ = packageclient.Deploy(ctx, kit, packageclient.Inline(
     "researcher",
     "researcher.ts",
     researcherCode,
@@ -85,7 +85,7 @@ reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](kit, ctx, sdk.Custom
 Teardown releases all bus subscriptions, unregisters agents / tools / workflows, and disposes the compartment:
 
 ```go
-_, _ = packages.Teardown(ctx, kit, "researcher")
+_, _ = packageclient.Teardown(ctx, kit, "researcher")
 ```
 
 `examples/agent-spawner/main.go` is the flagship walkthrough: a Go program deploys an architect agent, asks it to design and deploy a second agent at runtime, and then calls the newly-spawned agent directly over the bus.
@@ -160,7 +160,7 @@ kit, _ := brainkit.New(brainkit.Config{
 })
 defer kit.Close()
 
-_, _ = packages.Deploy(ctx, kit, packages.Inline("echo", "echo.ts", `
+_, _ = packageclient.Deploy(ctx, kit, packageclient.Inline("echo", "echo.ts", `
     import { bus } from "kit";
     bus.on("ping", (msg) => msg.reply({ pong: msg.payload }));
 `))
@@ -206,8 +206,14 @@ modules:
 ```
 
 ```go
-import "github.com/brainlet/brainkit/server/configfile"
-import _ "github.com/brainlet/brainkit/server/standard"
+import (
+    "github.com/brainlet/brainkit/server/configfile"
+    _ "github.com/brainlet/brainkit/server/configfile/packageboot"
+    _ "github.com/brainlet/brainkit/server/configfile/storebackends/sqlite"
+    _ "github.com/brainlet/brainkit/server/configfile/transportbackends/embeddednats"
+    _ "github.com/brainlet/brainkit/server/standard/commands"
+    _ "github.com/brainlet/brainkit/server/standard/server"
+)
 
 cfg, _ := configfile.Load("config.yaml")
 srv, _ := server.New(cfg)

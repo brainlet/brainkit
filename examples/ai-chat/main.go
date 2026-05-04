@@ -22,6 +22,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -75,7 +77,7 @@ func main() {
 		});
 	`, *provider, *modelID)
 
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("chatter", "chatter.ts", code)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("chatter", "chatter.ts", code)); err != nil {
 		log.Fatalf("deploy: %v", err)
 	}
 

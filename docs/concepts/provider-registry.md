@@ -12,6 +12,8 @@ Deployed `.ts` packages resolve the same tables with `model("openai", ...)`,
 AI providers are configured with top-level builders:
 
 ```go
+import _ "github.com/brainlet/brainkit/storagebridges/sqlite"
+
 kit, _ := brainkit.New(brainkit.Config{
     Namespace: "analytics",
     Transport: brainkit.Memory(),
@@ -28,6 +30,10 @@ kit, _ := brainkit.New(brainkit.Config{
     },
 })
 ```
+
+The SQLite storage/vector builders remain root config constructors.
+The SQLite runtime bridge is optional and linked explicitly with
+`storagebridges/sqlite`.
 
 `Config.Providers == nil` auto-detects common provider API keys from the
 process environment. An explicitly empty provider slice disables auto-detect.

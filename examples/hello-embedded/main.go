@@ -13,6 +13,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -32,7 +34,7 @@ func main() {
 	defer cancel()
 
 	// Deploy a tiny .ts package that answers "hello".
-	if _, err := packages.Deploy(ctx, kit, packages.Inline(
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline(
 		"greeter", "greeter.ts",
 		`bus.on("hello", (msg) => msg.reply({ greeting: "hello, " + msg.payload.name }));`,
 	)); err != nil {

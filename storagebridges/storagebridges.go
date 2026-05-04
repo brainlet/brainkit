@@ -1,17 +1,10 @@
-// Package storagebridges links optional runtime storage bridge backends.
+// Package storagebridges links all optional runtime storage bridge backends.
 //
-// Import this package before using brainkit.SQLiteStorage or
-// brainkit.SQLiteVector. The root brainkit package does not link libsql/sqlite
-// by default.
+// Import backend-specific packages such as storagebridges/sqlite when a binary
+// should link only one bridge backend. This aggregate package intentionally
+// links every storage bridge backend for convenience.
 package storagebridges
 
 import (
-	"github.com/brainlet/brainkit/internal/libsql"
-	"github.com/brainlet/brainkit/modulehost/storagehost"
+	_ "github.com/brainlet/brainkit/storagebridges/sqlite"
 )
-
-func init() {
-	storagehost.RegisterBridgeBuilder("sqlite", func(path string) (storagehost.Bridge, error) {
-		return libsql.NewServer(path)
-	})
-}

@@ -53,6 +53,9 @@ vector similarity round-trip:
 - `brainkit.Config.Storages` + `brainkit.Config.Vectors` wire
   named backends the `.ts` resolves through `storage(name)` and
   `vectorStore(name)`.
+- SQLite storage/vector resolution is linked explicitly by the
+  example's `_ "github.com/brainlet/brainkit/storagebridges/sqlite"`
+  import; the root constructors stay pure config values.
 - The `.ts` side uses `Memory` (from `agent`) for thread
   persistence and `vectorStore().createIndex` /
   `.upsert` / `.query` for similarity search.

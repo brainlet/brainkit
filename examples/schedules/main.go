@@ -22,10 +22,12 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
 	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/stores"
+	storesqlite "github.com/brainlet/brainkit/stores/sqlite"
 )
 
 func main() {
@@ -41,7 +43,7 @@ func run() error {
 	}
 	defer os.RemoveAll(tmp)
 
-	store, err := stores.NewSQLite(filepath.Join(tmp, "kit.db"))
+	store, err := storesqlite.New(filepath.Join(tmp, "kit.db"))
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
@@ -72,7 +74,7 @@ func run() error {
 			console.log("tick", ticks, "at", new Date().toISOString());
 		});
 	`
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("heartbeat-demo", "hb.ts", tsCode)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("heartbeat-demo", "hb.ts", tsCode)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

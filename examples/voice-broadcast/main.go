@@ -35,6 +35,8 @@ import (
 	"github.com/brainlet/brainkit/audio"
 	"github.com/brainlet/brainkit/audio/local"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -137,7 +139,7 @@ func run() error {
 
 	deployCtx, deployCancel := context.WithTimeout(ctx, 20*time.Second)
 	defer deployCancel()
-	if _, err := packages.Deploy(deployCtx, kit, packages.Inline("voice-broadcast", "broadcast.ts", broadcastSource)); err != nil {
+	if _, err := packageclient.Deploy(deployCtx, kit, packageclient.Inline("voice-broadcast", "broadcast.ts", broadcastSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

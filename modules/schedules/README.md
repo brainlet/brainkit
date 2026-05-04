@@ -53,9 +53,15 @@ timer, active fire, closing, store, and schedule handler lease counts.
 
 Unmounting stops the scheduler, closes the schedule handler lease, unregisters
 `schedules.*` commands, and drops runtime-control references. If the module was
-built from YAML with its own `path`, that dedicated store is closed on unmount;
-stores borrowed from Kit config remain owned by the Kit. Stores that implement
-`CloseContext(context.Context)` receive the module unmount context.
+built by the standard YAML factory with its own `path`, that dedicated store is
+closed on unmount; stores borrowed from Kit config remain owned by the Kit.
+Stores that implement `CloseContext(context.Context)` receive the module
+unmount context.
+
+The light `modules/schedules` package does not open stores or auto-register a
+YAML factory. Import `modules/schedules/standard` in config-driven binaries, or
+use `server/standard`, when `modules.schedules.path` should open a dedicated
+SQLite store.
 
 Close is retryable. If the schedule handler lease cannot detach, the lease and
 owned store remain attached for a later retry. If active schedule fires do not

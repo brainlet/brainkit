@@ -5,7 +5,7 @@
 // Uses github.com/nats-io/nats-server/v2 directly to boot a
 // standalone NATS server both Kits can connect to. That's the
 // pragmatic way to share a transport between two Kits in one
-// process — transports.EmbeddedNATS() is per-Kit and doesn't
+// process — embeddednats.New() is per-Kit and doesn't
 // expose its URL.
 //
 // Run from the repo root:
@@ -24,9 +24,11 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/modules/topology"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/transports"
+	"github.com/brainlet/brainkit/transports/nats"
 	natsserver "github.com/nats-io/nats-server/v2/server"
 )
 
@@ -49,7 +51,7 @@ func run() error {
 	target, err := brainkit.New(brainkit.Config{
 		Namespace: "analytics-prod",
 		CallerID:  "analytics-prod",
-		Transport: transports.NATS(natsURL),
+		Transport: nats.New(natsURL),
 		FSRoot:    ".",
 	})
 	if err != nil {
@@ -60,7 +62,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if _, err := packages.Deploy(ctx, target, packages.Inline("report-svc", "report.ts", `
+	if _, err := packageclient.Deploy(ctx, target, packageclient.Inline("report-svc", "report.ts", `
 		bus.on("quarterly", (msg) => {
 			msg.reply({ revenue: 1234567, quarter: msg.payload.quarter });
 		});
@@ -73,7 +75,7 @@ func run() error {
 	caller, err := brainkit.New(brainkit.Config{
 		Namespace: "orchestrator",
 		CallerID:  "orchestrator",
-		Transport: transports.NATS(natsURL),
+		Transport: nats.New(natsURL),
 		FSRoot:    ".",
 		Modules: []bkmodule.Module{packages.New(),
 			topology.NewModule(topology.Config{

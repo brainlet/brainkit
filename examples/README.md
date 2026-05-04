@@ -16,7 +16,7 @@ from the repo root.
 | [hello-server](./hello-server/) | Service mode: `brainkit.yaml` + `server.New` + `Start` |
 | [multi-kit](./multi-kit/) | Two Kits in one process, routed by peer name through `modules/topology` |
 | [observability](./observability/) | `audit.query` + `audit.stats` + `trace.list` round-trip via `modules/audit` + `modules/tracing` |
-| [package-workflow](./package-workflow/) | The on-disk package lifecycle: `packages.ScaffoldPackage` → edit → add a sibling file → `packages.FromDir` deploy → teardown. The shape `brainkit new package` produces, unpacked into Go. |
+| [package-workflow](./package-workflow/) | The on-disk package lifecycle: `packagescaffold.ScaffoldPackage` → edit → add a sibling file → `packageclient.FromDir` deploy → teardown. The shape `brainkit new package` produces, unpacked into Go. |
 | [gateway-routes](./gateway-routes/) | HTTP gateway on a bare Kit — `GET /hello` forwards to a deployed `.ts` handler |
 | [go-tools](./go-tools/) | Register typed Go functions as first-class bus tools; invoke from `.ts` and from Go |
 | [guardrails](./guardrails/) | Input processors on an Agent — `PromptInjectionDetector` rewrites hostile input, `PIIDetector` masks PII |

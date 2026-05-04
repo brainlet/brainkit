@@ -26,8 +26,8 @@ orchestrator → analytics (WithCallTo):
 
 - **Shared NATS**: the example boots `nats-io/nats-server/v2`
   directly and hands its URL to both Kits via
-  `transports.NATS(url)`. That's the pragmatic shape for
-  two-Kits-one-process — `transports.EmbeddedNATS()` is per-Kit
+  `nats.New(url)`. That's the pragmatic shape for
+  two-Kits-one-process — `embeddednats.New()` is per-Kit
   and doesn't expose its URL.
 - **Topology**: the caller Kit wires `topology.NewModule` with a
   static `Peer{Name: "analytics", Namespace: "analytics-prod"}`
@@ -60,8 +60,8 @@ hosted) and drop the embedded server:
 ```go
 kit, _ := brainkit.New(brainkit.Config{
     Namespace: "orchestrator",
-    Transport: transports.NATS("nats://nats-cluster.internal:4222",
-        transports.WithNATSName("brainkit-prod")),
+    Transport: nats.New("nats://nats-cluster.internal:4222",
+        nats.WithNATSName("brainkit-prod")),
     Modules: []module.Module{topology.NewModule(...)},
 })
 ```

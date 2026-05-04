@@ -23,8 +23,10 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/audit"
 	"github.com/brainlet/brainkit/modules/audit/auditmsg"
-	auditstores "github.com/brainlet/brainkit/modules/audit/stores"
+	auditsqlite "github.com/brainlet/brainkit/modules/audit/stores/sqlite"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/modules/tracing"
 	"github.com/brainlet/brainkit/modules/tracing/tracingmsg"
 	"github.com/brainlet/brainkit/sdk"
@@ -45,7 +47,7 @@ func run() error {
 	}
 	defer os.RemoveAll(tmp)
 
-	auditStore, err := auditstores.NewSQLite(filepath.Join(tmp, "audit.db"))
+	auditStore, err := auditsqlite.New(filepath.Join(tmp, "audit.db"))
 	if err != nil {
 		return fmt.Errorf("open audit store: %w", err)
 	}
@@ -81,7 +83,7 @@ func run() error {
 	tsCode := `
 		bus.on("ping", (msg) => { msg.reply({pong: true}); });
 	`
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("observability-demo", "obs.ts", tsCode)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("observability-demo", "obs.ts", tsCode)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	for i := 0; i < 2; i++ {

@@ -39,7 +39,7 @@ func newBridge(kind, path string) (Bridge, error) {
 	builder := storageBridgeBuilders.m[kind]
 	storageBridgeBuilders.RUnlock()
 	if builder == nil {
-		return nil, fmt.Errorf("storage bridge %q requires importing github.com/brainlet/brainkit/storagebridges", kind)
+		return nil, fmt.Errorf("storage bridge %q requires importing a backend package such as github.com/brainlet/brainkit/storagebridges/sqlite or the aggregate github.com/brainlet/brainkit/storagebridges", kind)
 	}
 	return builder(path)
 }

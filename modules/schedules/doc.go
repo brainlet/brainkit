@@ -5,7 +5,7 @@
 //
 // Usage:
 //
-//	store, _ := stores.NewSQLite(path) // also implements schedules.Store
+//	store, _ := storesqlite.New(path) // also implements schedules.Store
 //	kit, _ := brainkit.New(brainkit.Config{
 //	    Store: store,
 //	    Modules: []bkmodule.Module{
@@ -15,4 +15,8 @@
 //
 // Without the module, .ts code that calls bus.schedule(...) receives a
 // NOT_CONFIGURED error and the schedules.* bus commands are absent.
+//
+// Config-driven binaries that want `modules.schedules.path` to open a
+// dedicated SQLite store should import modules/schedules/standard, or import
+// server/standard for the full built-in module catalog.
 package schedules

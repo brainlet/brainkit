@@ -33,6 +33,8 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/audio/local"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -130,7 +132,7 @@ func run(outRaw, question string, play bool) error {
 	defer cancel()
 
 	source := fmt.Sprintf(voiceSource, outSubdir)
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("voice-agent", "voice.ts", source)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("voice-agent", "voice.ts", source)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	fmt.Println("[1/3] voice-agent deployed")

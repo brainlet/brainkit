@@ -14,6 +14,7 @@ import (
 	tracingpkg "github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	tracingmod "github.com/brainlet/brainkit/modules/tracing"

@@ -10,12 +10,12 @@ covers every piece you'd reach for in a production program.
 ```go
 import (
     "github.com/brainlet/brainkit"
-    "github.com/brainlet/brainkit/transports"
+    "github.com/brainlet/brainkit/transports/embeddednats"
 )
 
 kit, err := brainkit.New(brainkit.Config{
     Namespace: "my-app",
-    Transport: transports.EmbeddedNATS(),
+    Transport: embeddednats.New(),
     FSRoot:    "/var/lib/my-app",
 })
 if err != nil { log.Fatal(err) }
@@ -146,6 +146,12 @@ brainkit.MongoDBVectorStore(uri, dbName)
 ```
 
 Use the results as values inside `Config.Storages` / `Config.Vectors`.
+For SQLite storage/vector resolution from deployed `.ts` code, link
+the optional runtime bridge:
+
+```go
+import _ "github.com/brainlet/brainkit/storagebridges/sqlite"
+```
 
 ## Calling over the bus
 
@@ -304,33 +310,38 @@ See [`examples/go-tools/`](../../examples/go-tools/).
 ## Deploying TypeScript
 
 `.ts` services are built as packages and evaluated inside SES
-Compartments.
+Compartments. `standard.PackageSet()` and `standard.CommandSet()` include the
+standard source package builder. Custom Kit assemblies that mount
+`packages.New()` directly should also import the package builder they want,
+usually `_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"`.
+Caller-side deploy helpers are in
+`github.com/brainlet/brainkit/modules/packages/client`.
 
 ```go
 // Inline — handy for tests and demos.
-packages.Deploy(ctx, kit, packages.Inline("greeter", "greeter.ts",
+packageclient.Deploy(ctx, kit, packageclient.Inline("greeter", "greeter.ts",
     `bus.on("hello", (m) => m.reply({ok: true}));`))
 
 // Single file from disk.
-pkg, err := packages.FromFile("./svc/agent.ts")
+pkg, err := packageclient.FromFile("./svc/agent.ts")
 if err == nil {
-    _, err = packages.Deploy(ctx, kit, pkg)
+    _, err = packageclient.Deploy(ctx, kit, pkg)
 }
 
 // Directory with a brainkit.yaml manifest (multi-file packages).
-pkg, err = packages.FromDir("./svc")
+pkg, err = packageclient.FromDir("./svc")
 if err == nil {
-    _, err = packages.Deploy(ctx, kit, pkg)
+    _, err = packageclient.Deploy(ctx, kit, pkg)
 }
 
 // List everything currently deployed.
-names, err := packages.List(ctx, kit)
+names, err := packageclient.List(ctx, kit)
 
 // Get the source / manifest of a deployment.
-pkgInfo, ok, err := packages.Get(ctx, kit, "greeter")
+pkgInfo, ok, err := packageclient.Get(ctx, kit, "greeter")
 
 // Remove a deployment. All resources it registered are dropped.
-err = packages.Teardown(ctx, kit, "greeter")
+err = packageclient.Teardown(ctx, kit, "greeter")
 ```
 
 Deployments register handlers on the mailbox namespace
@@ -388,12 +399,12 @@ Wire them by passing to `Config.Modules`:
 import (
     "github.com/brainlet/brainkit/modules/audit"
     "github.com/brainlet/brainkit/modules/tracing"
-    "github.com/brainlet/brainkit/transports"
+    "github.com/brainlet/brainkit/transports/embeddednats"
 )
 
 kit, err := brainkit.New(brainkit.Config{
     Namespace: "obs-demo",
-    Transport: transports.EmbeddedNATS(),
+    Transport: embeddednats.New(),
     FSRoot:    "/tmp/obs",
     Modules: []module.Module{
         audit.NewModule(audit.Config{Store: auditStore}),
@@ -421,14 +432,17 @@ application path.
 ## The server package
 
 For long-running processes, `brainkit/server` composes a Kit with a
-YAML config, HTTP gateway, tracing, probes, audit, and (optionally)
-plugins.
+YAML config and explicit standard profiles.
 
 ```go
 import (
 	"github.com/brainlet/brainkit/server"
 	"github.com/brainlet/brainkit/server/configfile"
-	_ "github.com/brainlet/brainkit/server/standard"
+	_ "github.com/brainlet/brainkit/server/configfile/packageboot"
+	_ "github.com/brainlet/brainkit/server/configfile/storebackends/sqlite"
+	_ "github.com/brainlet/brainkit/server/configfile/transportbackends/embeddednats"
+	_ "github.com/brainlet/brainkit/server/standard/commands"
+	_ "github.com/brainlet/brainkit/server/standard/server"
 )
 
 cfg, err := configfile.Load("brainkit.yaml")

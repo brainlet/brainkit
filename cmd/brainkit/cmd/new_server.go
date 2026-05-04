@@ -40,7 +40,11 @@ import (
 
 	"github.com/brainlet/brainkit/server"
 	"github.com/brainlet/brainkit/server/configfile"
-	_ "github.com/brainlet/brainkit/server/standard"
+	_ "github.com/brainlet/brainkit/server/configfile/packageboot"
+	_ "github.com/brainlet/brainkit/server/configfile/storebackends/sqlite"
+	_ "github.com/brainlet/brainkit/server/configfile/transportbackends/embeddednats"
+	_ "github.com/brainlet/brainkit/server/standard/commands"
+	_ "github.com/brainlet/brainkit/server/standard/server"
 )
 
 func main() {

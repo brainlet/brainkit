@@ -15,7 +15,7 @@ import (
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/transports"
+	"github.com/brainlet/brainkit/transports/embeddednats"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,7 +56,7 @@ func TestPluginRoundTrip(t *testing.T) {
 
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "plugin-host-test",
-		Transport: transports.EmbeddedNATS(),
+		Transport: embeddednats.New(),
 		FSRoot:    t.TempDir(),
 		Modules: []bkmodule.Module{
 			pluginsmod.NewModule(pluginsmod.Config{

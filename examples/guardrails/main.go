@@ -35,6 +35,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -65,7 +67,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("guardrails", "guardrails.ts", guardrailsSource)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("guardrails", "guardrails.ts", guardrailsSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	fmt.Println("[1/4] guardrails deployed")

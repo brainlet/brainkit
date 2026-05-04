@@ -43,16 +43,16 @@ it safe.
 
 ## Audit
 
-Wire `modules/audit` with a store. The shipped stores live in
-`modules/audit/stores`:
+Wire `modules/audit` with a store. The shipped stores live in backend-specific
+packages such as `modules/audit/stores/sqlite`:
 
 ```go
 import (
     "github.com/brainlet/brainkit/modules/audit"
-    auditstores "github.com/brainlet/brainkit/modules/audit/stores"
+    auditsqlite "github.com/brainlet/brainkit/modules/audit/stores/sqlite"
 )
 
-store, err := auditstores.NewSQLite("/var/lib/app/audit.db")
+store, err := auditsqlite.New("/var/lib/app/audit.db")
 if err != nil { return err }
 
 mod := audit.NewModule(audit.Config{

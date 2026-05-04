@@ -4,9 +4,10 @@ import (
 	"fmt"
 )
 
-// QuickStart creates a bare Kit wired with memory transport and an FSRoot. It does
-// not compose persistence or the standard module set; import brainkit/server or
-// github.com/brainlet/brainkit/transports for those optional pieces.
+// QuickStart creates a bare Kit wired with memory transport and an FSRoot. It
+// does not compose persistence or standard module profiles; import
+// brainkit/server, presets/standard/... profiles, or transport backend packages
+// for those optional pieces.
 //
 // fsRoot must be an existing writable directory.
 func QuickStart(namespace, fsRoot string) (*Kit, error) {

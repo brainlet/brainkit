@@ -3,6 +3,7 @@ package packages
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,9 +34,24 @@ func (d *recordingDeployer) Teardown(context.Context, string) (int, error) { ret
 
 func (d *recordingDeployer) ListDeployments() []runtimecap.DeploymentInfo { return nil }
 
+type recordingBuilder struct {
+	req BuildRequest
+}
+
+func (b *recordingBuilder) BuildPackage(_ context.Context, req BuildRequest, _ PluginChecker, _ SecretChecker) (BuiltPackage, error) {
+	b.req = req
+	return BuiltPackage{
+		Name:    "pkg",
+		Version: "1.0.0",
+		Source:  "pkg.ts",
+		Code:    `bus.on("ping", function(msg) { msg.reply({ ok: true }); });`,
+	}, nil
+}
+
 func TestPackageDeployMarksBundledCodeAsNormalizedJS(t *testing.T) {
 	deployer := &recordingDeployer{}
-	domain := NewDomain(deployer, nil, nil)
+	builder := &recordingBuilder{}
+	domain := NewDomain(deployer, nil, nil, withDomainPackageBuilder(builder))
 
 	manifest, err := json.Marshal(map[string]string{
 		"name":    "pkg",
@@ -69,5 +85,32 @@ func TestPackageDeployMarksBundledCodeAsNormalizedJS(t *testing.T) {
 	}
 	if deployer.code == "" {
 		t.Fatalf("bundled code was empty")
+	}
+	if string(builder.req.Manifest) == "" || len(builder.req.Files) == 0 {
+		t.Fatalf("builder did not receive package deploy payload: %#v", builder.req)
+	}
+}
+
+func TestPackageDeployRequiresPackageBuilder(t *testing.T) {
+	deployer := &recordingDeployer{}
+	domain := NewDomain(deployer, nil, nil, withDomainPackageBuilder(nil))
+
+	manifest, err := json.Marshal(map[string]string{
+		"name":  "pkg",
+		"entry": "index.ts",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = domain.Deploy(context.Background(), packagemsg.PackageDeployMsg{
+		Manifest: manifest,
+		Files:    map[string]string{"index.ts": `output("x");`},
+	})
+	if err == nil {
+		t.Fatal("expected missing package builder error")
+	}
+	if got := err.Error(); got == "" || !strings.Contains(got, "modules/packages/bundlers/esbuild") {
+		t.Fatalf("error = %q, want esbuild bundler import hint", got)
 	}
 }

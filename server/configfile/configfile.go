@@ -7,14 +7,11 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/brainlet/brainkit"
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/server"
-	"github.com/brainlet/brainkit/server/packageboot"
-	"github.com/brainlet/brainkit/stores"
-	"github.com/brainlet/brainkit/transports"
 	"gopkg.in/yaml.v3"
 )
 
@@ -43,6 +40,58 @@ type TransportYAML struct {
 	Type     string `yaml:"type"` // memory, embedded, nats, amqp, redis
 	URL      string `yaml:"url"`
 	NATSName string `yaml:"nats_name"`
+}
+
+// TransportFactory converts a YAML transport section into a public
+// brainkit.TransportConfig. Backend registration lives outside this package so
+// configfile users can choose which concrete transport dependencies they link.
+type TransportFactory func(TransportYAML) (brainkit.TransportConfig, error)
+
+var transportFactories = struct {
+	sync.RWMutex
+	m map[string]TransportFactory
+}{m: map[string]TransportFactory{}}
+
+// RegisterTransport registers a configfile transport backend. Passing nil
+// removes the registration.
+func RegisterTransport(kind string, factory TransportFactory) {
+	kind = strings.TrimSpace(kind)
+	if kind == "" || kind == "memory" {
+		return
+	}
+	transportFactories.Lock()
+	defer transportFactories.Unlock()
+	if factory == nil {
+		delete(transportFactories.m, kind)
+		return
+	}
+	transportFactories.m[kind] = factory
+}
+
+// KitStoreFactory opens the server's persistence store from a YAML path.
+// Backend registration lives outside this package so configfile users can
+// choose whether to link SQLite or any future store backend.
+type KitStoreFactory func(path string) (brainkit.KitStore, error)
+
+var kitStoreFactories = struct {
+	sync.RWMutex
+	m map[string]KitStoreFactory
+}{m: map[string]KitStoreFactory{}}
+
+// RegisterKitStore registers a configfile KitStore backend. Passing nil removes
+// the registration.
+func RegisterKitStore(kind string, factory KitStoreFactory) {
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		return
+	}
+	kitStoreFactories.Lock()
+	defer kitStoreFactories.Unlock()
+	if factory == nil {
+		delete(kitStoreFactories.m, kind)
+		return
+	}
+	kitStoreFactories.m[kind] = factory
 }
 
 // ProviderYAML configures a single AI provider.
@@ -75,6 +124,24 @@ type VectorYAML struct {
 // PackageYAML configures a package to auto-deploy at startup.
 type PackageYAML struct {
 	Path string `yaml:"path"`
+}
+
+// PackageLoader wires top-level `packages:` YAML into a server.Config.
+// The loader is registered by server/configfile/packageboot so plain configfile
+// users do not link package deployment, TypeScript bundling, or esbuild.
+type PackageLoader func(*server.Config, []PackageYAML) error
+
+var packageLoader = struct {
+	sync.RWMutex
+	load PackageLoader
+}{}
+
+// RegisterPackageLoader registers the optional top-level packages: YAML loader.
+// Passing nil removes the registration.
+func RegisterPackageLoader(loader PackageLoader) {
+	packageLoader.Lock()
+	defer packageLoader.Unlock()
+	packageLoader.load = loader
 }
 
 // Load reads a YAML file, substitutes `$VAR` and `${VAR}`
@@ -169,7 +236,7 @@ func (fc FileConfig) toConfig() (server.Config, error) {
 		storePath = filepath.Join(fc.FSRoot, "kit.db")
 	}
 	if storePath != "" {
-		store, err := stores.NewSQLite(storePath)
+		store, err := buildKitStore("sqlite", storePath)
 		if err != nil {
 			return server.Config{}, fmt.Errorf("server: open kit store %q: %w", storePath, err)
 		}
@@ -240,18 +307,34 @@ func (fc FileConfig) toConfig() (server.Config, error) {
 		}
 	}
 
-	var pkgs []packages.Package
-	for _, pkg := range fc.Packages {
-		p, err := packages.FromDir(pkg.Path)
-		if err != nil {
-			return server.Config{}, fmt.Errorf("server: load package %q: %w", pkg.Path, err)
+	if len(fc.Packages) > 0 {
+		if err := loadPackages(&cfg, fc.Packages); err != nil {
+			return server.Config{}, err
 		}
-		pkgs = append(pkgs, p)
 	}
-	packageboot.Add(&cfg, pkgs...)
 
 	success = true
 	return cfg, nil
+}
+
+func loadPackages(cfg *server.Config, pkgs []PackageYAML) error {
+	packageLoader.RLock()
+	loader := packageLoader.load
+	packageLoader.RUnlock()
+	if loader == nil {
+		return fmt.Errorf("server: packages YAML requires importing github.com/brainlet/brainkit/server/configfile/packageboot")
+	}
+	return loader(cfg, pkgs)
+}
+
+func buildKitStore(kind, path string) (brainkit.KitStore, error) {
+	kitStoreFactories.RLock()
+	factory := kitStoreFactories.m[kind]
+	kitStoreFactories.RUnlock()
+	if factory == nil {
+		return nil, fmt.Errorf("kit store backend %q is not registered (import github.com/brainlet/brainkit/server/configfile/storebackends/%s or the aggregate github.com/brainlet/brainkit/server/configfile/storebackends)", kind, kind)
+	}
+	return factory(path)
 }
 
 // unknownModuleError builds a "did you mean" error for a module key
@@ -266,24 +349,21 @@ func unknownModuleError(name string) error {
 }
 
 func (t TransportYAML) build() (brainkit.TransportConfig, error) {
-	switch t.Type {
+	kind := strings.TrimSpace(t.Type)
+	if kind == "" {
+		kind = "embedded"
+	}
+	switch kind {
 	case "memory":
 		return brainkit.Memory(), nil
-	case "embedded", "":
-		return transports.EmbeddedNATS(), nil
-	case "nats":
-		var opts []brainkit.TransportOption
-		if t.NATSName != "" {
-			opts = append(opts, transports.WithNATSName(t.NATSName))
-		}
-		return transports.NATS(t.URL, opts...), nil
-	case "amqp":
-		return transports.AMQP(t.URL), nil
-	case "redis":
-		return transports.Redis(t.URL), nil
-	default:
-		return brainkit.TransportConfig{}, fmt.Errorf("server: unknown transport %q", t.Type)
 	}
+	transportFactories.RLock()
+	factory := transportFactories.m[kind]
+	transportFactories.RUnlock()
+	if factory == nil {
+		return brainkit.TransportConfig{}, fmt.Errorf("server: transport %q is not registered (import github.com/brainlet/brainkit/server/configfile/transportbackends or a backend-specific configfile transport package)", kind)
+	}
+	return factory(t)
 }
 
 func buildProvider(p ProviderYAML) (brainkit.ProviderConfig, error) {

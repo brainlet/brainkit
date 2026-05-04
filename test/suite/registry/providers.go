@@ -11,6 +11,7 @@ import (
 	bkmodule "github.com/brainlet/brainkit/module"
 	jsruntimemod "github.com/brainlet/brainkit/modules/jsruntime"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	registrymod "github.com/brainlet/brainkit/modules/registry"
 	"github.com/brainlet/brainkit/modules/registry/registrymsg"

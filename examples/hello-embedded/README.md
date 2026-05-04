@@ -15,12 +15,14 @@ Expected output:
 
 Wire the same pattern into a real service by:
 
-- Swapping `brainkit.Memory()` for `transports.EmbeddedNATS()` or
-  `transports.NATS(url)` so other Kits on the same transport can call
+- Swapping `brainkit.Memory()` for `embeddednats.New()` or
+  `nats.New(url)` so other Kits on the same transport can call
   your handlers.
 - Loading `.ts` packages from disk with
-  `packages.FromDir("./agents/support")` instead of the
-  inline helper.
+  `packageclient.FromDir("./agents/support")` instead of the
+  inline helper. The example imports
+  `modules/packages/bundlers/esbuild` because it mounts `packages.New()`
+  directly.
 - Registering AI providers via `brainkit.Config.Providers` or
   `modules/registry` and calling them from `.ts` with
   `model("openai", "gpt-4o-mini")`.

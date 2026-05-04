@@ -14,6 +14,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
 	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"

@@ -5,9 +5,10 @@
 // Module selection is declarative: server has no hard-coded knowledge
 // of individual modules — it walks the brainkit module registry,
 // calling each factory registered through the module package. Binaries
-// that want the standard registry should import
-// github.com/brainlet/brainkit/server/standard for side effects. Custom
-// binaries can blank-import only the modules they want.
+// that want standard YAML module names should import the specific
+// github.com/brainlet/brainkit/server/standard/... profiles they need, or
+// github.com/brainlet/brainkit/server/standard/full for the full catalog.
+// Custom binaries can blank-import only the modules they want.
 package server
 
 import (

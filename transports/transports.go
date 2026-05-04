@@ -1,24 +1,27 @@
-// Package transports links Brainkit's optional network transport backends.
+// Package transports links all optional Brainkit network transport backends.
 //
-// Import this package when a Kit uses EmbeddedNATS, NATS, AMQP, or Redis. The
-// root brainkit package keeps only the in-process memory transport linked by
-// default.
+// Import backend-specific packages such as transports/embeddednats,
+// transports/nats, transports/amqp, or transports/redis when a binary should
+// link only one backend. This aggregate package intentionally links all of
+// them for convenience.
 package transports
 
 import (
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/internal/transport/backends"
+	"github.com/brainlet/brainkit/transports/amqp"
+	"github.com/brainlet/brainkit/transports/embeddednats"
+	"github.com/brainlet/brainkit/transports/nats"
+	"github.com/brainlet/brainkit/transports/redis"
 )
 
 // EmbeddedNATS creates a zero-config in-process NATS server with JetStream.
 func EmbeddedNATS(opts ...brainkit.TransportOption) brainkit.TransportConfig {
-	return brainkit.EmbeddedNATS(opts...)
+	return embeddednats.New(opts...)
 }
 
 // NATS connects to an external NATS server.
 func NATS(url string, opts ...brainkit.TransportOption) brainkit.TransportConfig {
-	return brainkit.NATS(url, opts...)
+	return nats.New(url, opts...)
 }
 
 // WithNATSName sets the durable consumer prefix for NATS JetStream.
@@ -28,32 +31,10 @@ func WithNATSName(name string) brainkit.TransportOption {
 
 // AMQP connects to a RabbitMQ server.
 func AMQP(url string) brainkit.TransportConfig {
-	return brainkit.AMQP(url)
+	return amqp.New(url)
 }
 
 // Redis connects to a Redis Streams server.
 func Redis(url string) brainkit.TransportConfig {
-	return brainkit.Redis(url)
-}
-
-func init() {
-	register("embedded")
-	register("nats")
-	register("amqp")
-	register("redis")
-}
-
-func register(kind string) {
-	brainkit.RegisterTransportBuilder(kind, func(ctx brainkit.TransportBuildContext) (any, error) {
-		cfg := transport.TransportConfig{
-			Type:         ctx.Config.Kind(),
-			Namespace:    ctx.Namespace,
-			NATSURL:      ctx.Config.NATSURL(),
-			NATSName:     ctx.Config.NATSName(),
-			AMQPURL:      ctx.Config.AMQPURL(),
-			RedisURL:     ctx.Config.RedisURL(),
-			NATSStoreDir: ctx.NATSStoreDir,
-		}
-		return backends.NewTransportSet(cfg)
-	})
+	return redis.New(url)
 }

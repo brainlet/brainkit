@@ -40,7 +40,10 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages"
+	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/sdk"
+	_ "github.com/brainlet/brainkit/storagebridges/sqlite"
 )
 
 func main() {
@@ -79,7 +82,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	if _, err := packages.Deploy(ctx, kit, packages.Inline("working-memory", "memory.ts", memorySource)); err != nil {
+	if _, err := packageclient.Deploy(ctx, kit, packageclient.Inline("working-memory", "memory.ts", memorySource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

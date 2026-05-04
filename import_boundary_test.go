@@ -252,11 +252,11 @@ func TestTopLevelSDKHasNoFixedTopicMessages(t *testing.T) {
 }
 
 func TestPackageBundlingImplementationStaysPackageModuleOwned(t *testing.T) {
-	if _, err := os.Stat(filepath.Join("modules", "packages", "internal", "deploy", "bundler.go")); err != nil {
-		t.Fatalf("package bundling implementation must live under modules/packages/internal/deploy: %v", err)
+	if _, err := os.Stat(filepath.Join("modules", "packages", "bundlers", "esbuild", "register.go")); err != nil {
+		t.Fatalf("package bundling implementation must live under modules/packages/bundlers/esbuild: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join("internal", "deploy")); err == nil {
-		t.Fatalf("internal/deploy must not exist; package bundling belongs to modules/packages/internal/deploy")
+		t.Fatalf("internal/deploy must not exist; package bundling belongs to modules/packages/bundlers/esbuild")
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("stat internal/deploy: %v", err)
 	}
@@ -277,6 +277,112 @@ func TestPackageBundlingImplementationStaysPackageModuleOwned(t *testing.T) {
 	if len(violations) > 0 {
 		t.Fatalf("package bundling must not be imported from root internal/deploy:\n%s", strings.Join(violations, "\n"))
 	}
+}
+
+func TestPackageBuilderStaysOptional(t *testing.T) {
+	checkDeps := func(pkg string, forbidden ...string) {
+		t.Helper()
+		out, err := exec.Command("go", "list", "-deps", pkg).CombinedOutput()
+		if err != nil {
+			t.Fatalf("go list -deps %s: %v\n%s", pkg, err, out)
+		}
+		deps := strings.Split(strings.TrimSpace(string(out)), "\n")
+		var violations []string
+		for _, dep := range deps {
+			dep = strings.TrimSpace(dep)
+			if dep == "" {
+				continue
+			}
+			for _, forbiddenPrefix := range forbidden {
+				if dep == forbiddenPrefix || strings.HasPrefix(dep, forbiddenPrefix+"/") {
+					violations = append(violations, dep)
+				}
+			}
+		}
+		if len(violations) > 0 {
+			t.Fatalf("%s must keep package builders optional; found:\n%s", pkg, strings.Join(violations, "\n"))
+		}
+	}
+	checkExactDeps := func(pkg string, forbidden ...string) {
+		t.Helper()
+		out, err := exec.Command("go", "list", "-deps", pkg).CombinedOutput()
+		if err != nil {
+			t.Fatalf("go list -deps %s: %v\n%s", pkg, err, out)
+		}
+		deps := strings.Split(strings.TrimSpace(string(out)), "\n")
+		depSet := make(map[string]bool, len(deps))
+		for _, dep := range deps {
+			depSet[strings.TrimSpace(dep)] = true
+		}
+		var violations []string
+		for _, forbiddenDep := range forbidden {
+			if depSet[forbiddenDep] {
+				violations = append(violations, forbiddenDep)
+			}
+		}
+		if len(violations) > 0 {
+			t.Fatalf("%s must keep package helper surfaces separate; found:\n%s", pkg, strings.Join(violations, "\n"))
+		}
+	}
+
+	checkDeps("./modules/packages",
+		"github.com/brainlet/brainkit/modules/packages/client",
+		"github.com/brainlet/brainkit/modules/packages/scaffold",
+		"github.com/brainlet/brainkit/modules/packages/source",
+		"github.com/brainlet/brainkit/modules/packages/bundlers",
+		"github.com/brainlet/brainkit/modules/packages/internal/deploy",
+		"github.com/evanw/esbuild",
+		"github.com/brainlet/brainkit/vendor_typescript",
+		"github.com/buke/quickjs-go",
+		"github.com/tetratelabs/wazero",
+	)
+	checkDeps("./modules/packages/source",
+		"github.com/brainlet/brainkit/module",
+		"github.com/brainlet/brainkit/modules/packages/client",
+		"github.com/brainlet/brainkit/modules/packages/scaffold",
+		"github.com/brainlet/brainkit/modules/packages/packagemsg",
+		"github.com/brainlet/brainkit/sdk",
+		"github.com/evanw/esbuild",
+		"github.com/buke/quickjs-go",
+		"github.com/tetratelabs/wazero",
+	)
+	checkDeps("./modules/packages/client",
+		"github.com/brainlet/brainkit/modules/packages/bundlers",
+		"github.com/brainlet/brainkit/modules/packages/internal/deploy",
+		"github.com/brainlet/brainkit/modules/jsruntime",
+		"github.com/evanw/esbuild",
+		"github.com/brainlet/brainkit/vendor_typescript",
+		"github.com/buke/quickjs-go",
+		"github.com/tetratelabs/wazero",
+	)
+	checkDeps("./modules/packages/scaffold",
+		"github.com/brainlet/brainkit/module",
+		"github.com/brainlet/brainkit/modules/packages/client",
+		"github.com/brainlet/brainkit/modules/packages/source",
+		"github.com/brainlet/brainkit/modules/packages/packagemsg",
+		"github.com/brainlet/brainkit/sdk",
+		"github.com/evanw/esbuild",
+		"github.com/buke/quickjs-go",
+		"github.com/tetratelabs/wazero",
+	)
+	checkExactDeps("./modules/packages/client",
+		"github.com/brainlet/brainkit/modules/packages",
+	)
+	checkExactDeps("./modules/packages/scaffold",
+		"github.com/brainlet/brainkit/modules/packages",
+	)
+	checkDeps("./modules/packages/bundlers/esbuild",
+		"github.com/brainlet/brainkit/modules/jsruntime",
+		"github.com/brainlet/brainkit/vendor_typescript",
+		"github.com/buke/quickjs-go",
+		"github.com/tetratelabs/wazero",
+	)
+	checkDeps("./modules/packages/internal/deploy",
+		"github.com/evanw/esbuild",
+		"github.com/brainlet/brainkit/vendor_typescript",
+		"github.com/buke/quickjs-go",
+		"github.com/tetratelabs/wazero",
+	)
 }
 
 func TestPackagesConsumeArtifactDeployerNotRawSourceDeployer(t *testing.T) {
@@ -854,7 +960,7 @@ func TestSDKProtocolPublishingLivesInProtocolPackage(t *testing.T) {
 	}
 }
 
-func TestObservabilityModuleStoreBackendsStayOptional(t *testing.T) {
+func TestStatefulModuleStoreBackendsStayOptional(t *testing.T) {
 	checkDeps := func(pkg string, forbidden ...string) {
 		t.Helper()
 		out, err := exec.Command("go", "list", "-deps", pkg).CombinedOutput()
@@ -878,8 +984,50 @@ func TestObservabilityModuleStoreBackendsStayOptional(t *testing.T) {
 		"github.com/lib/pq",
 		"modernc.org/sqlite",
 	)
+	checkDeps("./modules/audit/standard",
+		"github.com/brainlet/brainkit/modules/audit/stores/postgres",
+		"github.com/lib/pq",
+	)
+	checkDeps("./modules/audit/stores/sqlite",
+		"github.com/brainlet/brainkit/modules/audit/stores/postgres",
+		"github.com/lib/pq",
+	)
+	checkDeps("./modules/audit/stores/postgres",
+		"github.com/brainlet/brainkit/modules/audit/stores/sqlite",
+		"modernc.org/sqlite",
+	)
 	checkDeps("./modules/tracing",
 		"modernc.org/sqlite",
+	)
+	checkDeps("./modules/schedules",
+		"github.com/brainlet/brainkit/internal/store",
+		"github.com/brainlet/brainkit/stores",
+		"github.com/lib/pq",
+		"modernc.org/sqlite",
+	)
+	checkDeps("./modules/schedules/standard",
+		"github.com/brainlet/brainkit/stores/postgres",
+		"github.com/brainlet/brainkit/internal/store/postgres",
+		"github.com/lib/pq",
+	)
+	checkDeps("./stores/sqlite",
+		"github.com/brainlet/brainkit/stores/postgres",
+		"github.com/brainlet/brainkit/internal/store/postgres",
+		"github.com/lib/pq",
+	)
+	checkDeps("./stores/postgres",
+		"github.com/brainlet/brainkit/stores/sqlite",
+		"github.com/brainlet/brainkit/internal/store/sqlite",
+		"modernc.org/sqlite",
+	)
+	checkDeps("./server/configfile",
+		"github.com/brainlet/brainkit/stores/postgres",
+		"github.com/brainlet/brainkit/internal/store/postgres",
+		"github.com/lib/pq",
+	)
+	checkDeps("./server/standard",
+		"github.com/brainlet/brainkit/modules/audit/stores/postgres",
+		"github.com/lib/pq",
 	)
 
 	out, err := exec.Command("go", "list", "-deps", "./server/standard").CombinedOutput()
@@ -888,12 +1036,396 @@ func TestObservabilityModuleStoreBackendsStayOptional(t *testing.T) {
 	}
 	for _, want := range []string{
 		"github.com/brainlet/brainkit/modules/audit/standard",
+		"github.com/brainlet/brainkit/modules/schedules/standard",
 		"github.com/brainlet/brainkit/modules/tracing/standard",
 	} {
 		if !strings.Contains(string(out), want) {
 			t.Fatalf("server/standard must import %s for YAML module registration", want)
 		}
 	}
+}
+
+func TestTransportBackendsStayOptional(t *testing.T) {
+	checkDeps := func(pkg string, forbidden ...string) {
+		t.Helper()
+		out, err := exec.Command("go", "list", "-deps", pkg).CombinedOutput()
+		if err != nil {
+			t.Fatalf("go list -deps %s: %v\n%s", pkg, err, out)
+		}
+		deps := strings.Split(strings.TrimSpace(string(out)), "\n")
+		var violations []string
+		for _, dep := range deps {
+			dep = strings.TrimSpace(dep)
+			if dep == "" {
+				continue
+			}
+			for _, forbiddenPrefix := range forbidden {
+				if dep == forbiddenPrefix || strings.HasPrefix(dep, forbiddenPrefix+"/") {
+					violations = append(violations, dep)
+				}
+			}
+		}
+		if len(violations) > 0 {
+			t.Fatalf("%s must keep transport backends optional; found:\n%s", pkg, strings.Join(violations, "\n"))
+		}
+	}
+
+	checkDeps("./transports/nats",
+		"github.com/ThreeDotsLabs/watermill-amqp",
+		"github.com/ThreeDotsLabs/watermill-redisstream",
+		"github.com/brainlet/brainkit/transports/amqp",
+		"github.com/brainlet/brainkit/transports/embeddednats",
+		"github.com/brainlet/brainkit/transports/redis",
+		"github.com/nats-io/nats-server",
+		"github.com/rabbitmq/amqp091-go",
+		"github.com/redis/go-redis",
+	)
+	checkDeps("./transports/embeddednats",
+		"github.com/ThreeDotsLabs/watermill-amqp",
+		"github.com/ThreeDotsLabs/watermill-redisstream",
+		"github.com/brainlet/brainkit/transports/amqp",
+		"github.com/brainlet/brainkit/transports/redis",
+		"github.com/rabbitmq/amqp091-go",
+		"github.com/redis/go-redis",
+	)
+	checkDeps("./transports/amqp",
+		"github.com/ThreeDotsLabs/watermill-nats",
+		"github.com/ThreeDotsLabs/watermill-redisstream",
+		"github.com/brainlet/brainkit/transports/embeddednats",
+		"github.com/brainlet/brainkit/transports/nats",
+		"github.com/brainlet/brainkit/transports/redis",
+		"github.com/nats-io/nats-server",
+		"github.com/nats-io/nats.go",
+		"github.com/redis/go-redis",
+	)
+	checkDeps("./transports/redis",
+		"github.com/ThreeDotsLabs/watermill-amqp",
+		"github.com/ThreeDotsLabs/watermill-nats",
+		"github.com/brainlet/brainkit/transports/amqp",
+		"github.com/brainlet/brainkit/transports/embeddednats",
+		"github.com/brainlet/brainkit/transports/nats",
+		"github.com/nats-io/nats-server",
+		"github.com/nats-io/nats.go",
+		"github.com/rabbitmq/amqp091-go",
+	)
+	checkDeps("./server/configfile",
+		"github.com/ThreeDotsLabs/watermill",
+		"github.com/brainlet/brainkit/internal/transport/backends",
+		"github.com/brainlet/brainkit/transports",
+		"github.com/nats-io/nats-server",
+		"github.com/nats-io/nats.go",
+		"github.com/rabbitmq/amqp091-go",
+		"github.com/redis/go-redis",
+	)
+	checkDeps("./server/standard",
+		"github.com/ThreeDotsLabs/watermill",
+		"github.com/brainlet/brainkit/internal/transport/backends",
+		"github.com/brainlet/brainkit/server/configfile/transportbackends",
+		"github.com/brainlet/brainkit/transports",
+		"github.com/nats-io/nats-server",
+		"github.com/nats-io/nats.go",
+		"github.com/rabbitmq/amqp091-go",
+		"github.com/redis/go-redis",
+	)
+	checkDeps("./server/quickstart",
+		"github.com/ThreeDotsLabs/watermill-amqp",
+		"github.com/ThreeDotsLabs/watermill-redisstream",
+		"github.com/brainlet/brainkit/transports/amqp",
+		"github.com/brainlet/brainkit/transports/redis",
+		"github.com/rabbitmq/amqp091-go",
+		"github.com/redis/go-redis",
+	)
+}
+
+func TestStorageBridgeBackendsStayOptional(t *testing.T) {
+	checkDeps := func(pkg string, forbidden ...string) {
+		t.Helper()
+		out, err := exec.Command("go", "list", "-deps", pkg).CombinedOutput()
+		if err != nil {
+			t.Fatalf("go list -deps %s: %v\n%s", pkg, err, out)
+		}
+		deps := strings.Split(strings.TrimSpace(string(out)), "\n")
+		var violations []string
+		for _, dep := range deps {
+			dep = strings.TrimSpace(dep)
+			if dep == "" {
+				continue
+			}
+			for _, forbiddenPrefix := range forbidden {
+				if dep == forbiddenPrefix || strings.HasPrefix(dep, forbiddenPrefix+"/") {
+					violations = append(violations, dep)
+				}
+			}
+		}
+		if len(violations) > 0 {
+			t.Fatalf("%s must keep storage bridge backends optional; found:\n%s", pkg, strings.Join(violations, "\n"))
+		}
+	}
+
+	checkDeps("./modulehost/storagehost",
+		"github.com/brainlet/brainkit/internal/libsql",
+		"github.com/brainlet/brainkit/storagebridges",
+		"modernc.org/sqlite",
+	)
+	checkDeps("./server/configfile",
+		"github.com/brainlet/brainkit/internal/libsql",
+		"github.com/brainlet/brainkit/storagebridges",
+	)
+	checkDeps("./server/standard",
+		"github.com/brainlet/brainkit/internal/libsql",
+		"github.com/brainlet/brainkit/storagebridges",
+	)
+}
+
+func TestConfigFileStoreBackendsStayOptional(t *testing.T) {
+	checkDeps := func(pkg string, forbidden ...string) {
+		t.Helper()
+		out, err := exec.Command("go", "list", "-deps", pkg).CombinedOutput()
+		if err != nil {
+			t.Fatalf("go list -deps %s: %v\n%s", pkg, err, out)
+		}
+		deps := strings.Split(strings.TrimSpace(string(out)), "\n")
+		var violations []string
+		for _, dep := range deps {
+			dep = strings.TrimSpace(dep)
+			if dep == "" {
+				continue
+			}
+			for _, forbiddenPrefix := range forbidden {
+				if dep == forbiddenPrefix || strings.HasPrefix(dep, forbiddenPrefix+"/") {
+					violations = append(violations, dep)
+				}
+			}
+		}
+		if len(violations) > 0 {
+			t.Fatalf("%s must keep configfile store backends optional; found:\n%s", pkg, strings.Join(violations, "\n"))
+		}
+	}
+
+	checkDeps("./server/configfile",
+		"github.com/brainlet/brainkit/internal/store",
+		"github.com/brainlet/brainkit/server/configfile/storebackends",
+		"github.com/brainlet/brainkit/stores",
+		"github.com/lib/pq",
+		"modernc.org/sqlite",
+	)
+	checkDeps("./server/configfile/storebackends/sqlite",
+		"github.com/brainlet/brainkit/internal/store/postgres",
+		"github.com/brainlet/brainkit/stores/postgres",
+		"github.com/lib/pq",
+	)
+	checkDeps("./server/configfile/storebackends",
+		"github.com/brainlet/brainkit/internal/store/postgres",
+		"github.com/brainlet/brainkit/stores/postgres",
+		"github.com/lib/pq",
+	)
+}
+
+func TestConfigFilePackageBootStaysOptional(t *testing.T) {
+	checkDeps := func(pkg string, forbidden ...string) {
+		t.Helper()
+		out, err := exec.Command("go", "list", "-deps", pkg).CombinedOutput()
+		if err != nil {
+			t.Fatalf("go list -deps %s: %v\n%s", pkg, err, out)
+		}
+		deps := strings.Split(strings.TrimSpace(string(out)), "\n")
+		var violations []string
+		for _, dep := range deps {
+			dep = strings.TrimSpace(dep)
+			if dep == "" {
+				continue
+			}
+			for _, forbiddenPrefix := range forbidden {
+				if dep == forbiddenPrefix || strings.HasPrefix(dep, forbiddenPrefix+"/") {
+					violations = append(violations, dep)
+				}
+			}
+		}
+		if len(violations) > 0 {
+			t.Fatalf("%s must keep top-level package auto-deploy optional; found:\n%s", pkg, strings.Join(violations, "\n"))
+		}
+	}
+
+	checkDeps("./server/configfile",
+		"github.com/brainlet/brainkit/modules/packages",
+		"github.com/brainlet/brainkit/server/packageboot",
+		"github.com/brainlet/brainkit/vendor_typescript",
+		"github.com/evanw/esbuild",
+	)
+	checkDeps("./server/configfile/packageboot",
+		"github.com/brainlet/brainkit/server/configfile/storebackends",
+		"github.com/brainlet/brainkit/server/configfile/transportbackends",
+		"github.com/brainlet/brainkit/storagebridges",
+		"github.com/brainlet/brainkit/transports",
+		"github.com/ThreeDotsLabs/watermill",
+		"modernc.org/sqlite",
+	)
+}
+
+func TestStandardProfilesStayScoped(t *testing.T) {
+	checkDeps := func(pkg string, forbidden ...string) {
+		t.Helper()
+		out, err := exec.Command("go", "list", "-deps", pkg).CombinedOutput()
+		if err != nil {
+			t.Fatalf("go list -deps %s: %v\n%s", pkg, err, out)
+		}
+		deps := strings.Split(strings.TrimSpace(string(out)), "\n")
+		var violations []string
+		for _, dep := range deps {
+			dep = strings.TrimSpace(dep)
+			if dep == "" {
+				continue
+			}
+			for _, forbiddenPrefix := range forbidden {
+				if dep == forbiddenPrefix || strings.HasPrefix(dep, forbiddenPrefix+"/") {
+					violations = append(violations, dep)
+				}
+			}
+		}
+		if len(violations) > 0 {
+			t.Fatalf("%s standard profile pulled out-of-scope deps:\n%s", pkg, strings.Join(violations, "\n"))
+		}
+	}
+
+	coreForbidden := []string{
+		"github.com/brainlet/brainkit/modules/audit",
+		"github.com/brainlet/brainkit/modules/eval",
+		"github.com/brainlet/brainkit/modules/gateway",
+		"github.com/brainlet/brainkit/modules/harness",
+		"github.com/brainlet/brainkit/modules/jsruntime",
+		"github.com/brainlet/brainkit/modules/mcp",
+		"github.com/brainlet/brainkit/modules/packages",
+		"github.com/brainlet/brainkit/modules/plugins",
+		"github.com/brainlet/brainkit/modules/probes",
+		"github.com/brainlet/brainkit/modules/schedules",
+		"github.com/brainlet/brainkit/modules/testing",
+		"github.com/brainlet/brainkit/modules/tracing",
+		"github.com/brainlet/brainkit/modules/workflow",
+		"github.com/buke/quickjs-go",
+		"github.com/evanw/esbuild",
+		"github.com/mark3labs/mcp-go",
+		"modernc.org/sqlite",
+	}
+	checkDeps("./presets/standard/core", coreForbidden...)
+	checkDeps("./server/standard/core", coreForbidden...)
+
+	checkDeps("./presets/standard/runtime",
+		"github.com/brainlet/brainkit/modules/audit",
+		"github.com/brainlet/brainkit/modules/gateway",
+		"github.com/brainlet/brainkit/modules/harness",
+		"github.com/brainlet/brainkit/modules/mcp",
+		"github.com/brainlet/brainkit/modules/packages",
+		"github.com/brainlet/brainkit/modules/packages/bundlers",
+		"github.com/brainlet/brainkit/modules/plugins",
+		"github.com/brainlet/brainkit/modules/probes",
+		"github.com/brainlet/brainkit/modules/schedules",
+		"github.com/brainlet/brainkit/modules/testing",
+		"github.com/brainlet/brainkit/modules/tracing",
+		"github.com/brainlet/brainkit/modules/workflow",
+		"github.com/evanw/esbuild",
+		"github.com/mark3labs/mcp-go",
+		"modernc.org/sqlite",
+	)
+	checkDeps("./server/standard/runtime",
+		"github.com/brainlet/brainkit/modules/audit",
+		"github.com/brainlet/brainkit/modules/gateway",
+		"github.com/brainlet/brainkit/modules/harness",
+		"github.com/brainlet/brainkit/modules/mcp",
+		"github.com/brainlet/brainkit/modules/packages",
+		"github.com/brainlet/brainkit/modules/packages/bundlers",
+		"github.com/brainlet/brainkit/modules/plugins",
+		"github.com/brainlet/brainkit/modules/probes",
+		"github.com/brainlet/brainkit/modules/schedules",
+		"github.com/brainlet/brainkit/modules/testing",
+		"github.com/brainlet/brainkit/modules/tracing",
+		"github.com/brainlet/brainkit/modules/workflow",
+		"github.com/evanw/esbuild",
+		"github.com/mark3labs/mcp-go",
+		"modernc.org/sqlite",
+	)
+	checkDeps("./presets/standard/packages",
+		"github.com/brainlet/brainkit/modules/audit",
+		"github.com/brainlet/brainkit/modules/gateway",
+		"github.com/brainlet/brainkit/modules/harness",
+		"github.com/brainlet/brainkit/modules/mcp",
+		"github.com/brainlet/brainkit/modules/plugins",
+		"github.com/brainlet/brainkit/modules/probes",
+		"github.com/brainlet/brainkit/modules/schedules",
+		"github.com/brainlet/brainkit/modules/testing",
+		"github.com/brainlet/brainkit/modules/tracing",
+		"github.com/brainlet/brainkit/modules/workflow",
+		"github.com/mark3labs/mcp-go",
+		"modernc.org/sqlite",
+	)
+	checkDeps("./server/standard/packages",
+		"github.com/brainlet/brainkit/modules/audit",
+		"github.com/brainlet/brainkit/modules/gateway",
+		"github.com/brainlet/brainkit/modules/harness",
+		"github.com/brainlet/brainkit/modules/mcp",
+		"github.com/brainlet/brainkit/modules/plugins",
+		"github.com/brainlet/brainkit/modules/probes",
+		"github.com/brainlet/brainkit/modules/schedules",
+		"github.com/brainlet/brainkit/modules/testing",
+		"github.com/brainlet/brainkit/modules/tracing",
+		"github.com/brainlet/brainkit/modules/workflow",
+		"github.com/mark3labs/mcp-go",
+		"modernc.org/sqlite",
+	)
+
+	checkDeps("./server/standard/commands",
+		"github.com/brainlet/brainkit/modules/audit",
+		"github.com/brainlet/brainkit/modules/gateway",
+		"github.com/brainlet/brainkit/modules/harness",
+		"github.com/brainlet/brainkit/modules/mcp",
+		"github.com/brainlet/brainkit/modules/plugins",
+		"github.com/brainlet/brainkit/modules/probes",
+		"github.com/brainlet/brainkit/modules/schedules",
+		"github.com/brainlet/brainkit/modules/testing",
+		"github.com/brainlet/brainkit/modules/topology",
+		"github.com/brainlet/brainkit/modules/tracing",
+		"github.com/brainlet/brainkit/modules/workflow",
+		"github.com/mark3labs/mcp-go",
+		"modernc.org/sqlite",
+	)
+
+	checkDeps("./server/standard/server",
+		"github.com/brainlet/brainkit/modules/audit",
+		"github.com/brainlet/brainkit/modules/harness",
+		"github.com/brainlet/brainkit/modules/jsruntime",
+		"github.com/brainlet/brainkit/modules/mcp",
+		"github.com/brainlet/brainkit/modules/packages",
+		"github.com/brainlet/brainkit/modules/plugins",
+		"github.com/brainlet/brainkit/modules/schedules",
+		"github.com/brainlet/brainkit/modules/testing",
+		"github.com/brainlet/brainkit/modules/tracing",
+		"github.com/brainlet/brainkit/modules/workflow",
+		"github.com/buke/quickjs-go",
+		"github.com/evanw/esbuild",
+		"github.com/mark3labs/mcp-go",
+		"modernc.org/sqlite",
+	)
+
+	checkDeps("./server/standard/observability",
+		"github.com/brainlet/brainkit/modules/gateway",
+		"github.com/brainlet/brainkit/modules/harness",
+		"github.com/brainlet/brainkit/modules/jsruntime",
+		"github.com/brainlet/brainkit/modules/mcp",
+		"github.com/brainlet/brainkit/modules/packages",
+		"github.com/brainlet/brainkit/modules/plugins",
+		"github.com/brainlet/brainkit/modules/testing",
+		"github.com/brainlet/brainkit/modules/workflow",
+		"github.com/buke/quickjs-go",
+		"github.com/evanw/esbuild",
+		"github.com/mark3labs/mcp-go",
+	)
+
+	checkDeps("./server/standard/full",
+		"github.com/brainlet/brainkit/internal/libsql",
+		"github.com/brainlet/brainkit/server/configfile/storebackends",
+		"github.com/brainlet/brainkit/server/configfile/transportbackends",
+		"github.com/brainlet/brainkit/storagebridges",
+		"github.com/brainlet/brainkit/transports",
+	)
 }
 
 func TestPublicDocsDoNotTeachRemovedRootAPIs(t *testing.T) {
@@ -1528,10 +2060,15 @@ func TestStorageHostImplementationStaysModuleOwned(t *testing.T) {
 		}
 	}
 
-	parsed := parseImportsOnly(t, filepath.Join("storagebridges", "storagebridges.go"))
-	for _, imp := range parsed.Imports {
-		if strings.Trim(imp.Path.Value, `"`) == "github.com/brainlet/brainkit/internal/engine" {
-			t.Fatalf("storagebridges must register with modulehost/storagehost, not internal/engine")
+	for _, file := range []string{
+		filepath.Join("storagebridges", "storagebridges.go"),
+		filepath.Join("storagebridges", "sqlite", "sqlite.go"),
+	} {
+		parsed := parseImportsOnly(t, file)
+		for _, imp := range parsed.Imports {
+			if strings.Trim(imp.Path.Value, `"`) == "github.com/brainlet/brainkit/internal/engine" {
+				t.Fatalf("%s must register with modulehost/storagehost, not internal/engine", file)
+			}
 		}
 	}
 }
