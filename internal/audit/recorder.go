@@ -64,6 +64,16 @@ func (r *Recorder) SetStore(s Store) {
 	r.mu.Unlock()
 }
 
+// Store returns the currently attached audit store.
+func (r *Recorder) Store() Store {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.store
+}
+
 // SetVerbosity flips the recorder's verbosity tier.
 func (r *Recorder) SetVerbosity(v Verbosity) {
 	if r == nil {
@@ -72,6 +82,16 @@ func (r *Recorder) SetVerbosity(v Verbosity) {
 	r.mu.Lock()
 	r.verbosity = v
 	r.mu.Unlock()
+}
+
+// Verbosity returns the active recording tier.
+func (r *Recorder) Verbosity() Verbosity {
+	if r == nil {
+		return VerbosityNormal
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.verbosity
 }
 
 func (r *Recorder) record(category, typ, source string, data any, duration time.Duration, errMsg string) {

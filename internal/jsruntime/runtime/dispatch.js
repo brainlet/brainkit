@@ -177,6 +177,25 @@
           steps: result.steps || null,
         };
       },
+
+      restartActive: async function() {
+        var restarted = 0;
+        var errors = [];
+        for (var key in refs) {
+          if (key.indexOf("workflow:") !== 0) continue;
+          var wfName = key.substring(9);
+          var entry = refs[key];
+          if (entry && entry.ref && typeof entry.ref.restartAllActiveWorkflowRuns === "function") {
+            try {
+              await entry.ref.restartAllActiveWorkflowRuns();
+              restarted++;
+            } catch(e) {
+              errors.push({ workflow: wfName, error: e.message || String(e) });
+            }
+          }
+        }
+        return { restarted: restarted, errors: errors };
+      },
     },
 
     // ── Tools ─────────────────────────────────────────────────────
@@ -211,12 +230,29 @@
     secrets: {
       refreshProvider: function(args) {
         var providers = globalThis.__kit_providers;
-        if (!providers || !providers[args.provider]) return;
-        providers[args.provider].APIKey = args.apiKey;
-        providers[args.provider].apiKey = args.apiKey;
+        if (providers && providers[args.provider] && args.apiKey) {
+          providers[args.provider].APIKey = args.apiKey;
+          providers[args.provider].apiKey = args.apiKey;
+        }
         if (globalThis.__kit && globalThis.__kit.__clearProviderCache) {
           globalThis.__kit.__clearProviderCache(args.provider);
         }
+        return { refreshed: true, provider: args.provider };
+      },
+    },
+
+    // ── Registry ──────────────────────────────────────────────────
+
+    registry: {
+      clearCache: function(args) {
+        if (!globalThis.__kit || typeof globalThis.__kit.__clearRegistryCache !== "function") {
+          return { cleared: false };
+        }
+        return {
+          cleared: globalThis.__kit.__clearRegistryCache(args.category, args.name),
+          category: args.category,
+          name: args.name || "",
+        };
       },
     },
 
@@ -239,24 +275,6 @@
         return { upgraded: false };
       },
 
-      restartWorkflows: async function() {
-        var restarted = 0;
-        var errors = [];
-        for (var key in refs) {
-          if (key.indexOf("workflow:") !== 0) continue;
-          var wfName = key.substring(9);
-          var entry = refs[key];
-          if (entry && entry.ref && typeof entry.ref.restartAllActiveWorkflowRuns === "function") {
-            try {
-              await entry.ref.restartAllActiveWorkflowRuns();
-              restarted++;
-            } catch(e) {
-              errors.push({ workflow: wfName, error: e.message || String(e) });
-            }
-          }
-        }
-        return { restarted: restarted, errors: errors };
-      },
     },
   };
 })();

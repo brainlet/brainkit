@@ -8,16 +8,16 @@ package tracing
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/closejob"
 	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/modules/tracing/tracingmsg"
-
-	_ "modernc.org/sqlite"
 )
 
 // Config configures the tracing module.
@@ -29,8 +29,21 @@ type Config struct {
 
 // Module wires a durable trace store + trace.get / trace.list commands.
 type Module struct {
-	cfg   Config
+	closeMu sync.Mutex
+	mu      sync.RWMutex
+	cfg     Config
+
 	store TraceStore
+
+	traceStoreLease       bkmodule.Handle
+	traceStoreLeaseActive atomic.Bool
+	closing               atomic.Bool
+	storeClosing          atomic.Bool
+	storeCloseJob         closejob.Job
+}
+
+type contextCloseableStore interface {
+	CloseContext(context.Context) error
 }
 
 // New builds a tracing module.
@@ -42,17 +55,36 @@ func (m *Module) ID() string { return "tracing" }
 // Status reports maturity.
 func (m *Module) Status() bkmodule.Status { return bkmodule.StatusBeta }
 
-func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
-	setTraceStore, err := bkmodule.RequireCapability[func(TraceStore)](host, bkmodule.CapabilitySetTraceStore)
+func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
+	leaseTraceStore, err := bkmodule.RequireCapability[bkmodule.LeaseFunc[TraceStore]](host, bkmodule.CapabilityTraceStoreLease)
 	if err != nil {
 		return fmt.Errorf("tracing: %w", err)
 	}
-	host.Scope().Defer(func(context.Context) error {
-		setTraceStore(nil)
-		return m.Close()
-	})
-	if !m.attach(traceCoreFunc(setTraceStore)) {
+	if m.cfg.Store == nil {
 		return nil
+	}
+	m.mu.Lock()
+	m.store = m.cfg.Store
+	m.mu.Unlock()
+	host.Scope().Defer(func(closeCtx context.Context) error { return m.CloseContext(closeCtx) })
+	lease, err := leaseTraceStore(ctx, m.store)
+	if err != nil {
+		return fmt.Errorf("tracing: %w", err)
+	}
+	m.mu.Lock()
+	m.traceStoreLease = lease
+	m.traceStoreLeaseActive.Store(true)
+	m.mu.Unlock()
+	host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindStore, "tracing.store", "Attached persistent trace store."))
+	lifecycleDebug, _ := bkmodule.Capability[bkmodule.LifecycleDebugRegistry](host, bkmodule.CapabilityLifecycleDebugRegistry)
+	if lifecycleDebug != nil {
+		handle, err := lifecycleDebug.RegisterLifecycleDebug(ctx, "tracing", func() any {
+			return m.DebugSnapshot()
+		})
+		if err != nil {
+			return fmt.Errorf("tracing: lifecycle debug: %w", err)
+		}
+		host.Scope().Defer(handle.Close)
 	}
 	if _, err := host.Commands().Handle(bkmodule.Command(m.handleGet)); err != nil {
 		return err
@@ -63,40 +95,78 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 	return nil
 }
 
-type traceCore interface {
-	SetTraceStore(TraceStore)
-}
-
-type traceCoreFunc func(TraceStore)
-
-func (f traceCoreFunc) SetTraceStore(store TraceStore) { f(store) }
-
-func (m *Module) attach(core traceCore) bool {
-	if m.cfg.Store == nil {
-		return false
-	}
-	m.store = m.cfg.Store
-	core.SetTraceStore(m.store)
-	return true
-}
-
 // Close closes the trace store if it implements io.Closer.
 func (m *Module) Close() error {
-	if m.store == nil {
+	return m.CloseContext(context.Background())
+}
+
+// CloseContext closes the trace store lease and owned store under caller-owned
+// lifecycle cancellation.
+func (m *Module) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	m.closeMu.Lock()
+	defer m.closeMu.Unlock()
+	m.closing.Store(true)
+	defer m.closing.Store(false)
+	var err error
+
+	m.mu.RLock()
+	lease := m.traceStoreLease
+	store := m.store
+	m.mu.RUnlock()
+
+	if lease != nil {
+		if leaseErr := lease.Close(ctx); leaseErr != nil {
+			return leaseErr
+		}
+		m.mu.Lock()
+		m.traceStoreLease = nil
+		m.traceStoreLeaseActive.Store(false)
+		store = m.store
+		m.mu.Unlock()
+	} else {
+		m.traceStoreLeaseActive.Store(false)
+	}
+	if store == nil {
 		return nil
 	}
-	defer func() { m.store = nil }()
-	if c, ok := m.store.(interface{ Close() error }); ok {
+	done := m.storeCloseJob.Start(func() error {
+		m.storeClosing.Store(true)
+		defer m.storeClosing.Store(false)
+		closeErr := closeTraceStore(ctx, store)
+		if closeErr == nil {
+			m.mu.Lock()
+			if m.store == store {
+				m.store = nil
+			}
+			m.mu.Unlock()
+		}
+		return closeErr
+	})
+	if closeErr := m.storeCloseJob.Wait(ctx, done); closeErr != nil {
+		err = errors.Join(err, closeErr)
+	}
+	return err
+}
+
+func closeTraceStore(ctx context.Context, store TraceStore) error {
+	if c, ok := store.(contextCloseableStore); ok {
+		return c.CloseContext(ctx)
+	}
+	if c, ok := store.(interface{ Close() error }); ok {
 		return c.Close()
 	}
 	return nil
 }
 
 func (m *Module) handleGet(_ context.Context, req tracingmsg.TraceGetMsg) (*tracingmsg.TraceGetResp, error) {
-	if m.store == nil {
+	store := m.currentStore()
+	if store == nil {
 		return &tracingmsg.TraceGetResp{Spans: json.RawMessage("[]")}, nil
 	}
-	spans, err := m.store.GetTrace(req.TraceID)
+	spans, err := store.GetTrace(req.TraceID)
 	if err != nil {
 		return nil, err
 	}
@@ -105,14 +175,15 @@ func (m *Module) handleGet(_ context.Context, req tracingmsg.TraceGetMsg) (*trac
 }
 
 func (m *Module) handleList(_ context.Context, req tracingmsg.TraceListMsg) (*tracingmsg.TraceListResp, error) {
-	if m.store == nil {
+	store := m.currentStore()
+	if store == nil {
 		return &tracingmsg.TraceListResp{Traces: json.RawMessage("[]")}, nil
 	}
 	query := TraceQuery{Source: req.Source, Status: req.Status, Limit: req.Limit}
 	if req.MinDuration > 0 {
 		query.MinDuration = time.Duration(req.MinDuration) * time.Millisecond
 	}
-	traces, err := m.store.ListTraces(query)
+	traces, err := store.ListTraces(query)
 	if err != nil {
 		return nil, err
 	}
@@ -120,56 +191,8 @@ func (m *Module) handleList(_ context.Context, req tracingmsg.TraceListMsg) (*tr
 	return &tracingmsg.TraceListResp{Traces: data}, nil
 }
 
-// YAML is the config shape decoded by the registry factory. Empty
-// Path falls back to `<FSRoot>/tracing.db`. Zero Retention disables
-// cleanup.
-type YAML struct {
-	Path      string        `yaml:"path"`
-	Retention time.Duration `yaml:"retention"`
+func (m *Module) currentStore() TraceStore {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.store
 }
-
-// Factory is the registered ModuleFactory for tracing.
-type Factory struct{}
-
-// Build opens the SQLite-backed trace store and returns the module.
-func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
-	var y YAML
-	if err := ctx.Decode(&y); err != nil {
-		return nil, err
-	}
-	path := y.Path
-	if path == "" {
-		path = filepath.Join(ctx.FSRoot, "tracing.db")
-	}
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		return nil, fmt.Errorf("tracing: open db %q: %w", path, err)
-	}
-	var opts []SQLiteTraceStoreOption
-	if y.Retention > 0 {
-		opts = append(opts, WithRetention(y.Retention))
-	}
-	store, err := NewSQLiteTraceStore(db, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("tracing: init store %q: %w", path, err)
-	}
-	return New(Config{Store: store}), nil
-}
-
-// Describe surfaces module metadata for `brainkit modules list`.
-func (Factory) Describe() bkmodule.Descriptor {
-	return bkmodule.Descriptor{
-		Name:    "tracing",
-		Status:  bkmodule.StatusBeta,
-		Summary: "Persistent span store with trace.get / trace.list.",
-		Commands: []bkmodule.MessageDescriptor{
-			bkmodule.CommandMessage[tracingmsg.TraceGetMsg, tracingmsg.TraceGetResp](),
-			bkmodule.CommandMessage[tracingmsg.TraceListMsg, tracingmsg.TraceListResp](),
-		},
-		Capabilities: []bkmodule.CapabilityDescriptor{
-			bkmodule.RequiredCapabilityOf[func(TraceStore)](bkmodule.CapabilitySetTraceStore),
-		},
-	}
-}
-
-func init() { bkmodule.Register("tracing", Factory{}) }

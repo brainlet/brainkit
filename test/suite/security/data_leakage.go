@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/agents/agentmsg"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
@@ -106,7 +109,7 @@ func testLeakageToolStateLeak(t *testing.T, env *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Modules: []brainkit.Module{toolsmod.New()},
+		Modules: []bkmodule.Module{toolsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -157,7 +160,7 @@ func testLeakageMetadataLeak(t *testing.T, env *suite.TestEnv) {
 		});
 	`)
 
-	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
+	pr, _ := protocol.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.meta-leak-sec.inspect", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)

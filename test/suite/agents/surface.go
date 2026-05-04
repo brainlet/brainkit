@@ -9,6 +9,7 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/agents/agentmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -171,7 +172,7 @@ func testSurfaceBusServiceAIProxy(t *testing.T, env *suite.TestEnv) {
 
 	// Go sends to the .ts AI service
 	reply, err := sdk.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
-		Topic:   sdk.ResolveServiceTopic("ai-svc-agent-adv.ts", "generate"),
+		Topic:   protocol.ResolveServiceTopic("ai-svc-agent-adv.ts", "generate"),
 		Payload: json.RawMessage(`{"prompt":"Reply with exactly: BUS_AI_WORKS"}`),
 	})
 	require.NoError(t, err)

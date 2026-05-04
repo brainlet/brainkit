@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"net"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/server"
+	"github.com/brainlet/brainkit/server/configfile"
 	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -57,7 +59,7 @@ func TestStartStopLifecycle(t *testing.T) {
 		Namespace: "server-lifecycle",
 		Transport: transports.EmbeddedNATS(),
 		FSRoot:    tmp,
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			gateway.New(gateway.Config{Listen: addr}),
 		},
 	})
@@ -93,7 +95,7 @@ func TestKit(t *testing.T) {
 		Namespace: "server-accessors",
 		Transport: transports.EmbeddedNATS(),
 		FSRoot:    tmp,
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			gateway.New(gateway.Config{Listen: addr}),
 		},
 	})
@@ -125,12 +127,14 @@ modules:
 
 	t.Setenv("TEST_SECRET", "opened-sesame")
 
-	cfg, err := server.LoadConfig(yamlPath)
+	cfg, err := configfile.Load(yamlPath)
 	require.NoError(t, err)
 	assert.Equal(t, "loaded", cfg.Namespace)
 	assert.Equal(t, "opened-sesame", cfg.SecretKey)
 	assert.Equal(t, tmp, cfg.FSRoot)
 	assert.NotEqual(t, brainkit.TransportConfig{}, cfg.Transport)
+	require.NotNil(t, cfg.Store)
+	t.Cleanup(func() { _ = cfg.Store.Close() })
 
 	var haveGateway bool
 	for _, m := range cfg.Modules {
@@ -143,13 +147,13 @@ modules:
 
 // TestLoadConfigLegacyTopLevelGateway refuses the pre-registry YAML
 // shape loudly. Silently ignoring `gateway:` at the root would make
-// a user's old config boot with an empty module list and fail
+// a user's previous config shape boot with an empty module list and fail
 // validation with a confusing "gateway is required" error even
 // though the key is visibly in the file.
-func TestLoadConfigLegacyTopLevelGateway(t *testing.T) {
+func TestLoadConfigPreviousTopLevelGateway(t *testing.T) {
 	tmp := t.TempDir()
 	yamlPath := filepath.Join(tmp, "config.yaml")
-	content := `namespace: legacy
+	content := `namespace: previous
 fs_root: ` + tmp + `
 transport:
   type: embedded
@@ -158,8 +162,8 @@ gateway:
 `
 	require.NoError(t, os.WriteFile(yamlPath, []byte(content), 0644))
 
-	_, err := server.LoadConfig(yamlPath)
-	require.Error(t, err, "legacy top-level gateway must be rejected")
+	_, err := configfile.Load(yamlPath)
+	require.Error(t, err, "previous top-level gateway must be rejected")
 	assert.Contains(t, err.Error(), "modules.gateway")
 }
 
@@ -180,7 +184,7 @@ modules:
 `
 	require.NoError(t, os.WriteFile(yamlPath, []byte(content), 0644))
 
-	_, err := server.LoadConfig(yamlPath)
+	_, err := configfile.Load(yamlPath)
 	require.Error(t, err, "expected unknown-module error")
 	assert.Contains(t, err.Error(), "billig")
 	assert.Contains(t, err.Error(), "registered")

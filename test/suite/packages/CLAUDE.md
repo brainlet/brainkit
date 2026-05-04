@@ -2,7 +2,7 @@
 
 Read `TEST_MAP.md` before editing any test in this directory.
 
-Tests create real temp directories with manifest.json + .ts files, deploy via PackageDeployMsg bus command, and verify service wiring via SendToService. Each test creates a fresh kernel with `suite.Full(t, suite.WithPersistence(), suite.WithSecretKey(...))`.
+Tests create real temp directories with manifest.json + .ts files, deploy via PackageDeployMsg bus command, and verify service wiring via protocol.SendToService. Each test creates a fresh kernel with `suite.Full(t, suite.WithPersistence(), suite.WithSecretKey(...))`.
 
 ## Adding a test
 

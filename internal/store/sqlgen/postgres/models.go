@@ -22,12 +22,13 @@ type AuditEvent struct {
 }
 
 type Deployment struct {
-	Source      string
-	Code        string
-	DeployOrder int32
-	DeployedAt  time.Time
-	PackageName string
-	Role        string
+	Source       string
+	Code         string
+	DeployOrder  int32
+	DeployedAt   time.Time
+	PackageName  string
+	ArtifactKind string
+	Role         string
 }
 
 type InstalledPlugin struct {

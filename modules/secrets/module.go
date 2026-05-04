@@ -4,6 +4,7 @@ package secrets
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	coresecrets "github.com/brainlet/brainkit/internal/secrets"
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
+	plugincap "github.com/brainlet/brainkit/modulecap/plugin"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
@@ -24,17 +26,12 @@ type Module struct {
 	bus                   busPublisher
 	audit                 *auditpkg.Recorder
 	callerID              string
-	pluginRestarter       func() any
-	refreshProviderSecret func(string, string)
+	pluginRestarter       func() plugincap.Restarter
+	refreshProviderSecret bkmodule.ProviderSecretRefresher
 }
 
 type busPublisher interface {
 	PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error)
-}
-
-type pluginRestarter interface {
-	ListRunningPlugins() []types.RunningPlugin
-	RestartPlugin(ctx context.Context, name string) error
 }
 
 // New creates the secrets module.
@@ -56,8 +53,8 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 	m.bus = host.Messages()
 	m.audit, _ = bkmodule.Capability[*auditpkg.Recorder](host, bkmodule.CapabilityAuditRecorder)
 	m.callerID, _ = bkmodule.Capability[string](host, bkmodule.CapabilityCallerID)
-	m.pluginRestarter, _ = bkmodule.Capability[func() any](host, bkmodule.CapabilityPluginRestarter)
-	m.refreshProviderSecret, _ = bkmodule.Capability[func(string, string)](host, bkmodule.CapabilityRefreshProviderSecret)
+	m.pluginRestarter, _ = bkmodule.Capability[func() plugincap.Restarter](host, bkmodule.CapabilityPluginRestarter)
+	m.refreshProviderSecret, _ = bkmodule.Capability[bkmodule.ProviderSecretRefresher](host, bkmodule.CapabilityRefreshProviderSecret)
 
 	host.Scope().Defer(func(context.Context) error {
 		m.store = nil
@@ -110,7 +107,7 @@ func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	return New(), nil
 }
 
-// Describe surfaces module metadata for `brainkit modules list`.
+// Describe surfaces module metadata for module manifests.
 func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "secrets",
@@ -130,6 +127,10 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.EventMessage[secretmsg.SecretsStoredEvent](),
 		},
 		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.OptionalCapabilityOf[*auditpkg.Recorder](bkmodule.CapabilityAuditRecorder),
+			bkmodule.OptionalCapabilityOf[string](bkmodule.CapabilityCallerID),
+			bkmodule.OptionalCapabilityOf[func() plugincap.Restarter](bkmodule.CapabilityPluginRestarter),
+			bkmodule.OptionalCapabilityOf[bkmodule.ProviderSecretRefresher](bkmodule.CapabilityRefreshProviderSecret),
 			bkmodule.RequiredCapabilityOf[coresecrets.SecretStore](bkmodule.CapabilitySecretStore),
 		},
 	}
@@ -207,10 +208,15 @@ func (m *Module) Rotate(ctx context.Context, req secretmsg.SecretsRotateMsg) (*s
 	}
 
 	version := m.version(ctx, req.Name)
-	restartedPlugins := m.restartPlugins(ctx, req)
 
 	if m.refreshProviderSecret != nil {
-		m.refreshProviderSecret(req.Name, req.NewValue)
+		if err := m.refreshProviderSecret.RefreshProviderSecret(ctx, req.Name, req.NewValue); err != nil {
+			return nil, err
+		}
+	}
+	restartedPlugins, err := m.restartPlugins(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 
 	m.emit(ctx, secretmsg.SecretsRotatedEvent{
@@ -251,23 +257,26 @@ func (m *Module) version(ctx context.Context, name string) int {
 	return version
 }
 
-func (m *Module) restartPlugins(ctx context.Context, req secretmsg.SecretsRotateMsg) []string {
+func (m *Module) restartPlugins(ctx context.Context, req secretmsg.SecretsRotateMsg) ([]string, error) {
 	if !req.Restart || m.pluginRestarter == nil {
-		return nil
+		return nil, nil
 	}
-	restarter, ok := m.pluginRestarter().(pluginRestarter)
-	if !ok || restarter == nil {
-		return nil
+	restarter := m.pluginRestarter()
+	if restarter == nil {
+		return nil, nil
 	}
 	var restarted []string
+	var restartErr error
 	for _, plugin := range restarter.ListRunningPlugins() {
 		if pluginUsesSecret(plugin, req.Name) {
-			if err := restarter.RestartPlugin(ctx, plugin.Name); err == nil {
+			if err := restarter.RestartPlugin(ctx, plugin.Name); err != nil {
+				restartErr = errors.Join(restartErr, fmt.Errorf("restart plugin %q after rotating secret %q: %w", plugin.Name, req.Name, err))
+			} else {
 				restarted = append(restarted, plugin.Name)
 			}
 		}
 	}
-	return restarted
+	return restarted, restartErr
 }
 
 func pluginUsesSecret(plugin types.RunningPlugin, secretName string) bool {

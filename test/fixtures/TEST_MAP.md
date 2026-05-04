@@ -75,15 +75,15 @@
 |------|----------|-----------------|---------------|
 | bus/emit-fire-and-forget | no | no | Fire-and-forget emit (2 events) |
 | bus/errors/concurrent-publish | no | no | 50 concurrent publishes all succeed |
-| bus/errors/large-payload | no | no | Large payload (50KB) publish and reply |
+| bus/errors/large-payload | no | no | Large payload (50KB) fire-and-forget publish |
 | bus/errors/schedule-unschedule | no | no | Schedule 5 items, verify all have IDs |
 | bus/errors/send-no-heartbeat-adv | no | no | Send without heartbeat: final reply + 2 chunks |
-| bus/errors/sendto | no | no | SendTo publishes with replyTo |
+| bus/errors/sendto | no | no | SendTo is service-addressed fire-and-forget |
 | bus/errors/streaming-protocol-adv | no | no | Streaming protocol handler registration |
 | bus/mailbox-on | no | no | Mailbox on/reply pattern (question/answer) |
-| bus/publish-reply | no | no | Publish with replyTo, correlationId, and reply |
-| bus/send-to-service | no | no | SendToService with reply (greeting) |
-| bus/streaming-send-reply | no | no | Streaming send/reply (4 chunks + final) |
+| bus/publish-reply | no | no | Request/reply uses `bus.call`; handlers answer with `msg.reply` |
+| bus/send-to-service | no | no | `bus.callService` request/reply (greeting) |
+| bus/streaming-send-reply | no | no | `bus.callStream` receives 3 chunks + final |
 | bus/subscribe-basic | no | no | Basic subscribe (subscription ID, 2 messages) |
 
 ### composition/ (2 fixtures)
@@ -100,7 +100,7 @@
 | cross-feature/agent-with-bus | no | no | Agent availability + tool creation via bus |
 | cross-feature/deploy-with-secrets | no | no | Deploy reads secrets (empty value check) |
 | cross-feature/deploy-with-tools | no | no | Tool call during deploy init |
-| cross-feature/multi-service-chain | no | no | Multi-service publish chain (replyTo, correlation) |
+| cross-feature/multi-service-chain | no | no | Multi-service fire-and-forget publish chain |
 | cross-feature/schedule-triggers-handler | no | no | Schedule/unschedule lifecycle |
 
 ### cross-kit/ (1 fixture)
@@ -126,7 +126,7 @@
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
 | kit/errors/deploy-throws-init | no | no | Deploy that throws during init (beforeThrow fires) |
-| kit/errors/error-code-inspection | no | no | Error code inspection for missing tool, replyTo, emit |
+| kit/errors/error-code-inspection | no | no | Error code inspection for missing tool, fire-and-forget publish, emit |
 | kit/errors/file-url-blocked | no | no | file:// URL blocking for store/vector/http/libsql |
 | kit/errors/multi-tool-register | no | no | Register 5 tools, verify all found |
 | kit/errors/register-invalid-type | no | no | Invalid type registration error message |

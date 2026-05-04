@@ -71,22 +71,9 @@
       return result;
     },
     sleep: function(ms) { return new Promise(function(r) { setTimeout(r, ms); }); },
-    // Promise-based sendTo — publishes to service mailbox, subscribes to replyTo, waits for reply
+    // Promise-based service call for tests.
     sendTo: function(service, topic, data, timeoutMs) {
-      var name = service.replace(/\.ts$/, "").replace(/\//g, ".");
-      var fullTopic = "ts." + name + "." + topic;
-      var pubResult = _kitBus.publish(fullTopic, data);
-      return new Promise(function(resolve, reject) {
-        var timer = setTimeout(function() {
-          _kitBus.unsubscribe(subId);
-          reject(new Error("sendTo timeout after " + (timeoutMs || 10000) + "ms"));
-        }, timeoutMs || 10000);
-        var subId = _kitBus.subscribe(pubResult.replyTo, function(msg) {
-          clearTimeout(timer);
-          _kitBus.unsubscribe(subId);
-          resolve(msg.payload);
-        });
-      });
+      return _kitBus.callService(service, topic, data, { timeoutMs: timeoutMs || 10000 });
     },
     evaluate: async function(service, topic, cases) {
       var results = { total: cases.length, passed: 0, failed: 0, items: [] };

@@ -2,9 +2,10 @@
 
 Every subsystem in brainkit — Go caller, deployed `.ts` handler,
 plugin subprocess, HTTP gateway request — speaks to every other
-subsystem by publishing messages. The bus is the only wire. A single
-typed surface (`brainkit.Call`, `sdk.Publish`, `bus.call`, `bus.on`)
-is exposed in Go, the SDK, and the JS runtime.
+subsystem by publishing messages. The bus is the only wire. The normal
+typed request/reply surface is `brainkit.Call`, generated `CallXxx`
+helpers, `bus.call`, and `bus.on`; `sdk/protocol.Publish` remains as a
+low-level transport/protocol primitive for diagnostics and bridges.
 
 ## Topic Model
 
@@ -29,18 +30,26 @@ A bus topic is a dotted string (`tools.call`, `ts.greeter.hello`,
 
 The Kit maintains a live command catalog for request/reply routing, and
 modules publish a manifest that describes the topics they own or consume:
-commands, emitted events, raw subscriptions, host capabilities, and generic
-non-bus resources such as tools, hooks, schedulers, processes, runtimes, and
-HTTP listeners.
+commands, emitted events, raw subscriptions, grouped host capabilities, and
+generic non-bus resources such as tools, hooks, schedulers, processes,
+runtimes, and HTTP listeners. Required capabilities are preflighted before a
+module can allocate resources during mount; optional capabilities remain
+best-effort runtime integrations.
 The generated topic list still comes from `BusTopic()` declarations, but
 runtime availability comes from which modules are mounted. Deployments and
 plugins can add their own topics at runtime.
 
 The control module exposes the live module catalog and linked-code runtime
 module lifecycle through `kit.modules`, `kit.module.describe`,
-`kit.module.mount`, and `kit.module.unmount`. These commands use the same
-registered module factories as server YAML startup, so only modules compiled
-into the running binary can be mounted.
+`kit.module.mount`, and `kit.module.unmount`. `kit.modules` includes compact
+preflight readiness per mounted module, and `kit.module.describe` includes the
+full required-module plus required/optional-capability availability view used
+by `brainkit inspect module <id>`. Capability availability includes the source
+and provider (`core`, `mounted`, or `planned`) so operators can tell whether a
+requirement is satisfied by the kernel, an already mounted module, or an
+auto-mounted dependency. These commands use the same registered module
+factories as server YAML startup, so only modules compiled into the running
+binary can be mounted.
 
 ## Typed Calls from Go
 
@@ -74,6 +83,9 @@ to the shipped topics. They exist so a caller doesn't have to spell the
 types twice, and they work with any `sdk.CallerRuntime`. SDK-owned
 messages generate into `sdk/typed_gen.go`; module-owned messages
 generate into the module package that owns them.
+Each request/response pair also gets `CallXxxWithCaller`, which accepts the
+narrow `sdk.RequestCaller`/`module.RequestCaller` capability used inside
+mounted modules.
 
 ```go
 resp, err := healthmod.CallKitHealth(kit, ctx, healthmod.KitHealthMsg{})
@@ -306,7 +318,7 @@ Three middlewares run on every inbound message:
   counts surfaced via `kit.Status()` and the audit module.
 
 Module-owned bus behavior is added through scoped commands and
-subscriptions on `module.Host`; the core Watermill middleware stack is
+subscriptions on `module.Host`; the core bus middleware stack is
 fixed at router startup.
 
 ## Topic Namespace: `ts.<pkg>.<topic>`
@@ -322,7 +334,8 @@ messages on its own dedicated prefix.
 
 - `brainkit.Call` is the Go front door for typed request/reply.
 - `brainkit.CallStream` adds chunked replies.
-- `sdk.Publish` / `sdk.Emit` + `sdk.SubscribeTo` give low-level access.
+- `sdk.Emit` / `sdk.SubscribeTo` cover events; `sdk/protocol.Publish` is a
+  diagnostics/bridge primitive. Normal command request/reply uses `Call`.
 - JS uses `bus.call`, `bus.callStream`, `bus.callService`,
   `bus.callServiceStream`, `bus.callTo`, `bus.callToStream`, `bus.on`,
   `bus.publish`, `bus.emit`, `bus.subscribe`, `bus.sendTo`,

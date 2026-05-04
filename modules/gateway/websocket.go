@@ -42,10 +42,11 @@ func (gw *Gateway) handleWebSocket(w http.ResponseWriter, r *http.Request, match
 			"type":      "message",
 		})
 
-		if gw.caller == nil {
+		caller := gw.requestCaller()
+		if caller == nil {
 			continue
 		}
-		reply, callErr := gw.caller.Call(ctx, matched.Topic, payload, sdk.CallerConfig{})
+		reply, callErr := caller.Call(ctx, matched.Topic, payload, sdk.CallerConfig{})
 		if callErr != nil {
 			continue
 		}

@@ -14,6 +14,7 @@ import (
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 )
@@ -102,7 +103,7 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Set initial value
-	pr, _ := sdk.Publish(tk, ctx, secretmsg.SecretsSetMsg{Name: "stress-rotating", Value: "v0"})
+	pr, _ := protocol.Publish(tk, ctx, secretmsg.SecretsSetMsg{Name: "stress-rotating", Value: "v0"})
 	ch := make(chan []byte, 1)
 	unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	<-ch
@@ -132,7 +133,7 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 1; i <= 10; i++ {
-			pr, _ := sdk.Publish(tk, ctx, secretmsg.SecretsRotateMsg{
+			pr, _ := protocol.Publish(tk, ctx, secretmsg.SecretsRotateMsg{
 				Name: "stress-rotating", NewValue: fmt.Sprintf("v%d", i),
 			})
 			ch := make(chan []byte, 1)
@@ -279,7 +280,7 @@ func testMultiSurfaceSimultaneous(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			pr, _ := sdk.Publish(tk, ctx, sdk.CustomMsg{
+			pr, _ := protocol.Publish(tk, ctx, sdk.CustomMsg{
 				Topic: "ts.multi-stress-surface.ts-ping", Payload: json.RawMessage(`{}`),
 			})
 			ch := make(chan []byte, 1)

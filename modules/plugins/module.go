@@ -3,15 +3,20 @@ package plugins
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	auditpkg "github.com/brainlet/brainkit/internal/audit"
 	"github.com/brainlet/brainkit/internal/tools"
+	coretracing "github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
+	plugincap "github.com/brainlet/brainkit/modulecap/plugin"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 
@@ -21,13 +26,16 @@ import (
 	"github.com/google/uuid"
 )
 
-// Module is the brainkit.Module form of subprocess plugins. Mount launches
+// Module is the bkmodule.Module form of subprocess plugins. Mount launches
 // the plugin WebSocket endpoint lazily on first plugin start, kicks off
 // any statically-configured plugins, restores dynamically-started plugins
 // from the configured Store, and registers the plugin.* bus commands.
 //
 // See the package doc for the full feature set.
 type Module struct {
+	mu      sync.RWMutex
+	closeMu sync.Mutex
+
 	cfg       Config
 	kit       pluginHost
 	manager   *pluginManager
@@ -35,6 +43,20 @@ type Module struct {
 
 	regMu         sync.Mutex
 	registrations map[string]pluginmsg.PluginRegisteredEvent
+
+	toolMu         sync.Mutex
+	toolRefs       map[string]int
+	pluginToolRefs map[string]map[string]int
+
+	timerMu      sync.Mutex
+	replayTimers []*time.Timer
+
+	pluginCheckerLease   bkmodule.Handle
+	pluginRestarterLease bkmodule.Handle
+
+	pluginCheckerLeaseActive   atomic.Bool
+	pluginRestarterLeaseActive atomic.Bool
+	closing                    atomic.Bool
 }
 
 // NewModule builds the plugins module from config. Pass it to
@@ -43,14 +65,24 @@ func NewModule(cfg Config) *Module { return &Module{cfg: cfg} }
 
 func (m *Module) ID() string { return "plugins" }
 
-func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
+func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 	ph, err := newMountedPluginHost(host)
 	if err != nil {
 		return err
 	}
-	host.Scope().Defer(func(context.Context) error { return m.Close() })
-	if err := m.start(ph); err != nil {
+	host.Scope().Defer(func(closeCtx context.Context) error { return m.CloseContext(closeCtx) })
+	if err := m.start(ctx, ph); err != nil {
 		return err
+	}
+	lifecycleDebug, _ := bkmodule.Capability[bkmodule.LifecycleDebugRegistry](host, bkmodule.CapabilityLifecycleDebugRegistry)
+	if lifecycleDebug != nil {
+		handle, err := lifecycleDebug.RegisterLifecycleDebug(ctx, "plugins", func() any {
+			return m.DebugSnapshot()
+		})
+		if err != nil {
+			return fmt.Errorf("plugins: lifecycle debug: %w", err)
+		}
+		host.Scope().Defer(handle.Close)
 	}
 	host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindProcess, "plugins.manager", "Subprocess plugin manager."))
 	host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindHTTP, "plugins.websocket", "Plugin WebSocket control plane."))
@@ -69,8 +101,10 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 	return nil
 }
 
-func (m *Module) start(host pluginHost) error {
+func (m *Module) start(ctx context.Context, host pluginHost) error {
+	m.mu.Lock()
 	m.kit = host
+	m.mu.Unlock()
 	m.regMu.Lock()
 	m.registrations = map[string]pluginmsg.PluginRegisteredEvent{}
 	m.regMu.Unlock()
@@ -96,23 +130,39 @@ func (m *Module) start(host pluginHost) error {
 		}
 	}
 
-	m.manager = newPluginManager(m)
-	m.lifecycle = newLifecycleDomain(m)
+	manager := newPluginManager(m)
+	lifecycle := newLifecycleDomain(m)
+	m.mu.Lock()
+	m.manager = manager
+	m.lifecycle = lifecycle
+	m.mu.Unlock()
 
 	// Restore dynamically-started plugins from previous session.
 	m.restoreRunningPlugins()
 
 	// Launch statically-configured plugins.
 	if len(m.cfg.Plugins) > 0 {
-		m.manager.startAll(m.cfg.Plugins)
+		manager.startAll(m.cfg.Plugins)
 		m.replayRegistrationsAfter(250 * time.Millisecond)
 	}
 
-	// Attach ourselves as the module.PluginChecker so the package deploy
-	// dependency validator can see running plugins, and as the plugin
-	// restarter so modules/secrets can restart plugins on secret rotation.
-	m.kit.SetPluginChecker(m)
-	m.kit.SetPluginRestarter(m)
+	// Attach scoped checker/restarter leases so packages/secrets can observe
+	// plugin state while this module is mounted.
+	checkerLease, err := m.kit.LeasePluginChecker(ctx, m)
+	if err != nil {
+		return err
+	}
+	restarterLease, err := m.kit.LeasePluginRestarter(ctx, m)
+	if err != nil {
+		_ = checkerLease.Close(ctx)
+		return err
+	}
+	m.mu.Lock()
+	m.pluginCheckerLease = checkerLease
+	m.pluginRestarterLease = restarterLease
+	m.pluginCheckerLeaseActive.Store(true)
+	m.pluginRestarterLeaseActive.Store(true)
+	m.mu.Unlock()
 	return nil
 }
 
@@ -124,44 +174,218 @@ func (m *Module) announceRegistered(ctx context.Context, evt pluginmsg.PluginReg
 	m.registrations[evt.Name] = evt
 	m.regMu.Unlock()
 
-	_, _ = m.kit.PublishRaw(ctx, evt.BusTopic(), mustMarshalJSON(evt))
-	m.kit.Audit().PluginRegistered(evt.Name, evt.Owner, evt.Version, evt.Tools)
+	kit := m.currentKit()
+	if kit == nil {
+		return
+	}
+	_, _ = kit.PublishRaw(ctx, evt.BusTopic(), mustMarshalJSON(evt))
+	kit.Audit().PluginRegistered(evt.Name, evt.Owner, evt.Version, evt.Tools)
+}
+
+func (m *Module) registerPluginTool(pluginName string, tool tools.RegisteredTool) error {
+	kit := m.currentKit()
+	if kit == nil {
+		return &sdkerrors.NotConfiguredError{Feature: "plugins"}
+	}
+	if err := kit.Tools().Register(tool); err != nil {
+		return err
+	}
+	m.toolMu.Lock()
+	defer m.toolMu.Unlock()
+	if m.toolRefs == nil {
+		m.toolRefs = map[string]int{}
+	}
+	if m.pluginToolRefs == nil {
+		m.pluginToolRefs = map[string]map[string]int{}
+	}
+	m.toolRefs[tool.Name]++
+	if m.pluginToolRefs[pluginName] == nil {
+		m.pluginToolRefs[pluginName] = map[string]int{}
+	}
+	m.pluginToolRefs[pluginName][tool.Name]++
+	return nil
+}
+
+func (m *Module) unregisterPluginToolNames(pluginName string, names []string) {
+	if len(names) == 0 {
+		return
+	}
+	toRemove := m.decrementPluginToolRefs(pluginName, names)
+	kit := m.currentKit()
+	if kit == nil {
+		return
+	}
+	for _, name := range toRemove {
+		kit.Tools().Unregister(name)
+	}
+}
+
+func (m *Module) unregisterPluginToolsForPlugin(pluginName string) {
+	m.toolMu.Lock()
+	pluginRefs := m.pluginToolRefs[pluginName]
+	names := make([]string, 0, len(pluginRefs))
+	for name, count := range pluginRefs {
+		for i := 0; i < count; i++ {
+			names = append(names, name)
+		}
+	}
+	m.toolMu.Unlock()
+	m.unregisterPluginToolNames(pluginName, names)
+}
+
+func (m *Module) unregisterAllPluginTools() {
+	m.toolMu.Lock()
+	names := make([]string, 0, len(m.toolRefs))
+	for name := range m.toolRefs {
+		names = append(names, name)
+	}
+	m.toolRefs = nil
+	m.pluginToolRefs = nil
+	m.toolMu.Unlock()
+	kit := m.currentKit()
+	if kit == nil {
+		return
+	}
+	for _, name := range names {
+		kit.Tools().Unregister(name)
+	}
+}
+
+func (m *Module) decrementPluginToolRefs(pluginName string, names []string) []string {
+	m.toolMu.Lock()
+	defer m.toolMu.Unlock()
+	if len(m.toolRefs) == 0 {
+		return nil
+	}
+	var toRemove []string
+	for _, name := range names {
+		if pluginRefs := m.pluginToolRefs[pluginName]; len(pluginRefs) > 0 {
+			if pluginRefs[name] <= 1 {
+				delete(pluginRefs, name)
+			} else {
+				pluginRefs[name]--
+			}
+			if len(pluginRefs) == 0 {
+				delete(m.pluginToolRefs, pluginName)
+			}
+		}
+		if m.toolRefs[name] <= 1 {
+			delete(m.toolRefs, name)
+			toRemove = append(toRemove, name)
+			continue
+		}
+		m.toolRefs[name]--
+	}
+	return toRemove
 }
 
 func (m *Module) replayRegistrationsAfter(delay time.Duration) {
-	time.AfterFunc(delay, func() {
+	timer := time.AfterFunc(delay, func() {
+		kit := m.currentKit()
+		if kit == nil {
+			return
+		}
 		m.regMu.Lock()
-		kit := m.kit
 		events := make([]pluginmsg.PluginRegisteredEvent, 0, len(m.registrations))
 		for _, evt := range m.registrations {
 			events = append(events, evt)
 		}
 		m.regMu.Unlock()
-		if kit == nil {
-			return
-		}
 		for _, evt := range events {
 			_, _ = kit.PublishRaw(context.Background(), evt.BusTopic(), mustMarshalJSON(evt))
 		}
 	})
+	m.timerMu.Lock()
+	m.replayTimers = append(m.replayTimers, timer)
+	m.timerMu.Unlock()
 }
 
 func (m *Module) Close() error {
-	if m.manager != nil {
-		m.manager.stopAll()
-		if m.manager.wsServer != nil {
-			m.manager.wsServer.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return m.CloseContext(ctx)
+}
+
+func (m *Module) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	m.closeMu.Lock()
+	defer m.closeMu.Unlock()
+	m.closing.Store(true)
+	defer m.closing.Store(false)
+
+	var err error
+	m.stopReplayTimers()
+	manager := m.currentManager()
+	if manager != nil {
+		err = errors.Join(err, manager.stopAll(ctx))
+		err = errors.Join(err, manager.closeWSServer(ctx))
+	}
+	if m.currentKit() != nil {
+		m.unregisterAllPluginTools()
+	}
+
+	m.mu.RLock()
+	restarterLease := m.pluginRestarterLease
+	checkerLease := m.pluginCheckerLease
+	m.mu.RUnlock()
+
+	if restarterLease != nil {
+		if closeErr := restarterLease.Close(ctx); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		} else {
+			m.mu.Lock()
+			m.pluginRestarterLease = nil
+			m.pluginRestarterLeaseActive.Store(false)
+			m.mu.Unlock()
 		}
+	} else {
+		m.pluginRestarterLeaseActive.Store(false)
 	}
-	if m.kit != nil {
-		m.kit.SetPluginChecker(nil)
-		m.kit.SetPluginRestarter(nil)
+	if checkerLease != nil {
+		if closeErr := checkerLease.Close(ctx); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		} else {
+			m.mu.Lock()
+			m.pluginCheckerLease = nil
+			m.pluginCheckerLeaseActive.Store(false)
+			m.mu.Unlock()
+		}
+	} else {
+		m.pluginCheckerLeaseActive.Store(false)
+	}
+	if err == nil {
+		m.mu.Lock()
 		m.kit = nil
+		m.mu.Unlock()
+		m.regMu.Lock()
+		m.registrations = nil
+		m.regMu.Unlock()
 	}
-	m.regMu.Lock()
-	m.registrations = nil
-	m.regMu.Unlock()
-	return nil
+	return err
+}
+
+func (m *Module) currentKit() pluginHost {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.kit
+}
+
+func (m *Module) currentManager() *pluginManager {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.manager
+}
+
+func (m *Module) stopReplayTimers() {
+	m.timerMu.Lock()
+	timers := append([]*time.Timer(nil), m.replayTimers...)
+	m.replayTimers = nil
+	m.timerMu.Unlock()
+	for _, timer := range timers {
+		timer.Stop()
+	}
 }
 
 // IsPluginRunning satisfies module.PluginChecker. It reports whether a
@@ -224,7 +448,8 @@ func (m *Module) StopPlugin(ctx context.Context, name string) error {
 	if !ok {
 		return &sdk.NotFoundError{Resource: "plugin", Name: name}
 	}
-	m.manager.stopPlugin(name, pc)
+	err := m.manager.stopPlugin(ctx, name, pc)
+	m.unregisterPluginToolsForPlugin(name)
 	if m.cfg.Store != nil {
 		m.cfg.Store.DeleteRunningPlugin(name)
 	}
@@ -232,12 +457,12 @@ func (m *Module) StopPlugin(ctx context.Context, name string) error {
 		Name: name, Reason: "stopped",
 	}))
 	m.kit.Audit().PluginStopped(name, "stopped")
-	return nil
+	return err
 }
 
 // RestartPlugin stops and re-starts a plugin. Equivalent to the
 // pre-module Node.RestartPlugin.
-func (m *Module) RestartPlugin(_ context.Context, name string) error {
+func (m *Module) RestartPlugin(ctx context.Context, name string) error {
 	m.manager.mu.Lock()
 	pc, ok := m.manager.plugins[name]
 	m.manager.mu.Unlock()
@@ -245,7 +470,10 @@ func (m *Module) RestartPlugin(_ context.Context, name string) error {
 		return &sdk.NotFoundError{Resource: "plugin", Name: name}
 	}
 	cfg := pc.config
-	m.manager.stopPlugin(name, pc)
+	if err := m.manager.stopPlugin(ctx, name, pc); err != nil {
+		return err
+	}
+	m.unregisterPluginToolsForPlugin(name)
 	return m.manager.startPlugin(cfg, 0)
 }
 
@@ -309,7 +537,7 @@ func (m *Module) processPluginManifest(ctx context.Context, manifest pluginmsg.P
 	for _, tool := range manifest.Tools {
 		tool := tool
 		fullName := tools.ComposeName(manifest.Owner, manifest.Name, manifest.Version, tool.Name)
-		_ = m.kit.Tools().Register(tools.RegisteredTool{
+		if err := m.registerPluginTool(manifest.Name, tools.RegisteredTool{
 			Name:        fullName,
 			ShortName:   tool.Name,
 			Owner:       manifest.Owner,
@@ -404,7 +632,9 @@ func (m *Module) processPluginManifest(ctx context.Context, manifest pluginmsg.P
 					}
 				},
 			},
-		})
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	m.announceRegistered(ctx, pluginmsg.PluginRegisteredEvent{
@@ -457,7 +687,7 @@ func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	return NewModule(cfg), nil
 }
 
-// Describe surfaces module metadata for `brainkit modules list`.
+// Describe surfaces module metadata for module manifests.
 func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "plugins",
@@ -478,6 +708,24 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.EventMessage[pluginmsg.PluginRegisteredEvent](),
 			bkmodule.EventMessage[pluginmsg.PluginStartedEvent](),
 			bkmodule.EventMessage[pluginmsg.PluginStoppedEvent](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.OptionalCapabilityOf[types.SecretStore](bkmodule.CapabilitySecretStore),
+			bkmodule.OptionalCapabilityOf[Store](bkmodule.CapabilityKitStore),
+			bkmodule.OptionalCapabilityOf[bkmodule.LifecycleDebugRegistry](bkmodule.CapabilityLifecycleDebugRegistry),
+			bkmodule.ProvidedCapabilityOf[func() bkmodule.PluginChecker](bkmodule.CapabilityPluginChecker),
+			bkmodule.ProvidedCapabilityOf[func() plugincap.Restarter](bkmodule.CapabilityPluginRestarter),
+			bkmodule.RequiredCapabilityOf[*auditpkg.Recorder](bkmodule.CapabilityAuditRecorder),
+			bkmodule.RequiredCapabilityOf[string](bkmodule.CapabilityCallerID),
+			bkmodule.RequiredCapabilityOf[string](bkmodule.CapabilityNamespace),
+			bkmodule.RequiredCapabilityOf[*transport.RemoteClient](bkmodule.CapabilityRemoteClient),
+			bkmodule.RequiredCapabilityOf[func(error, types.ErrorContext)](bkmodule.CapabilityReportError),
+			bkmodule.RequiredCapabilityOf[<-chan struct{}](bkmodule.CapabilityShutdownSignal),
+			bkmodule.RequiredCapabilityOf[bkmodule.LeaseFunc[bkmodule.PluginChecker]](bkmodule.CapabilityPluginCheckerLease),
+			bkmodule.RequiredCapabilityOf[bkmodule.LeaseFunc[plugincap.Restarter]](bkmodule.CapabilityPluginRestarterLease),
+			bkmodule.RequiredCapabilityOf[*tools.ToolRegistry](bkmodule.CapabilityToolRegistry),
+			bkmodule.RequiredCapabilityOf[string](bkmodule.CapabilityTransportKind),
+			bkmodule.RequiredCapabilityOf[*coretracing.Tracer](bkmodule.CapabilityTracer),
 		},
 		Resources: []bkmodule.ResourceDescriptor{
 			bkmodule.Resource(bkmodule.ResourceKindProcess, "plugins.manager", "Subprocess plugin manager."),

@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/packages"
@@ -104,7 +107,7 @@ func makeNode(t *testing.T, env *suite.TestEnv, namespace string) *brainkit.Kit 
 
 // makeNodeWithConfig creates a Kit with explicit transport fields.
 // Used by cross-Kit tests where multiple nodes must share the same transport.
-func makeNodeWithConfig(t *testing.T, env *suite.TestEnv, namespace string, tf transportFields, extra ...brainkit.Module) *brainkit.Kit {
+func makeNodeWithConfig(t *testing.T, env *suite.TestEnv, namespace string, tf transportFields, extra ...bkmodule.Module) *brainkit.Kit {
 	t.Helper()
 	env.RequirePodman(t)
 	tmpDir := t.TempDir()
@@ -123,8 +126,8 @@ func makeNodeWithConfig(t *testing.T, env *suite.TestEnv, namespace string, tf t
 	return kit
 }
 
-func packageModules(extra ...brainkit.Module) []brainkit.Module {
-	modules := make([]brainkit.Module, 0, 2+len(extra))
+func packageModules(extra ...bkmodule.Module) []bkmodule.Module {
+	modules := make([]bkmodule.Module, 0, 2+len(extra))
 	modules = append(modules, toolsmod.New())
 	modules = append(modules, packages.New())
 	modules = append(modules, extra...)
@@ -166,7 +169,7 @@ func publishAndWaitRaw(t *testing.T, kit *brainkit.Kit, ctx context.Context, msg
 	}
 	defer unsub()
 
-	if _, err := sdk.Publish(kit, ctx, msg, sdk.WithReplyTo(replyTo)); err != nil {
+	if _, err := protocol.Publish(kit, ctx, msg, protocol.WithReplyTo(replyTo)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 
@@ -189,7 +192,7 @@ func publishToAndWaitRaw(t *testing.T, kit *brainkit.Kit, ctx context.Context, t
 	}
 	defer unsub()
 
-	if _, err := sdk.PublishTo(kit, ctx, targetNamespace, msg, sdk.WithReplyTo(replyTo)); err != nil {
+	if _, err := protocol.PublishTo(kit, ctx, targetNamespace, msg, protocol.WithReplyTo(replyTo)); err != nil {
 		t.Fatalf("publish to %s: %v", targetNamespace, err)
 	}
 

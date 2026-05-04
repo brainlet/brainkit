@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -57,7 +58,7 @@ func TestPluginRoundTrip(t *testing.T) {
 		Namespace: "plugin-host-test",
 		Transport: transports.EmbeddedNATS(),
 		FSRoot:    t.TempDir(),
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			pluginsmod.NewModule(pluginsmod.Config{
 				Plugins: []pluginsmod.PluginConfig{{
 					Name:         "demo",

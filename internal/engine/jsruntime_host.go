@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/brainlet/brainkit/internal/types"
+	bkmodule "github.com/brainlet/brainkit/module"
 	agenthost "github.com/brainlet/brainkit/modulehost/agenthost"
 	toolhost "github.com/brainlet/brainkit/modulehost/toolhost"
 	"github.com/brainlet/brainkit/sdk"
@@ -31,11 +32,26 @@ func (k *Kernel) ToolsDomain() *toolhost.Domain { return k.toolsDomain }
 // AgentsDomain exposes the local agent registry to optional runtime attachments.
 func (k *Kernel) AgentsDomain() *agenthost.Domain { return k.agentsDomain }
 
-// SetToolEvaluator installs the JS evaluator used by JS-registered tools.
-func (k *Kernel) SetToolEvaluator(eval JSEvaluator) {
-	if k.toolsDomain != nil {
-		k.toolsDomain.SetEvaluator(eval)
+// LeaseToolEvaluator installs the JS evaluator used by JS-registered tools
+// until the returned lease is closed. Closing an older evaluator lease never
+// clears a newer runtime activation.
+func (k *Kernel) LeaseToolEvaluator(_ context.Context, eval JSEvaluator) (bkmodule.Handle, error) {
+	if eval == nil {
+		return nil, fmt.Errorf("tool evaluator lease requires an evaluator")
 	}
+	if k.toolsDomain == nil {
+		return nil, fmt.Errorf("tool evaluator lease requires a tool domain")
+	}
+	k.mu.Lock()
+	token := k.toolEvaluatorLease.acquire(k.toolsDomain.Evaluator(), eval)
+	k.toolsDomain.SetEvaluator(k.toolEvaluatorLease.current())
+	k.mu.Unlock()
+	return bkmodule.HandleFunc(func(context.Context) error {
+		k.mu.Lock()
+		defer k.mu.Unlock()
+		k.toolsDomain.SetEvaluator(k.toolEvaluatorLease.release(token))
+		return nil
+	}), nil
 }
 
 // ValidateEvent validates a publish payload against the event catalog.
@@ -102,7 +118,11 @@ func (k *Kernel) StartStreamHeartbeat(replyTo, correlationID string) {
 }
 
 // ScheduleHandler returns the active schedule handler, if mounted.
-func (k *Kernel) ScheduleHandler() types.ScheduleHandler { return k.scheduleHandler }
+func (k *Kernel) ScheduleHandler() types.ScheduleHandler {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.scheduleHandler
+}
 
 // ExistingStorageBridgeNames snapshots active storage bridge names.
 func (k *Kernel) ExistingStorageBridgeNames() map[string]bool {
@@ -113,10 +133,20 @@ func (k *Kernel) ExistingStorageBridgeNames() map[string]bool {
 }
 
 // CloseStorageBridgesExcept closes storage bridges not present in keep.
-func (k *Kernel) CloseStorageBridgesExcept(keep map[string]bool) {
+func (k *Kernel) CloseStorageBridgesExcept(keep map[string]bool) error {
 	if k.storageHost != nil {
-		k.storageHost.CloseExcept(keep)
+		return k.storageHost.CloseExcept(keep)
 	}
+	return nil
+}
+
+// CloseStorageBridgesExceptContext closes storage bridges not present in keep
+// under caller-owned teardown cancellation.
+func (k *Kernel) CloseStorageBridgesExceptContext(ctx context.Context, keep map[string]bool) error {
+	if k.storageHost != nil {
+		return k.storageHost.CloseExceptContext(ctx, keep)
+	}
+	return nil
 }
 
 // InitStorageBridges starts configured storage bridges for the runtime.
@@ -125,8 +155,8 @@ func (k *Kernel) InitStorageBridges(cfg types.KernelConfig) (map[string]string, 
 }
 
 // RegisterConfiguredStorages registers configured storages in the provider registry.
-func (k *Kernel) RegisterConfiguredStorages(cfg types.KernelConfig, bridgeURLs map[string]string) {
-	k.registerStorages(cfg, bridgeURLs)
+func (k *Kernel) RegisterConfiguredStorages(cfg types.KernelConfig, bridgeURLs map[string]string) error {
+	return k.registerStorages(cfg, bridgeURLs)
 }
 
 // RegisterConfiguredVectors registers configured vectors in the provider registry.
@@ -134,8 +164,14 @@ func (k *Kernel) RegisterConfiguredVectors(cfg types.KernelConfig, bridgeURLs ma
 	return k.registerVectors(cfg, bridgeURLs)
 }
 
-// RestoreJSRuntimeState restores persisted JS deployments and workflow state.
-func (k *Kernel) RestoreJSRuntimeState(cfg types.KernelConfig) { k.initPersistence(cfg) }
+// RestoreConfiguredStorageRegistry refreshes configured storage and vector
+// registry entries after runtime-owned bridge resources are detached.
+func (k *Kernel) RestoreConfiguredStorageRegistry(cfg types.KernelConfig, bridgeURLs map[string]string) error {
+	if k.storageHost != nil {
+		return k.storageHost.RestoreConfiguredRegistry(cfg, bridgeURLs)
+	}
+	return nil
+}
 
-// RuntimeShutdownContext returns the kernel shutdown context.
-func (k *Kernel) RuntimeShutdownContext() context.Context { return k.shutdownCtx }
+// RestoreJSRuntimeState restores persisted JS deployments and propagation state.
+func (k *Kernel) RestoreJSRuntimeState(cfg types.KernelConfig) { k.initPersistence(cfg) }

@@ -116,7 +116,7 @@ didn't expose them. This session added:
 
 | Endowment | Via |
 |---|---|
-| `createAnswerRelevancyScorer` | `internal/engine/runtime/kit_runtime.js` + `agent_module.js` |
+| `createAnswerRelevancyScorer` | `internal/jsruntime/runtime/kit_runtime.js` + `agent_module.js` |
 | `createCompletenessScorer`    | same |
 | `createFaithfulnessScorer`, `createBiasScorer`, `createHallucinationScorer`, `createToxicityScorer`, `createContextPrecisionScorer`, `createAnswerSimilarityScorer` | same (LLM judges; pass a `model`) |
 | `createKeywordCoverageScorer`, `createContentSimilarityScorer`, `createToneScorer`, `createTextualDifferenceScorer` | same (code-only; no model arg) |

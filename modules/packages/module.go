@@ -11,13 +11,12 @@ import (
 	"strings"
 
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
-	coredeploy "github.com/brainlet/brainkit/internal/deploy"
 	"github.com/brainlet/brainkit/internal/secrets"
 	"github.com/brainlet/brainkit/internal/syncx"
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
 	runtimecap "github.com/brainlet/brainkit/modulecap/runtime"
-	_ "github.com/brainlet/brainkit/modules/jsruntime"
+	coredeploy "github.com/brainlet/brainkit/modules/packages/internal/deploy"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
@@ -41,7 +40,7 @@ func (m *Module) Status() bkmodule.Status { return bkmodule.StatusStable }
 
 // Mount registers package.* command handlers against the running Kit.
 func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
-	deployer, err := bkmodule.RequireCapability[runtimecap.Deployer](host, bkmodule.CapabilityDeployer)
+	deployer, err := bkmodule.RequireCapability[runtimecap.ArtifactDeployer](host, bkmodule.CapabilityArtifactDeployer)
 	if err != nil {
 		return fmt.Errorf("packages: %w", err)
 	}
@@ -92,7 +91,7 @@ func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	return New(), nil
 }
 
-// Describe surfaces module metadata for `brainkit modules list`.
+// Describe surfaces module metadata for module manifests.
 func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "packages",
@@ -112,7 +111,11 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.EventMessage[systemmsg.KitTeardownedEvent](),
 		},
 		Capabilities: []bkmodule.CapabilityDescriptor{
-			bkmodule.RequiredCapabilityOf[runtimecap.Deployer](bkmodule.CapabilityDeployer),
+			bkmodule.OptionalCapabilityOf[*auditpkg.Recorder](bkmodule.CapabilityAuditRecorder),
+			bkmodule.OptionalCapabilityOf[func() bkmodule.PluginChecker](bkmodule.CapabilityPluginChecker),
+			bkmodule.OptionalCapabilityOf[string](bkmodule.CapabilityRuntimeID),
+			bkmodule.OptionalCapabilityOf[secrets.SecretStore](bkmodule.CapabilitySecretStore),
+			bkmodule.RequiredCapabilityOf[runtimecap.ArtifactDeployer](bkmodule.CapabilityArtifactDeployer),
 		},
 	}
 }
@@ -123,9 +126,10 @@ type busPublisher interface {
 	PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error)
 }
 
-// deployerAdapter adapts runtimecap.Deployer to the internal deploy package.
+// deployerAdapter adapts runtimecap.ArtifactDeployer to the internal deploy
+// package.
 type deployerAdapter struct {
-	deployer    runtimecap.Deployer
+	deployer    runtimecap.ArtifactDeployer
 	packageName string
 }
 
@@ -134,7 +138,7 @@ func (d *deployerAdapter) Deploy(ctx context.Context, source, code string) error
 	if d.packageName != "" {
 		opts = append(opts, types.WithPackageName(d.packageName))
 	}
-	_, err := d.deployer.Deploy(ctx, source, code, opts...)
+	_, err := d.deployer.DeployArtifact(ctx, source, code, opts...)
 	return err
 }
 
@@ -145,7 +149,7 @@ func (d *deployerAdapter) Teardown(ctx context.Context, source string) error {
 
 // Domain handles package.deploy/teardown/list/info bus commands.
 type Domain struct {
-	deployer             runtimecap.Deployer
+	deployer             runtimecap.ArtifactDeployer
 	secretStore          secrets.SecretStore
 	pluginCheckerFactory func() bkmodule.PluginChecker
 
@@ -158,7 +162,7 @@ type Domain struct {
 }
 
 // NewDomain builds a package deployment command domain.
-func NewDomain(deployer runtimecap.Deployer, secretStore secrets.SecretStore, pluginCheckerFactory func() bkmodule.PluginChecker) *Domain {
+func NewDomain(deployer runtimecap.ArtifactDeployer, secretStore secrets.SecretStore, pluginCheckerFactory func() bkmodule.PluginChecker) *Domain {
 	return &Domain{
 		deployer:             deployer,
 		secretStore:          secretStore,
@@ -325,7 +329,7 @@ func (d *Domain) deployInline(ctx context.Context, req packagemsg.PackageDeployM
 	if manifest.Name != "" {
 		opts = append(opts, types.WithPackageName(manifest.Name))
 	}
-	resources, err := d.deployer.Deploy(ctx, source, code, opts...)
+	resources, err := d.deployer.DeployArtifact(ctx, source, code, opts...)
 	if err != nil {
 		return nil, err
 	}

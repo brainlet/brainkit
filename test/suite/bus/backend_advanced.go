@@ -12,6 +12,7 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,7 +67,7 @@ func testLargePayload100KB(t *testing.T, _ *suite.TestEnv) {
 	}
 	payload, _ := json.Marshal(map[string]string{"data": string(big)})
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	pr, err := protocol.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "ts.big-msg-suite.big",
 		Payload: payload,
 	})
@@ -96,7 +97,7 @@ func testDottedTopicNames(t *testing.T, _ *suite.TestEnv) {
 		bus.on("ask", function(msg) { msg.reply({dotted: true}); });
 	`)
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	pr, err := protocol.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "ts.my.dotted.agent.suite.ask",
 		Payload: json.RawMessage(`{}`),
 	})
@@ -129,7 +130,7 @@ func testDeployHandlerCall(t *testing.T, _ *suite.TestEnv) {
 		});
 	`)
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	pr, err := protocol.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic: "ts.backend-handler-suite.ask", Payload: json.RawMessage(`{}`),
 	})
 	require.NoError(t, err)
@@ -158,7 +159,7 @@ func testPublishReply(t *testing.T, _ *suite.TestEnv) {
 		bus.on("ping", function(msg) { msg.reply({backend: "works"}); });
 	`)
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	pr, err := protocol.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "ts.backend-reply-suite.ping",
 		Payload: json.RawMessage(`{}`),
 	})
@@ -184,7 +185,7 @@ func testErrorCodeOnBus(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{Name: "ghost-backend-tool-suite"})
+	pr, err := protocol.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{Name: "ghost-backend-tool-suite"})
 	require.NoError(t, err)
 
 	ch := make(chan json.RawMessage, 1)

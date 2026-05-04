@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/brainlet/brainkit/internal/syncx"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/syncx"
 	"github.com/brainlet/brainkit/internal/transport"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"
 )
@@ -33,7 +35,9 @@ type streamSession struct {
 	hasWriter  bool            // true when an HTTP handler goroutine is active
 
 	eventCh chan streamEvent // bus messages arrive here
-	unsub   func()           // bus subscription cancel
+	unsub   bkmodule.Handle  // bus subscription lease
+	done    chan struct{}
+	once    sync.Once
 
 	config StreamConfig
 }
@@ -162,15 +166,19 @@ func newStreamSession(gw *Gateway, replyTo, correlationID string) (*streamSessio
 		replyTo:       replyTo,
 		correlationID: correlationID,
 		eventCh:       make(chan streamEvent, cfg.MaxEvents),
+		done:          make(chan struct{}),
 		config:        cfg,
 	}
 
 	// Subscribe to replyTo — bus subscriber goroutine pushes to eventCh.
 	// This subscription lives for the entire session lifetime (survives client disconnect).
 	// Uses a long-lived context — cancelled only when session is cleaned up.
-	unsub, err := gw.rt.SubscribeRaw(context.Background(), replyTo, func(msg sdk.Message) {
+	unsub, err := gw.subscribeRaw(context.Background(), replyTo, func(msg sdk.Message) {
 		evt := parseStreamEvent(msg.Payload, msg.Metadata)
-		session.eventCh <- evt
+		select {
+		case session.eventCh <- evt:
+		case <-session.done:
+		}
 	})
 	if err != nil {
 		return nil, err
@@ -190,6 +198,7 @@ func (s *streamSession) terminate(reason string) {
 	}
 	s.terminal = true
 	s.terminalAt = time.Now()
+	s.once.Do(func() { close(s.done) })
 }
 
 // writeLoop reads from eventCh, classifies messages, writes SSE, manages timers.
@@ -279,6 +288,8 @@ func (s *streamSession) writeLoop(w http.ResponseWriter, flusher http.Flusher, r
 							break reassemble
 						case <-ctx.Done():
 							break reassemble
+						case <-s.done:
+							break reassemble
 						}
 					}
 					// All data events written. Now write the terminal.
@@ -290,7 +301,7 @@ func (s *streamSession) writeLoop(w http.ResponseWriter, flusher http.Flusher, r
 					s.mu.Unlock()
 					s.terminate(evt.Type)
 				} else if evt.isTerminal() {
-					// Unsequenced terminal (total=0): legacy or no prior events.
+					// Unsequenced terminal (total=0): no prior typed events.
 					// Write immediately — no events to wait for.
 					s.mu.Lock()
 					id := formatStreamID(s.id, s.nextID)
@@ -388,6 +399,8 @@ func (s *streamSession) writeLoop(w http.ResponseWriter, flusher http.Flusher, r
 
 		case <-ctx.Done():
 			// Client disconnected — session stays alive for reconnection
+			return
+		case <-s.done:
 			return
 		}
 	}
@@ -489,6 +502,9 @@ func (gw *Gateway) handleStream(w http.ResponseWriter, r *http.Request, matched 
 
 	pubCtx := transport.WithPublishMeta(r.Context(), reqID, replyTo)
 	if _, err := gw.rt.PublishRaw(pubCtx, matched.Topic, payload); err != nil {
+		if closeErr := gw.closeStreamSession(context.Background(), session.id, "publish_failed"); closeErr != nil {
+			gw.logger.Warn("close failed stream session", "session", session.id, "error", closeErr.Error())
+		}
 		http.Error(w, "publish failed", http.StatusBadGateway)
 		return
 	}

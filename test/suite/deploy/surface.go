@@ -9,6 +9,7 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,7 +36,7 @@ func testTSNamespaceIsolation(t *testing.T, env *suite.TestEnv) {
 
 	// Send to service A — should get reply from A, not B
 	reply, err := sdk.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
-		Topic:   sdk.ResolveServiceTopic("ns-a-deploy-adv.ts", "greet"),
+		Topic:   protocol.ResolveServiceTopic("ns-a-deploy-adv.ts", "greet"),
 		Payload: json.RawMessage(`{}`),
 	})
 	require.NoError(t, err)
@@ -216,7 +217,7 @@ func testTSDeployWithBusService(t *testing.T, env *suite.TestEnv) {
 	time.Sleep(100 * time.Millisecond)
 
 	reply, err := sdk.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
-		Topic:   sdk.ResolveServiceTopic("surface-service-deploy.ts", "greet"),
+		Topic:   protocol.ResolveServiceTopic("surface-service-deploy.ts", "greet"),
 		Payload: json.RawMessage(`{"name":"Go"}`),
 	})
 	require.NoError(t, err)
@@ -245,7 +246,7 @@ func testTSDeployWithStreaming(t *testing.T, env *suite.TestEnv) {
 	time.Sleep(100 * time.Millisecond)
 
 	final, err := sdk.CallStream[sdk.CustomMsg, json.RawMessage, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
-		Topic:   sdk.ResolveServiceTopic("surface-streamer-deploy.ts", "stream"),
+		Topic:   protocol.ResolveServiceTopic("surface-streamer-deploy.ts", "stream"),
 		Payload: json.RawMessage(`{}`),
 	}, func(json.RawMessage) error { return nil })
 	require.NoError(t, err)

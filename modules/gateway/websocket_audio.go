@@ -50,7 +50,7 @@ func (gw *Gateway) handleWebSocketAudio(w http.ResponseWriter, r *http.Request, 
 		gw.logger.Error("websocket-audio publish connect", slog.String("error", err.Error()))
 	}
 
-	unsub, err := gw.rt.SubscribeRaw(ctx, matched.OutTopic+"."+sessionID, func(msg sdk.Message) {
+	sub, err := gw.subscribeRaw(ctx, matched.OutTopic+"."+sessionID, func(msg sdk.Message) {
 		// Outbound payload shape: {"binary":true, "bytes_b64":"..."} for audio,
 		// or {"binary":false, "text":"..."} for JSON/control. Fall back to
 		// writing the raw payload as a text frame when neither field is set.
@@ -78,7 +78,11 @@ func (gw *Gateway) handleWebSocketAudio(w http.ResponseWriter, r *http.Request, 
 		gw.logger.Error("websocket-audio subscribe", slog.String("error", err.Error()))
 		return
 	}
-	defer unsub()
+	defer func() {
+		if err := sub.Close(context.Background()); err != nil {
+			gw.logger.Warn("websocket-audio unsubscribe", slog.String("error", err.Error()))
+		}
+	}()
 
 	for {
 		typ, data, rerr := conn.Read(ctx)

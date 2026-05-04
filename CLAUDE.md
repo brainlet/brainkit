@@ -102,14 +102,14 @@ Polyfills set clean names directly on globalThis: `stream`, `crypto`, `net`, `os
 
 ### Bus API
 Symmetric across surfaces:
-- Go: `sdk.Publish`, `sdk.Emit`, `sdk.SubscribeTo`, `sdk.Reply`, `sdk.SendChunk`, `sdk.SendToService`
+- Go: `brainkit.Call`, package-owned `CallXxx`, `sdk.Emit`, `sdk.SubscribeTo`, `sdk.Reply`, `sdk.SendChunk`
 - JS: `bus.publish`, `bus.emit`, `bus.subscribe`, `bus.on`, `bus.sendTo`, `msg.reply`, `msg.send`
 
 ### Registration
 `kit.register(type, name, ref)` is the ONLY way to register resources. No auto-registration, no convenience wrappers.
 
 ### Messaging
-Pure async pub/sub only. No PublishAwait. No blocking helpers. Caller explicitly subscribes and waits. Pattern: `Publish → SubscribeTo(replyTo) → select { case resp: case timeout: }`.
+Request/reply goes through `Call`/`CallXxx` and the shared caller inbox. Raw reply topics are protocol/test-only. Pure events use `sdk.Emit` plus `sdk.SubscribeTo`.
 
 ### Deployment
 `.ts` files deploy into SES Compartments via `packages.Deploy(...)`: transpile → strip ES imports → evaluate in Compartment with endowments. Mailbox namespace: `ts.<name>.<topic>`.

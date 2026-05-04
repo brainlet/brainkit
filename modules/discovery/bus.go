@@ -3,6 +3,9 @@ package discovery
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/syncx"
@@ -22,17 +25,23 @@ type BusConfig struct {
 // Bus discovers peers via announcements on the transport bus.
 // All Kits on the same transport cluster see each other — cross-namespace.
 type Bus struct {
-	mu     syncx.RWMutex
-	self   *Peer
-	peers  map[string]peerEntry
-	closed bool
+	mu      syncx.RWMutex
+	self    *Peer
+	peers   map[string]peerEntry
+	closing bool
+	closed  bool
 
 	transport transport.Presence
 	unsub     func()
 	cancel    context.CancelFunc
+	wg        sync.WaitGroup
+	closeMu   sync.Mutex
+	closeWait sync.Once
+	closeDone chan struct{}
 
-	heartbeat time.Duration
-	ttl       time.Duration
+	heartbeat   time.Duration
+	ttl         time.Duration
+	activeLoops atomic.Int64
 }
 
 type peerEntry struct {
@@ -63,17 +72,27 @@ func NewBus(cfg BusConfig) *Bus {
 		transport: cfg.Transport,
 		heartbeat: heartbeat,
 		ttl:       ttl,
+		closeDone: make(chan struct{}),
 	}
 }
 
 func (d *Bus) Register(self Peer) error {
+	d.closeMu.Lock()
+	defer d.closeMu.Unlock()
+
 	d.mu.Lock()
+	if d.closing || (!d.closed && (d.cancel != nil || d.unsub != nil)) {
+		d.mu.Unlock()
+		return fmt.Errorf("discovery bus already registered")
+	}
 	d.self = &self
+	d.closing = false
 	d.closed = false
+	d.closeWait = sync.Once{}
+	d.closeDone = make(chan struct{})
 	d.mu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	d.cancel = cancel
 
 	// Subscribe to presence announcements (fan-out — all instances receive)
 	unsub, err := d.transport.SubscribeRawFanOutGlobal(ctx, presenceTopic, func(payload json.RawMessage) {
@@ -83,13 +102,22 @@ func (d *Bus) Register(self Peer) error {
 		cancel()
 		return err
 	}
+	d.mu.Lock()
+	d.cancel = cancel
 	d.unsub = unsub
+	d.mu.Unlock()
 
 	// Initial announce
 	d.announce()
 
 	// Heartbeat goroutine
+	d.wg.Add(1)
+	d.activeLoops.Add(1)
 	go func() {
+		defer func() {
+			d.activeLoops.Add(-1)
+			d.wg.Done()
+		}()
 		ticker := time.NewTicker(d.heartbeat)
 		defer ticker.Stop()
 		for {
@@ -103,7 +131,13 @@ func (d *Bus) Register(self Peer) error {
 	}()
 
 	// Eviction goroutine
+	d.wg.Add(1)
+	d.activeLoops.Add(1)
 	go func() {
+		defer func() {
+			d.activeLoops.Add(-1)
+			d.wg.Done()
+		}()
 		ticker := time.NewTicker(d.heartbeat) // check at heartbeat interval
 		defer ticker.Stop()
 		for {
@@ -156,37 +190,76 @@ func (d *Bus) BrowseNamespaces() ([]string, error) {
 }
 
 func (d *Bus) Close() error {
+	return d.CloseContext(context.Background())
+}
+
+func (d *Bus) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+	}
+	d.closeMu.Lock()
+	defer d.closeMu.Unlock()
+
 	d.mu.Lock()
-	if d.closed {
+	if d.closed && d.cancel == nil && d.unsub == nil && d.activeLoops.Load() == 0 {
 		d.mu.Unlock()
 		return nil
 	}
-	d.closed = true
 	self := d.self
+	cancel := d.cancel
+	unsub := d.unsub
+	closeDone := d.closeDone
+	d.closing = true
+	d.closed = false
+	d.closeWait.Do(func() {
+		go func() {
+			d.wg.Wait()
+			close(closeDone)
+		}()
+	})
 	d.mu.Unlock()
 
 	// Stop heartbeat + eviction goroutines before publishing leave. announce()
 	// also checks d.closed so a selected heartbeat cannot re-announce after
 	// close starts.
-	if d.cancel != nil {
-		d.cancel()
+	if cancel != nil {
+		cancel()
+	}
+	select {
+	case <-closeDone:
+	case <-ctx.Done():
+		d.mu.Lock()
+		d.closing = false
+		d.mu.Unlock()
+		return ctx.Err()
 	}
 	if self != nil {
 		msg, _ := json.Marshal(presenceMessage{Type: "leave", Name: self.Name})
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		d.transport.PublishRawGlobal(ctx, presenceTopic, msg)
-		cancel()
+		leaveCtx, leaveCancel := context.WithTimeout(ctx, 2*time.Second)
+		_ = d.transport.PublishRawGlobal(leaveCtx, presenceTopic, msg)
+		leaveCancel()
 	}
-	if d.unsub != nil {
-		d.unsub()
+	if unsub != nil {
+		unsub()
 	}
+	d.mu.Lock()
+	d.cancel = nil
+	d.unsub = nil
+	d.closed = true
+	d.closing = false
+	d.mu.Unlock()
 	return nil
 }
 
 func (d *Bus) announce() {
 	d.mu.RLock()
 	self := d.self
-	closed := d.closed
+	closed := d.closed || d.closing
 	d.mu.RUnlock()
 	if self == nil || closed {
 		return
@@ -197,7 +270,9 @@ func (d *Bus) announce() {
 		Namespace: self.Namespace,
 		Meta:      self.Meta,
 	})
-	d.transport.PublishRawGlobal(context.Background(), presenceTopic, msg)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	_ = d.transport.PublishRawGlobal(ctx, presenceTopic, msg)
+	cancel()
 }
 
 func (d *Bus) handleMessage(payload json.RawMessage) {
@@ -207,11 +282,15 @@ func (d *Bus) handleMessage(payload json.RawMessage) {
 	}
 
 	d.mu.RLock()
+	closed := d.closed || d.closing
 	selfName := ""
 	if d.self != nil {
 		selfName = d.self.Name
 	}
 	d.mu.RUnlock()
+	if closed {
+		return
+	}
 
 	switch msg.Type {
 	case "announce":

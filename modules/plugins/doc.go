@@ -1,4 +1,4 @@
-// Package plugins is the brainkit.Module form of subprocess plugins.
+// Package plugins is the bkmodule.Module form of subprocess plugins.
 //
 // Plugins are separately-compiled binaries that connect back to the Kit
 // over a localhost WebSocket endpoint and register tools + bus
@@ -21,7 +21,7 @@
 //
 //	kit, _ := brainkit.New(brainkit.Config{
 //	    Transport: transports.EmbeddedNATS(),
-//	    Modules: []brainkit.Module{
+//	    Modules: []bkmodule.Module{
 //	        plugins.NewModule(plugins.Config{
 //	            Plugins: []plugins.PluginConfig{{Name: "foo", Binary: "./foo"}},
 //	            Store:   kitStore, // optional, enables restart recovery

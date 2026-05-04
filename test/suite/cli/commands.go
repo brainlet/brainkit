@@ -11,6 +11,7 @@ import (
 	messagingmod "github.com/brainlet/brainkit/modules/messaging"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,7 +19,7 @@ import (
 
 func publishAndWait[Req sdk.BrainkitMessage, Resp any](t *testing.T, rt sdk.Runtime, ctx context.Context, req Req) Resp {
 	t.Helper()
-	pr, err := sdk.Publish(rt, ctx, req)
+	pr, err := protocol.Publish(rt, ctx, req)
 	require.NoError(t, err)
 	ch := make(chan json.RawMessage, 1)
 	unsub, err := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {

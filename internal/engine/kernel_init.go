@@ -13,9 +13,10 @@ import (
 
 func (k *Kernel) initProviders(cfg types.KernelConfig, bridgeURLs map[string]string) error {
 	host, err := providerhost.NewManager(cfg, providerhost.Hooks{
-		HasJSRuntime: k.HasJSRuntime,
-		EvalTS:       k.EvalTS,
-		CallJSSync:   k.callJSSync,
+		HasJSRuntime:    k.HasJSRuntime,
+		EvalTS:          k.EvalTS,
+		CallJS:          k.CallJS,
+		ShutdownContext: k.shutdownCtx,
 	})
 	if err != nil {
 		return err
@@ -24,7 +25,9 @@ func (k *Kernel) initProviders(cfg types.KernelConfig, bridgeURLs map[string]str
 	k.storageHost = storagehost.NewManager(host.Registry(), k.HasJSRuntime)
 
 	// Register all storages and vectors in the provider registry
-	k.registerStorages(cfg, bridgeURLs)
+	if err := k.registerStorages(cfg, bridgeURLs); err != nil {
+		return fmt.Errorf("brainkit: register storages: %w", err)
+	}
 	if err := k.registerVectors(cfg, bridgeURLs); err != nil {
 		return fmt.Errorf("brainkit: register vectors: %w", err)
 	}
@@ -51,7 +54,7 @@ func (k *Kernel) initTransport(cfg types.KernelConfig) error {
 	return nil
 }
 
-// StartRouter finalizes kernel-only command bindings and starts the Watermill
+// StartRouter finalizes kernel-only command bindings and starts the message
 // router. Safe to call once after NewKernel(DeferRouterStart=true); no-op if
 // the router has already been started.
 func (k *Kernel) StartRouter(ctx context.Context) error {
@@ -73,7 +76,7 @@ func (k *Kernel) initPersistence(cfg types.KernelConfig) {
 
 func (k *Kernel) initAudit(cfg types.KernelConfig) func() {
 	// Always create the Recorder — it's nil-safe without a store (Record
-	// calls no-op until the audit module attaches one via SetStore). The
+	// calls no-op until the audit module attaches one via a scoped lease). The
 	// audit module owns the store wiring; the Recorder stays in core so
 	// every subsystem can record unconditionally.
 	k.audit = auditpkg.NewRecorderWithConfig(auditpkg.RecorderConfig{

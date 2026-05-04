@@ -2,11 +2,11 @@ package stress
 
 import (
 	"context"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
@@ -15,8 +15,8 @@ import (
 	"github.com/brainlet/brainkit/sdk"
 )
 
-func stressModules() []brainkit.Module {
-	return []brainkit.Module{secretsmod.New(), toolsmod.New(), packages.New()}
+func stressModules() []bkmodule.Module {
+	return []bkmodule.Module{secretsmod.New(), toolsmod.New(), packages.New()}
 }
 
 func stressTeardown(t *testing.T, rt sdk.CallerRuntime, sourceOrName string) error {

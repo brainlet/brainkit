@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
@@ -29,7 +32,7 @@ func testForgeryStealReplyTo(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
+	pr, _ := protocol.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.steal-reply-sec.api", Payload: json.RawMessage(`{"q":"legit"}`),
 	})
 
@@ -68,7 +71,7 @@ func testForgeryInjectFakeReply(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
+	pr, _ := protocol.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.slow-service-sec.slow", Payload: json.RawMessage(`{}`),
 	})
 
@@ -125,13 +128,13 @@ func testForgeryCorrelationIdCollision(t *testing.T, env *suite.TestEnv) {
 	})
 	defer unsubA()
 
-	sdk.Publish(k, ctx, sdk.CustomMsg{
+	protocol.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.collision-svc-sec.echo", Payload: json.RawMessage(`{"data":"from-A"}`),
-	}, sdk.WithReplyTo(sharedReplyTo))
+	}, protocol.WithReplyTo(sharedReplyTo))
 
-	sdk.Publish(k, ctx, sdk.CustomMsg{
+	protocol.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.collision-svc-sec.echo", Payload: json.RawMessage(`{"data":"from-B"}`),
-	}, sdk.WithReplyTo(sharedReplyTo))
+	}, protocol.WithReplyTo(sharedReplyTo))
 
 	var received []string
 	for i := 0; i < 2; i++ {
@@ -150,7 +153,7 @@ func testForgeryRecursiveBusLoop(t *testing.T, env *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Modules: []brainkit.Module{toolsmod.New()},
+		Modules: []bkmodule.Module{toolsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -170,7 +173,7 @@ func testForgeryRecursiveBusLoop(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
+	pr, _ := protocol.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.recursive-sec.loop", Payload: json.RawMessage(`{"depth":0}`),
 	})
 	ch := make(chan []byte, 1)

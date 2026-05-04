@@ -40,7 +40,7 @@ Manage the registry at runtime by mounting `modules/registry` and calling
 _, _ = registrymsg.CallStorageAdd(kit, ctx, registrymsg.StorageAddMsg{
     Name:   "scratch",
     Type:   "sqlite",
-    Config: brainkit.MustJSON(map[string]any{"path": ":memory:"}),
+    Config: json.RawMessage(`{"path":":memory:"}`),
 })
 
 list, _ := registrymsg.CallRegistryList(kit, ctx,
@@ -173,11 +173,11 @@ during init. This makes workflow state durable:
 - `workflow.status` reads from storage — survives Kit restart.
 - Suspended workflows survive restarts; `workflow.resume` works on
   the new Kit.
-- `restartActiveWorkflows` on startup picks up `running` /
-  `waiting` runs from the previous process.
+- Mounting `modules/workflow` triggers active-run recovery for
+  `running` / `waiting` runs from the previous process.
 
-No manual step is required — declaring a storage is enough. See
-[`examples/workflows/`](../../examples/workflows/).
+Declare a storage and mount `modules/workflow` to enable that recovery path.
+See [`examples/workflows/`](../../examples/workflows/).
 
 ## Auth matrix
 

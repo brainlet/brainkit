@@ -18,6 +18,7 @@ import (
 	"github.com/brainlet/brainkit/modules/registry/registrymsg"
 	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -53,7 +54,7 @@ func testConcurrencyDeployTeardownRace(t *testing.T, env *suite.TestEnv) {
 			// Teardown via bus — non-fatal
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			pr, err := sdk.Publish(tk, ctx, packagemsg.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
+			pr, err := protocol.Publish(tk, ctx, packagemsg.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
 			if err == nil {
 				ch := make(chan struct{}, 1)
 				unsub, _ := sdk.SubscribeTo[packagemsg.PackageTeardownResp](tk, ctx, pr.ReplyTo, func(_ packagemsg.PackageTeardownResp, _ sdk.Message) {
@@ -352,7 +353,7 @@ func testConcurrencyMetricsDuringChurn(t *testing.T, env *suite.TestEnv) {
 	// Query metrics via bus repeatedly
 	for i := 0; i < 50; i++ {
 		mctx, mcancel := context.WithTimeout(ctx, 2*time.Second)
-		pr, err := sdk.Publish(tk, mctx, metricsmod.MetricsGetMsg{})
+		pr, err := protocol.Publish(tk, mctx, metricsmod.MetricsGetMsg{})
 		if err == nil {
 			ch := make(chan metricsmod.MetricsGetResp, 1)
 			unsub, _ := sdk.SubscribeTo[metricsmod.MetricsGetResp](tk, mctx, pr.ReplyTo, func(r metricsmod.MetricsGetResp, _ sdk.Message) {

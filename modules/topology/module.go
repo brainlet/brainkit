@@ -44,7 +44,7 @@ type Config struct {
 	UseDiscovery bool
 }
 
-// Module is the brainkit.Module form of cross-kit topology. It owns
+// Module is the bkmodule.Module form of cross-kit topology. It owns
 // the peers.list / peers.resolve bus commands and provides Resolve()
 // for WithCallTo routing. Discovery is optional — without it the
 // module works from the static Peers slice only.
@@ -239,7 +239,7 @@ func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	return NewModule(cfg), nil
 }
 
-// Describe surfaces module metadata for `brainkit modules list`.
+// Describe surfaces module metadata for module manifests.
 func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "topology",

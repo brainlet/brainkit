@@ -39,6 +39,77 @@ func (m *mockTransport) SubscribeRawFanOutGlobal(_ context.Context, topic string
 	return func() {}, nil
 }
 
+type blockingPresenceTransport struct {
+	mu           sync.Mutex
+	handlers     []func(payload json.RawMessage)
+	publishes    int
+	unsubscribes int
+	blockOnce    sync.Once
+	releaseOnce  sync.Once
+	blockedCh    chan struct{}
+	releaseCh    chan struct{}
+}
+
+func newBlockingPresenceTransport() *blockingPresenceTransport {
+	return &blockingPresenceTransport{
+		blockedCh: make(chan struct{}),
+		releaseCh: make(chan struct{}),
+	}
+}
+
+func (m *blockingPresenceTransport) PublishRawGlobal(ctx context.Context, _ string, payload json.RawMessage) error {
+	m.mu.Lock()
+	m.publishes++
+	publish := m.publishes
+	handlers := make([]func(json.RawMessage), len(m.handlers))
+	copy(handlers, m.handlers)
+	m.mu.Unlock()
+
+	if publish == 2 {
+		m.blockOnce.Do(func() { close(m.blockedCh) })
+		select {
+		case <-m.releaseCh:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	for _, h := range handlers {
+		h(payload)
+	}
+	return nil
+}
+
+func (m *blockingPresenceTransport) SubscribeRawFanOutGlobal(_ context.Context, _ string, handler func(payload json.RawMessage)) (func(), error) {
+	m.mu.Lock()
+	m.handlers = append(m.handlers, handler)
+	m.mu.Unlock()
+	return func() {
+		m.mu.Lock()
+		m.unsubscribes++
+		m.mu.Unlock()
+	}, nil
+}
+
+func (m *blockingPresenceTransport) blocked() bool {
+	select {
+	case <-m.blockedCh:
+		return true
+	default:
+		return false
+	}
+}
+
+func (m *blockingPresenceTransport) release() {
+	m.releaseOnce.Do(func() { close(m.releaseCh) })
+}
+
+func (m *blockingPresenceTransport) unsubscribeCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.unsubscribes
+}
+
 func TestBus_AnnounceAndDiscover(t *testing.T) {
 	tr := newMockTransport()
 
@@ -119,6 +190,80 @@ func TestBus_GracefulLeave(t *testing.T) {
 	peers, _ = d1.Browse()
 	assert.Len(t, peers, 0, "kit-2 should be removed by leave message")
 	d1.Close()
+}
+
+func TestBus_CloseDetachesSubscriptionAndStopsLoops(t *testing.T) {
+	tr := newMockTransport()
+	d := NewBus(BusConfig{Transport: tr, Heartbeat: time.Hour, TTL: time.Hour})
+	require.NoError(t, d.Register(Peer{Name: "kit-1", Namespace: "ns"}))
+
+	snapshot := d.DebugSnapshot()
+	require.True(t, snapshot.Registered)
+	require.False(t, snapshot.Closing)
+	require.False(t, snapshot.Closed)
+	require.True(t, snapshot.SubscriptionAttached)
+	require.Equal(t, int64(2), snapshot.ActiveLoops)
+
+	require.NoError(t, d.Close())
+	snapshot = d.DebugSnapshot()
+	require.True(t, snapshot.Registered)
+	require.False(t, snapshot.Closing)
+	require.True(t, snapshot.Closed)
+	require.False(t, snapshot.SubscriptionAttached)
+	require.Zero(t, snapshot.ActiveLoops)
+}
+
+func TestBusCloseContextReportsDeadlineAndRetriesStuckLoop(t *testing.T) {
+	tr := newBlockingPresenceTransport()
+	d := NewBus(BusConfig{Transport: tr, Heartbeat: time.Millisecond, TTL: time.Hour})
+	require.NoError(t, d.Register(Peer{Name: "kit-1", Namespace: "ns"}))
+
+	require.Eventually(t, tr.blocked, time.Second, 10*time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	closeErr := make(chan error, 1)
+	go func() {
+		closeErr <- d.CloseContext(ctx)
+	}()
+	require.Eventually(t, func() bool {
+		return d.DebugSnapshot().Closing
+	}, time.Second, 10*time.Millisecond)
+	require.ErrorIs(t, <-closeErr, context.DeadlineExceeded)
+
+	snapshot := d.DebugSnapshot()
+	require.False(t, snapshot.Closing)
+	require.False(t, snapshot.Closed)
+	require.True(t, snapshot.SubscriptionAttached)
+	require.GreaterOrEqual(t, snapshot.ActiveLoops, int64(1))
+
+	retryCtx, retryCancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	err := d.CloseContext(retryCtx)
+	retryCancel()
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	snapshot = d.DebugSnapshot()
+	require.False(t, snapshot.Closing)
+	require.False(t, snapshot.Closed)
+	require.True(t, snapshot.SubscriptionAttached)
+	require.GreaterOrEqual(t, snapshot.ActiveLoops, int64(1))
+
+	tr.release()
+	require.NoError(t, d.CloseContext(context.Background()))
+	snapshot = d.DebugSnapshot()
+	require.True(t, snapshot.Closed)
+	require.False(t, snapshot.SubscriptionAttached)
+	require.Zero(t, snapshot.ActiveLoops)
+	require.Equal(t, 1, tr.unsubscribeCount())
+}
+
+func TestBusRegisterRefusesDuplicateActiveRegistration(t *testing.T) {
+	tr := newMockTransport()
+	d := NewBus(BusConfig{Transport: tr, Heartbeat: time.Hour, TTL: time.Hour})
+	require.NoError(t, d.Register(Peer{Name: "kit-1", Namespace: "ns"}))
+	require.ErrorContains(t, d.Register(Peer{Name: "kit-1b", Namespace: "ns"}), "already registered")
+	require.NoError(t, d.Close())
+	require.NoError(t, d.Register(Peer{Name: "kit-1b", Namespace: "ns"}))
+	require.NoError(t, d.Close())
 }
 
 func TestBus_ResolveReturnsNamespace(t *testing.T) {

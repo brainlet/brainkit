@@ -10,6 +10,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/sdk/systemmsg"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -37,7 +38,7 @@ func testSyncThrowErrorResponse(t *testing.T, env *suite.TestEnv) {
 
 	deployInlinePkg(t, env.Kit, ctx, "thrower.ts", `bus.on("fail", (msg) => { throw new Error("sync boom"); });`)
 
-	_, err := env.Kit.Caller().Call(ctx, sdk.ResolveServiceTopic("thrower.ts", "fail"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
+	_, err := env.Kit.Caller().Call(ctx, protocol.ResolveServiceTopic("thrower.ts", "fail"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
 	if assert.Error(t, err, "caller should get error response, not silent timeout") {
 		assert.Contains(t, err.Error(), "sync boom")
 	}
@@ -49,7 +50,7 @@ func testAsyncRejectionErrorResponse(t *testing.T, env *suite.TestEnv) {
 
 	deployInlinePkg(t, env.Kit, ctx, "async-fail.ts", `bus.on("fail", async (msg) => { throw new Error("async boom"); });`)
 
-	_, err := env.Kit.Caller().Call(ctx, sdk.ResolveServiceTopic("async-fail.ts", "fail"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
+	_, err := env.Kit.Caller().Call(ctx, protocol.ResolveServiceTopic("async-fail.ts", "fail"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
 	if assert.Error(t, err, "caller should get error response for async rejection") {
 		assert.Contains(t, err.Error(), "async boom")
 	}
@@ -71,7 +72,7 @@ func testHandlerFailedEventEmitted(t *testing.T, _ *suite.TestEnv) {
 
 	deployInlinePkg(t, freshEnv.Kit, ctx, "event-emitter-fail.ts", `bus.on("fail", (msg) => { throw new Error("event test"); });`)
 
-	sdk.SendToService(freshEnv.Kit, ctx, "event-emitter-fail.ts", "fail", map[string]bool{"x": true})
+	protocol.SendToService(freshEnv.Kit, ctx, "event-emitter-fail.ts", "fail", map[string]bool{"x": true})
 
 	select {
 	case evt := <-eventCh:
@@ -107,7 +108,7 @@ func testRetryPolicyRetries(t *testing.T, _ *suite.TestEnv) {
 			});
 		`)
 
-	payload, err := retryEnv.Kit.Caller().Call(ctx, sdk.ResolveServiceTopic("retry-test.ts", "try"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
+	payload, err := retryEnv.Kit.Caller().Call(ctx, protocol.ResolveServiceTopic("retry-test.ts", "try"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
 	if assert.NoError(t, err, "retries should eventually succeed") {
 		var resp map[string]any
 		requireNoJSONError(t, json.Unmarshal(payload, &resp))
@@ -138,7 +139,7 @@ func testRetryExhaustedDeadLetter(t *testing.T, _ *suite.TestEnv) {
 
 	errCh := make(chan string, 1)
 	go func() {
-		_, err := dlEnv.Kit.Caller().Call(ctx, sdk.ResolveServiceTopic("dl-test.ts", "fail"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
+		_, err := dlEnv.Kit.Caller().Call(ctx, protocol.ResolveServiceTopic("dl-test.ts", "fail"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
 		if err != nil {
 			errCh <- err.Error()
 		}
@@ -181,7 +182,7 @@ func testExhaustedEventEmitted(t *testing.T, _ *suite.TestEnv) {
 	})
 	defer exUnsub()
 
-	sdk.SendToService(exEnv.Kit, ctx, "exhaust-evt.ts", "fail", map[string]bool{"x": true})
+	protocol.SendToService(exEnv.Kit, ctx, "exhaust-evt.ts", "fail", map[string]bool{"x": true})
 
 	select {
 	case evt := <-exhaustedCh:
@@ -213,7 +214,7 @@ func testRetryPreservesReplyTo(t *testing.T, _ *suite.TestEnv) {
 			});
 		`)
 
-	payload, err := rpEnv.Kit.Caller().Call(ctx, sdk.ResolveServiceTopic("replyto-test.ts", "try"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
+	payload, err := rpEnv.Kit.Caller().Call(ctx, protocol.ResolveServiceTopic("replyto-test.ts", "try"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
 	if assert.NoError(t, err, "original caller should receive the success reply after retry") {
 		var resp map[string]any
 		requireNoJSONError(t, json.Unmarshal(payload, &resp))

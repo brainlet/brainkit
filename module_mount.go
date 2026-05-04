@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
@@ -27,7 +28,14 @@ func (k *Kit) Mount(ctx context.Context, mod bkmodule.Module) error {
 	if id == "" {
 		return fmt.Errorf("brainkit: module ID is required")
 	}
-	for _, dep := range moduleDependencies(mod) {
+	desc := bkmodule.DescribeModule(mod)
+	if k.moduleMounted(id) {
+		return fmt.Errorf("brainkit: module %q already mounted", id)
+	}
+	if err := k.preflightModuleMount(desc); err != nil {
+		return err
+	}
+	for _, dep := range desc.Requires {
 		if dep == "" || dep == id {
 			continue
 		}
@@ -44,7 +52,7 @@ func (k *Kit) Mount(ctx context.Context, mod bkmodule.Module) error {
 			}
 		}
 	}
-	if id != "jsruntime" && moduleNeedsJSRuntime(mod) {
+	if id != "jsruntime" && descriptorDependsOn(desc, "jsruntime") {
 		if _, mounted := k.Module("jsruntime"); !mounted {
 			jsmod, err := buildRegisteredModule("jsruntime", k.fsRoot)
 			if err != nil {
@@ -56,6 +64,13 @@ func (k *Kit) Mount(ctx context.Context, mod bkmodule.Module) error {
 				}
 			}
 		}
+	}
+
+	if k.moduleMounted(id) {
+		return fmt.Errorf("brainkit: module %q already mounted", id)
+	}
+	if err := k.preflightModuleMount(desc); err != nil {
+		return err
 	}
 
 	k.mountMu.Lock()
@@ -84,36 +99,121 @@ func (k *Kit) Mount(ctx context.Context, mod bkmodule.Module) error {
 		k.mountMu.Unlock()
 		return fmt.Errorf("brainkit: mount %q: %w", id, err)
 	}
-	desc := mountedModuleDescriptor(id, bkmodule.DescribeModule(mod), host.commands, host.subscriptions, host.capabilities, host.resources, scope.Resources())
+	desc = mountedModuleDescriptor(id, desc, host.commands, host.subscriptions, host.capabilities, host.resources, scope.Resources())
 	k.mountMu.Lock()
 	k.modules[id] = mod
 	k.descs[id] = desc
+	k.mountOrder = append(k.mountOrder, id)
 	k.mountMu.Unlock()
 	return nil
 }
 
+func (k *Kit) moduleMounted(id string) bool {
+	k.mountMu.Lock()
+	defer k.mountMu.Unlock()
+	_, mounted := k.mounted[id]
+	return mounted
+}
+
+func formatRequiredCapability(cap bkmodule.CapabilityDescriptor) string {
+	if cap.Type == "" {
+		return cap.Name
+	}
+	return fmt.Sprintf("%s (%s)", cap.Name, cap.Type)
+}
+
+func (k *Kit) hasCapability(name string) bool {
+	_, _, ok := k.capabilitySource(name)
+	return ok
+}
+
+func (k *Kit) capabilitySource(name string) (source, provider string, available bool) {
+	if k == nil || name == "" {
+		return "", "", false
+	}
+	if _, ok := k.caps.Get(name); ok {
+		provider := k.mountedCapabilityProvider(name)
+		if provider == "" {
+			provider = "mounted"
+		}
+		return "mounted", provider, true
+	}
+	if _, ok := (&kitCapabilityHost{k: k}).coreCapability(name); ok {
+		return "core", "brainkit.core", true
+	}
+	return "", "", false
+}
+
+func (k *Kit) mountedCapabilityProvider(name string) string {
+	k.mountMu.Lock()
+	defer k.mountMu.Unlock()
+	for _, id := range k.mountOrder {
+		desc, ok := k.descs[id]
+		if ok && descriptorProvidesCapability(desc, name) {
+			return id
+		}
+	}
+	var ids []string
+	for id := range k.descs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		desc := k.descs[id]
+		if descriptorProvidesCapability(desc, name) {
+			return id
+		}
+	}
+	return ""
+}
+
+func descriptorProvidesCapability(desc bkmodule.Descriptor, name string) bool {
+	if desc.CapabilityGroups != nil {
+		for _, cap := range desc.CapabilityGroups.Provided {
+			if cap.Name == name {
+				return true
+			}
+		}
+	}
+	for _, cap := range desc.Capabilities {
+		if cap.Name == name && cap.Direction == bkmodule.CapabilityProvided {
+			return true
+		}
+	}
+	return false
+}
+
 // Unmount closes all resources owned by a mounted module.
 func (k *Kit) Unmount(ctx context.Context, id string) error {
+	if dependents := k.mountedDependents(id); len(dependents) > 0 {
+		return fmt.Errorf("brainkit: module %q is required by mounted module(s): %s", id, strings.Join(dependents, ", "))
+	}
 	k.mountMu.Lock()
 	scope, ok := k.mounted[id]
-	if ok {
-		delete(k.mounted, id)
-		delete(k.modules, id)
-		delete(k.descs, id)
-	}
 	k.mountMu.Unlock()
 	if !ok {
 		return fmt.Errorf("brainkit: module %q is not mounted", id)
 	}
-	return scope.Close(ctx)
+	if err := scope.Close(ctx); err != nil {
+		return err
+	}
+	k.mountMu.Lock()
+	if k.mounted[id] == scope {
+		delete(k.mounted, id)
+		delete(k.modules, id)
+		delete(k.descs, id)
+		k.removeMountOrderLocked(id)
+	}
+	k.mountMu.Unlock()
+	return nil
 }
 
 // MountedModules returns descriptors for every module currently mounted in
 // this Kit. The result is a snapshot sorted by module name.
-func (k *Kit) MountedModules() []ModuleDescriptor {
+func (k *Kit) MountedModules() []bkmodule.Descriptor {
 	k.mountMu.Lock()
 	defer k.mountMu.Unlock()
-	out := make([]ModuleDescriptor, 0, len(k.descs))
+	out := make([]bkmodule.Descriptor, 0, len(k.descs))
 	for _, desc := range k.descs {
 		out = append(out, desc)
 	}
@@ -208,27 +308,70 @@ func mountedModuleDescriptor(
 }
 
 func (k *Kit) closeMounted(ctx context.Context) error {
-	k.mountMu.Lock()
-	ids := make([]string, 0, len(k.mounted))
-	for id := range k.mounted {
-		ids = append(ids, id)
+	type mountedScope struct {
+		id    string
+		scope bkmodule.Scope
 	}
-	sort.Strings(ids)
-	scopes := make([]bkmodule.Scope, 0, len(ids))
-	for i := len(ids) - 1; i >= 0; i-- {
-		id := ids[i]
-		scopes = append(scopes, k.mounted[id])
-		delete(k.mounted, id)
-		delete(k.modules, id)
-		delete(k.descs, id)
+
+	k.mountMu.Lock()
+	order := append([]string(nil), k.mountOrder...)
+	scopes := make([]mountedScope, 0, len(k.mounted))
+	seen := make(map[string]struct{}, len(k.mounted))
+	for i := len(order) - 1; i >= 0; i-- {
+		id := order[i]
+		scope, ok := k.mounted[id]
+		if !ok {
+			continue
+		}
+		scopes = append(scopes, mountedScope{id: id, scope: scope})
+		seen[id] = struct{}{}
+	}
+	remaining := make([]string, 0, len(k.mounted))
+	for id := range k.mounted {
+		if _, ok := seen[id]; !ok {
+			remaining = append(remaining, id)
+		}
+	}
+	sort.Strings(remaining)
+	for i := len(remaining) - 1; i >= 0; i-- {
+		id := remaining[i]
+		scopes = append(scopes, mountedScope{id: id, scope: k.mounted[id]})
 	}
 	k.mountMu.Unlock()
 
 	var err error
-	for _, scope := range scopes {
-		err = errors.Join(err, scope.Close(ctx))
+	var closed []mountedScope
+	for _, mounted := range scopes {
+		if closeErr := mounted.scope.Close(ctx); closeErr != nil {
+			err = errors.Join(err, closeErr)
+			continue
+		}
+		closed = append(closed, mounted)
+	}
+	if len(closed) > 0 {
+		k.mountMu.Lock()
+		for _, mounted := range closed {
+			if k.mounted[mounted.id] != mounted.scope {
+				continue
+			}
+			delete(k.mounted, mounted.id)
+			delete(k.modules, mounted.id)
+			delete(k.descs, mounted.id)
+			k.removeMountOrderLocked(mounted.id)
+		}
+		k.mountMu.Unlock()
 	}
 	return err
+}
+
+func (k *Kit) removeMountOrderLocked(id string) {
+	for i, mountedID := range k.mountOrder {
+		if mountedID != id {
+			continue
+		}
+		k.mountOrder = append(k.mountOrder[:i], k.mountOrder[i+1:]...)
+		return
+	}
 }
 
 type moduleHost struct {
@@ -280,11 +423,26 @@ type kitMessageHost struct {
 	record func(string)
 }
 
+type rawSubscriptionRuntime interface {
+	SubscribeRawHandle(context.Context, string, func(sdk.Message)) (bkmodule.Handle, error)
+}
+
 func (h *kitMessageHost) PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error) {
 	return h.k.runtime().PublishRaw(ctx, topic, payload)
 }
 
 func (h *kitMessageHost) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.Message)) (bkmodule.Handle, error) {
+	if rt, ok := h.k.runtime().(rawSubscriptionRuntime); ok {
+		handle, err := rt.SubscribeRawHandle(ctx, topic, handler)
+		if err != nil {
+			return nil, err
+		}
+		if h.record != nil {
+			h.record(topic)
+		}
+		h.scope.Defer(handle.Close)
+		return handle, nil
+	}
 	cancel, err := h.k.runtime().SubscribeRaw(ctx, topic, handler)
 	if err != nil {
 		return nil, err
@@ -396,7 +554,7 @@ func (h *kitCapabilityHost) Require(name string) (any, error) {
 func (h *kitCapabilityHost) coreCapability(name string) (any, bool) {
 	switch name {
 	case bkmodule.CapabilityRuntimeID:
-		return RuntimeID(), true
+		return runtimeID, true
 	case bkmodule.CapabilityNamespace:
 		return h.k.kernel.Namespace(), true
 	case bkmodule.CapabilityCallerID:
@@ -405,16 +563,16 @@ func (h *kitCapabilityHost) coreCapability(name string) (any, bool) {
 		return transport.Presence(h.k.kernel.Remote()), true
 	case bkmodule.CapabilityPluginChecker:
 		return func() bkmodule.PluginChecker { return h.k.kernel.PluginChecker() }, true
-	case bkmodule.CapabilitySetScheduleHandler:
-		return func(handler types.ScheduleHandler) { h.k.kernel.SetScheduleHandler(handler) }, true
-	case bkmodule.CapabilitySetAuditStore:
-		return func(store auditpkg.Store) { h.k.kernel.SetAuditStore(store) }, true
-	case bkmodule.CapabilitySetAuditVerbosity:
-		return func(verbosity auditpkg.Verbosity) { h.k.kernel.SetAuditVerbosity(verbosity) }, true
-	case bkmodule.CapabilitySetTraceStore:
-		return func(store coretracing.TraceStore) { h.k.kernel.SetTraceStore(store) }, true
+	case bkmodule.CapabilityScheduleHandlerLease:
+		return bkmodule.LeaseFunc[types.ScheduleHandler](h.k.kernel.LeaseScheduleHandler), true
+	case bkmodule.CapabilityAuditStoreLease:
+		return bkmodule.LeaseFunc[auditpkg.Store](h.k.kernel.LeaseAuditStore), true
+	case bkmodule.CapabilityAuditVerbosityLease:
+		return bkmodule.LeaseFunc[auditpkg.Verbosity](h.k.kernel.LeaseAuditVerbosity), true
+	case bkmodule.CapabilityTraceStoreLease:
+		return bkmodule.LeaseFunc[coretracing.TraceStore](h.k.kernel.LeaseTraceStore), true
 	case bkmodule.CapabilityProbeAll:
-		return func() { h.k.kernel.ProbeAll() }, true
+		return bkmodule.ProbeRunnerFunc(h.k.kernel.ProbeAllContext), true
 	case bkmodule.CapabilityTransportKind:
 		return h.k.kernel.TransportKind(), true
 	case bkmodule.CapabilitySecretStore:
@@ -423,9 +581,12 @@ func (h *kitCapabilityHost) coreCapability(name string) (any, bool) {
 		}
 		return nil, false
 	case bkmodule.CapabilityPluginRestarter:
-		return func() any { return h.k.kernel.PluginRestarter() }, true
+		return func() plugincap.Restarter { return h.k.kernel.PluginRestarter() }, true
 	case bkmodule.CapabilityRefreshProviderSecret:
-		return func(name, value string) { h.k.kernel.RefreshProviderIfSecret(name, value) }, true
+		if refresher := h.k.kernel.ProviderSecretRefresher(); refresher != nil {
+			return refresher, true
+		}
+		return nil, false
 	case bkmodule.CapabilityShutdownSignal:
 		return h.k.kernel.ShutdownSignal(), true
 	case bkmodule.CapabilityRemoteClient:
@@ -436,17 +597,24 @@ func (h *kitCapabilityHost) coreCapability(name string) (any, bool) {
 		return h.k.kernel.Tools, true
 	case bkmodule.CapabilityProviderRegistry:
 		return h.k.kernel.ProviderRegistry(), true
-	case bkmodule.CapabilityStorageManager:
-		return h.k.kernel.StorageManager(), true
+	case bkmodule.CapabilityRegistryMutation:
+		if mutations := h.k.kernel.RegistryMutationManager(); mutations != nil {
+			return mutations, true
+		}
+		return nil, false
 	case bkmodule.CapabilityKitStore:
 		if store := h.k.kernel.Store(); store != nil {
 			return store, true
 		}
 		return nil, false
 	case bkmodule.CapabilityMetricsSnapshot:
-		return func() any { return h.k.kernel.Metrics() }, true
+		return func() types.KernelMetrics { return h.k.kernel.Metrics() }, true
 	case bkmodule.CapabilityHealthSnapshot:
 		return func(ctx context.Context) any { return h.k.kernel.Health(ctx) }, true
+	case bkmodule.CapabilityLifecycleDebugRegistry:
+		return bkmodule.LifecycleDebugRegistry(h.k.lifecycleDebug), true
+	case bkmodule.CapabilityLifecycleDebugSnapshot:
+		return func() bkmodule.LifecycleDebugSnapshot { return h.k.lifecycleDebugSnapshot() }, true
 	case bkmodule.CapabilityHealthProbes:
 		return bkmodule.HealthProbes(h.k.kernel), true
 	case bkmodule.CapabilityRequestCaller:
@@ -472,14 +640,10 @@ func (h *kitCapabilityHost) coreCapability(name string) (any, bool) {
 		return func(err error, errorCtx types.ErrorContext) {
 			h.k.kernel.ReportError(err, errorCtx)
 		}, true
-	case bkmodule.CapabilitySetPluginChecker:
-		return func(checker bkmodule.PluginChecker) {
-			h.k.kernel.SetPluginChecker(checker)
-		}, true
-	case bkmodule.CapabilitySetPluginRestarter:
-		return func(restarter plugincap.Restarter) {
-			h.k.kernel.SetPluginRestarter(restarter)
-		}, true
+	case bkmodule.CapabilityPluginCheckerLease:
+		return bkmodule.LeaseFunc[bkmodule.PluginChecker](h.k.kernel.LeasePluginChecker), true
+	case bkmodule.CapabilityPluginRestarterLease:
+		return bkmodule.LeaseFunc[plugincap.Restarter](h.k.kernel.LeasePluginRestarter), true
 	case bkmodule.CapabilityJSRuntimeHost:
 		return h.k.kernel, true
 	default:

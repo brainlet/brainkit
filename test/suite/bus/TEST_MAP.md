@@ -16,7 +16,7 @@
 | testJSReplyDoneFlag | Sets up a JS subscriber that sends a chunk then a final reply, verifies Go receives both with correct correlationId and done metadata |
 | testJSSubscribeReceivesMetadata | Sets up a JS subscriber, publishes from Go, verifies the JS handler receives payload, replyTo, correlationId, and topic |
 | testGoToJSRoundTrip | Sets up a JS handler for a topic, publishes a CustomMsg from Go, asserts the JS handler replies with the expected payload |
-| testDeployWithBusOn | Deploys .ts with bus.on("greet"), sends via SendToService, verifies the reply contains "hello world" |
+| testDeployWithBusOn | Deploys .ts with bus.on("greet"), sends via protocol.SendToService, verifies the reply contains "hello world" |
 | testStreamingChunks | Deploys .ts with msg.send (chunk) + msg.reply (final), verifies chunks arrive and last has done=true |
 | testKitRegisterAgentDiscovery | Deploys .ts calling kit.register("agent"), verifies agent appears in AgentListMsg, tears down, verifies agent is removed |
 
@@ -29,14 +29,14 @@
 | testContextCancellation | Publishes with an already-cancelled context, verifies no panic |
 | testSubscribeCancellation | Subscribes then immediately unsubs, verifies no messages are received afterward |
 
-### sdk_reply.go — sdk.Reply, sdk.SendChunk, sdk.SendToService
+### sdk_reply.go — sdk.Reply, sdk.SendChunk, sdk.protocol.SendToService
 
 | Function | Purpose |
 |----------|---------|
-| testSDKReply | Deploys .ts echo service, calls via SendToService, subscribes to replyTo, verifies pong response from TS |
+| testSDKReply | Deploys .ts echo service, exercises the low-level reply helper, and verifies pong response from TS |
 | testSDKReplyGoToGo | Registers a Go subscriber that calls sdk.Reply, publishes from Go, verifies the reply arrives on the replyTo topic |
 | testSDKSendChunk | Registers a Go subscriber that sends 3 chunks + final via sdk.SendChunk/sdk.Reply, verifies at least 4 messages received |
-| testSDKSendToService | Deploys .ts calc service, calls via SendToService with a=17 b=25, verifies result=42 |
+| testSDKSendToService | Deploys .ts calc service, calls via protocol.SendToService with a=17 b=25, verifies result=42 |
 
 ### failure.go — Handler errors, retry, dead letter, exhausted events
 
@@ -208,7 +208,7 @@
 
 | Function | Purpose |
 |----------|---------|
-| testSurfaceGoSDK | Exercises tools.list, tools.call, secrets set+get, fs write+read, bus publish+reply, schedule, metrics, registry from Go SDK |
+| testSurfaceGoSDK | Exercises tools.list, tools.call, secrets set+get, fs write+read, request/reply, schedule, metrics, registry from Go SDK |
 | testSurfaceTSDeployed | Deploys .ts code for each operation (tools, secrets, fs, bus, registry, schedule, metrics), verifies output |
 | testSurfaceEvalTS | Runs each operation via EvalTS in global scope, verifies correct returns |
 | testSurfaceErrorConsistency | Verifies NOT_FOUND and VALIDATION_ERROR produce identical error codes from Go, TS deployed, and EvalTS surfaces |

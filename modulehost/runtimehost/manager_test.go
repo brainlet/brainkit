@@ -3,7 +3,6 @@ package runtimehost
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 	"time"
 
@@ -15,34 +14,44 @@ import (
 
 func TestRedeployPersistedDeploymentsSortsAndRestores(t *testing.T) {
 	store := &fakeStore{deployments: []types.PersistedDeployment{
-		{Source: "b.ts", Code: "b", Order: 2, PackageName: "pkg"},
+		{Source: "b.ts", Code: "b", Order: 2, PackageName: "pkg", ArtifactKind: types.DeployArtifactNormalizedJS},
 		{Source: "a.ts", Code: "a", Order: 1},
+		{Source: "c.ts", Code: "c", Order: 3, ArtifactKind: types.DeployArtifactNormalizedJS},
 	}}
 	host := &fakeHost{hasRuntime: true}
 	manager := New(host, nil, nil)
 
 	manager.RedeployPersistedDeployments(types.KernelConfig{Store: store})
 
-	if host.seed != 2 {
-		t.Fatalf("deploy order seed = %d, want 2", host.seed)
+	if host.seed != 3 {
+		t.Fatalf("deploy order seed = %d, want 3", host.seed)
 	}
-	if len(host.deploys) != 2 {
-		t.Fatalf("deploy count = %d, want 2", len(host.deploys))
+	if len(host.deploys) != 3 {
+		t.Fatalf("deploy count = %d, want 3", len(host.deploys))
 	}
-	if host.deploys[0].source != "a.ts" || host.deploys[1].source != "b.ts" {
+	if host.deploys[0].source != "a.ts" || host.deploys[1].source != "b.ts" || host.deploys[2].source != "c.ts" {
 		t.Fatalf("deploy order = %#v", host.deploys)
 	}
-	if !host.deploys[0].cfg.Restoring || !host.deploys[1].cfg.Restoring {
+	if !host.deploys[0].cfg.Restoring || !host.deploys[1].cfg.Restoring || !host.deploys[2].cfg.Restoring {
 		t.Fatalf("redeploys must use WithRestoring: %#v", host.deploys)
 	}
 	if host.deploys[1].cfg.PackageName != "pkg" {
 		t.Fatalf("package name = %q, want pkg", host.deploys[1].cfg.PackageName)
 	}
+	if host.deploys[1].cfg.EffectiveArtifactKind() != types.DeployArtifactNormalizedJS {
+		t.Fatalf("package redeploy must preserve normalized JS artifact boundary: %#v", host.deploys[1].cfg)
+	}
+	if host.deploys[2].cfg.EffectiveArtifactKind() != types.DeployArtifactNormalizedJS {
+		t.Fatalf("non-package normalized artifact redeploy must preserve artifact kind: %#v", host.deploys[2].cfg)
+	}
+	if host.deploys[0].cfg.EffectiveArtifactKind() == types.DeployArtifactNormalizedJS {
+		t.Fatalf("raw runtime redeploy should not be marked normalized JS: %#v", host.deploys[0].cfg)
+	}
 }
 
 func TestSubscribeToDeploymentPropagationMirrorsRemoteEvents(t *testing.T) {
 	store := &fakeStore{deploymentBySource: map[string]types.PersistedDeployment{
-		"remote.ts": {Source: "remote.ts", Code: "code"},
+		"remote.ts": {Source: "remote.ts", Code: "code", PackageName: "pkg", ArtifactKind: types.DeployArtifactNormalizedJS},
 	}}
 	host := &fakeHost{hasRuntime: true}
 	handlers := map[string]func(sdk.Message){}
@@ -61,6 +70,9 @@ func TestSubscribeToDeploymentPropagationMirrorsRemoteEvents(t *testing.T) {
 	if len(host.deploys) != 1 || host.deploys[0].source != "remote.ts" || !host.deploys[0].cfg.Restoring {
 		t.Fatalf("deploy propagation = %#v", host.deploys)
 	}
+	if host.deploys[0].cfg.EffectiveArtifactKind() != types.DeployArtifactNormalizedJS || host.deploys[0].cfg.PackageName != "pkg" {
+		t.Fatalf("package deploy propagation must preserve package artifact metadata: %#v", host.deploys[0].cfg)
+	}
 
 	teardownPayload, _ := json.Marshal(systemmsg.KitTeardownedEvent{Source: "remote.ts", RuntimeID: "other"})
 	handlers[systemmsg.TopicKitTeardowned](sdk.Message{Payload: teardownPayload})
@@ -69,31 +81,53 @@ func TestSubscribeToDeploymentPropagationMirrorsRemoteEvents(t *testing.T) {
 	}
 }
 
-func TestRestartActiveWorkflowsReportsJSFailures(t *testing.T) {
-	host := &fakeHost{hasRuntime: true, callErr: errors.New("boom")}
-	var gotErr error
-	var gotCtx types.ErrorContext
-	manager := New(host, nil, nil)
-
-	manager.RestartActiveWorkflows(types.KernelConfig{
-		ErrorHandler: func(err error, ctx types.ErrorContext) {
-			gotErr = err
-			gotCtx = ctx
-		},
+func TestDeploymentPropagationSubscriptionsReplaceAndClose(t *testing.T) {
+	store := &fakeStore{}
+	host := &fakeHost{hasRuntime: true}
+	var unsubscribed []string
+	manager := New(host, nil, func(_ context.Context, topic string, _ func(sdk.Message)) (func(), error) {
+		return func() {
+			unsubscribed = append(unsubscribed, topic)
+		}, nil
 	})
 
-	if gotErr == nil {
-		t.Fatalf("expected restart failure to be reported")
+	cfg := types.KernelConfig{RuntimeID: "self", Store: store}
+	manager.SubscribeToDeploymentPropagation(cfg)
+	if len(unsubscribed) != 0 {
+		t.Fatalf("initial subscription unsubscribed early: %#v", unsubscribed)
 	}
-	if gotCtx.Operation != "RestartActiveWorkflows" || gotCtx.Component != "kernel" {
-		t.Fatalf("error context = %#v", gotCtx)
+	if got := manager.DebugSnapshot().PropagationSubscriptions; got != 2 {
+		t.Fatalf("propagation subscriptions = %d, want 2", got)
+	}
+
+	manager.SubscribeToDeploymentPropagation(cfg)
+	if len(unsubscribed) != 2 {
+		t.Fatalf("replace unsubscribed %d handlers, want 2: %#v", len(unsubscribed), unsubscribed)
+	}
+	if got := manager.DebugSnapshot().PropagationSubscriptions; got != 2 {
+		t.Fatalf("propagation subscriptions after replace = %d, want 2", got)
+	}
+
+	if err := manager.Close(); err != nil {
+		t.Fatalf("close manager: %v", err)
+	}
+	if got := manager.DebugSnapshot().PropagationSubscriptions; got != 0 {
+		t.Fatalf("propagation subscriptions after close = %d, want 0", got)
+	}
+	if len(unsubscribed) != 4 {
+		t.Fatalf("close unsubscribed %d handlers total, want 4: %#v", len(unsubscribed), unsubscribed)
+	}
+	if err := manager.Close(); err != nil {
+		t.Fatalf("close manager twice: %v", err)
+	}
+	if len(unsubscribed) != 4 {
+		t.Fatalf("second close changed unsubscribe count: %#v", unsubscribed)
 	}
 }
 
 type fakeHost struct {
 	hasRuntime bool
 	seed       int32
-	callErr    error
 	deploys    []fakeDeploy
 	teardowns  []string
 }
@@ -123,13 +157,6 @@ func (h *fakeHost) Teardown(_ context.Context, source string) (int, error) {
 }
 
 func (h *fakeHost) ListDeployments() []runtimecap.DeploymentInfo { return nil }
-
-func (h *fakeHost) CallJS(context.Context, string, any) (json.RawMessage, error) {
-	if h.callErr != nil {
-		return nil, h.callErr
-	}
-	return json.RawMessage(`{"restarted":0}`), nil
-}
 
 type fakeStore struct {
 	deployments        []types.PersistedDeployment

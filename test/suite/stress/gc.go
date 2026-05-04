@@ -1,6 +1,7 @@
 package stress
 
 import (
+	bkmodule "github.com/brainlet/brainkit/module"
 	"testing"
 
 	"github.com/brainlet/brainkit"
@@ -121,7 +122,7 @@ func testGCZeroLeakSESRuntime(t *testing.T, env *suite.TestEnv) {
 		Namespace: "gc-stress-leak-test",
 		CallerID:  "gc-stress-leak-test",
 		FSRoot:    t.TempDir(),
-		Modules:   []brainkit.Module{toolsmod.New()},
+		Modules:   []bkmodule.Module{toolsmod.New()},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

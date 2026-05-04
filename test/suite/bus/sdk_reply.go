@@ -10,6 +10,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -27,7 +28,7 @@ func testSDKReply(t *testing.T, env *suite.TestEnv) {
 		`)
 
 	reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
-		Topic:   sdk.ResolveServiceTopic("echo-svc.ts", "ping"),
+		Topic:   protocol.ResolveServiceTopic("echo-svc.ts", "ping"),
 		Payload: json.RawMessage(`{"hello":"world"}`),
 	})
 	require.NoError(t, err)
@@ -84,10 +85,10 @@ func testSDKSendChunk(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	defer unsub()
 
-	_, err = sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	_, err = protocol.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "test.stream.request",
 		Payload: json.RawMessage(`{}`),
-	}, sdk.WithReplyTo(replyTo))
+	}, protocol.WithReplyTo(replyTo))
 	require.NoError(t, err)
 
 	time.Sleep(500 * time.Millisecond)
@@ -110,7 +111,7 @@ func testSDKSendToService(t *testing.T, env *suite.TestEnv) {
 		`)
 
 	reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
-		Topic:   sdk.ResolveServiceTopic("calc.ts", "add"),
+		Topic:   protocol.ResolveServiceTopic("calc.ts", "add"),
 		Payload: json.RawMessage(`{"a":17,"b":25}`),
 	})
 	require.NoError(t, err)

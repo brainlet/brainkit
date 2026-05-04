@@ -78,7 +78,9 @@ type WorkspaceEscapeError struct {
 	Path string
 }
 
-func (e *WorkspaceEscapeError) Error() string           { return fmt.Sprintf("path %q escapes workspace", e.Path) }
+func (e *WorkspaceEscapeError) Error() string {
+	return fmt.Sprintf("path %q escapes workspace", e.Path)
+}
 func (e *WorkspaceEscapeError) Code() string            { return "WORKSPACE_ESCAPE" }
 func (e *WorkspaceEscapeError) Details() map[string]any { return map[string]any{"path": e.Path} }
 
@@ -91,7 +93,7 @@ func (e *NotConfiguredError) Error() string           { return fmt.Sprintf("%s n
 func (e *NotConfiguredError) Code() string            { return "NOT_CONFIGURED" }
 func (e *NotConfiguredError) Details() map[string]any { return map[string]any{"feature": e.Feature} }
 
-// TransportError is returned when a Watermill transport operation fails.
+// TransportError is returned when a bus transport operation fails.
 type TransportError struct {
 	Operation string
 	Cause     error
@@ -133,8 +135,8 @@ type DeployError struct {
 func (e *DeployError) Error() string {
 	return fmt.Sprintf("deploy %s: %s: %v", e.Source, e.Phase, e.Cause)
 }
-func (e *DeployError) Unwrap() error   { return e.Cause }
-func (e *DeployError) Code() string    { return "DEPLOY_ERROR" }
+func (e *DeployError) Unwrap() error { return e.Cause }
+func (e *DeployError) Code() string  { return "DEPLOY_ERROR" }
 func (e *DeployError) Details() map[string]any {
 	return map[string]any{"source": e.Source, "phase": e.Phase}
 }
@@ -186,8 +188,8 @@ func (e *DecodeError) Details() map[string]any { return map[string]any{"topic": 
 // map to a known typed error. Lets callers still inspect Code/Message/Details
 // via errors.As without losing information.
 type BusError struct {
-	Code_   string         `json:"code"`
-	Message string         `json:"message"`
+	Code_    string         `json:"code"`
+	Message  string         `json:"message"`
 	Details_ map[string]any `json:"details,omitempty"`
 }
 
@@ -196,4 +198,3 @@ type BusError struct {
 func (e *BusError) Error() string           { return fmt.Sprintf("%s: %s", e.Code_, e.Message) }
 func (e *BusError) Code() string            { return e.Code_ }
 func (e *BusError) Details() map[string]any { return e.Details_ }
-

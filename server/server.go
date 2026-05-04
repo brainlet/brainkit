@@ -1,13 +1,13 @@
-// Package server composes a brainkit.Kit with a YAML-driven,
-// registry-based module set behind a single lifecycle. Callers embed
-// server in their binary or run it under cmd/brainkit.
+// Package server composes a brainkit.Kit with an explicit module set behind a
+// single lifecycle. Callers embed server in their binary or run it under
+// cmd/brainkit.
 //
 // Module selection is declarative: server has no hard-coded knowledge
 // of individual modules — it walks the brainkit module registry,
-// calling each factory registered via `brainkit.RegisterModule`. The
-// blank imports below wire the standard set into every binary that
-// imports this package; custom binaries can blank-import additional
-// third-party modules to extend the catalog.
+// calling each factory registered through the module package. Binaries
+// that want the standard registry should import
+// github.com/brainlet/brainkit/server/standard for side effects. Custom
+// binaries can blank-import only the modules they want.
 package server
 
 import (
@@ -15,48 +15,17 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/modules/packages"
-	"github.com/brainlet/brainkit/stores"
-
-	// Blank-import the standard module set. Each package's init()
-	// registers a factory into the global brainkit module registry,
-	// making `modules.<name>:` in YAML work out of the box.
-	_ "github.com/brainlet/brainkit/modules/agents"
-	_ "github.com/brainlet/brainkit/modules/audit"
-	_ "github.com/brainlet/brainkit/modules/control"
-	_ "github.com/brainlet/brainkit/modules/discovery"
-	_ "github.com/brainlet/brainkit/modules/eval"
-	_ "github.com/brainlet/brainkit/modules/gateway"
-	_ "github.com/brainlet/brainkit/modules/harness"
-	_ "github.com/brainlet/brainkit/modules/health"
-	_ "github.com/brainlet/brainkit/modules/jsruntime"
-	_ "github.com/brainlet/brainkit/modules/mcp"
-	_ "github.com/brainlet/brainkit/modules/messaging"
-	_ "github.com/brainlet/brainkit/modules/metrics"
-	_ "github.com/brainlet/brainkit/modules/plugins"
-	_ "github.com/brainlet/brainkit/modules/probes"
-	_ "github.com/brainlet/brainkit/modules/reference"
-	_ "github.com/brainlet/brainkit/modules/registry"
-	_ "github.com/brainlet/brainkit/modules/schedules"
-	_ "github.com/brainlet/brainkit/modules/secrets"
-	_ "github.com/brainlet/brainkit/modules/testing"
-	_ "github.com/brainlet/brainkit/modules/tools"
-	_ "github.com/brainlet/brainkit/modules/topology"
-	_ "github.com/brainlet/brainkit/modules/tracing"
-	_ "github.com/brainlet/brainkit/modules/workflow"
-	_ "github.com/brainlet/brainkit/storagebridges"
-	_ "github.com/brainlet/brainkit/transports"
+	bkmodule "github.com/brainlet/brainkit/module"
 )
 
 // Config configures a Server. Required: Namespace, Transport, FSRoot.
 // At least one module named "gateway" must appear in Modules — server
 // mode exists to serve HTTP traffic.
 //
-// The YAML-driven path (LoadConfig) populates Modules via the registry.
+// The YAML-driven path in package server/configfile populates Modules via the registry.
 // Programmatic callers can also append modules directly — both sources
 // are merged in the order Modules is written.
 type Config struct {
@@ -68,13 +37,13 @@ type Config struct {
 	// in-process channel.
 	Transport brainkit.TransportConfig
 
-	// FSRoot is the sandbox root for deployed .ts code + the default
-	// store location when KitStorePath is empty. Required.
+	// FSRoot is the sandbox root for deployed .ts code. Required.
 	FSRoot string
 
-	// KitStorePath is the SQLite file backing deployments, schedules,
-	// installed plugins, and secrets. Empty = <FSRoot>/kit.db.
-	KitStorePath string
+	// Store is the Kit persistence backend. Optional for lightweight server
+	// embeddings; configfile and quickstart install SQLite stores for the
+	// batteries-included paths.
+	Store brainkit.KitStore
 
 	// SecretKey seeds the encrypted secret store. Required in
 	// production; empty logs a warning and stores secrets in cleartext
@@ -87,17 +56,23 @@ type Config struct {
 	Storages  map[string]brainkit.StorageConfig
 	Vectors   map[string]brainkit.VectorConfig
 
-	// Modules is the final list of modules to install. LoadConfig
-	// populates it from `modules:` YAML via the registry;
+	// Modules is the final list of modules to install. Package
+	// server/configfile populates it from `modules:` YAML via the registry;
 	// programmatic callers can append.
-	Modules []brainkit.Module
+	Modules []bkmodule.Module
 
-	// Packages are deployed after the Kit boots.
-	Packages []packages.Package
+	// OnStart hooks run before the supervisor blocks on ctx/signal
+	// cancellation. Optional packages such as server/packageboot can use this
+	// without making core server import their implementation dependencies.
+	OnStart []StartHook
 }
 
-// Server is a composed runtime — Kit + YAML-driven module set,
-// managed as a single lifecycle.
+// StartHook runs after the Kit has booted and before Server.Start begins
+// waiting for ctx cancellation or SIGINT/SIGTERM.
+type StartHook func(context.Context, *brainkit.Kit) error
+
+// Server is a composed runtime — Kit plus explicit modules managed as a single
+// lifecycle.
 type Server struct {
 	cfg Config
 	kit *brainkit.Kit
@@ -108,25 +83,13 @@ func New(cfg Config) (*Server, error) {
 	if err := validate(cfg); err != nil {
 		return nil, err
 	}
-	if len(cfg.Packages) > 0 && !hasModule(cfg.Modules, "packages") {
-		cfg.Modules = append(cfg.Modules, packages.New())
-	}
-
-	storePath := cfg.KitStorePath
-	if storePath == "" {
-		storePath = filepath.Join(cfg.FSRoot, "kit.db")
-	}
-	store, err := stores.NewSQLite(storePath)
-	if err != nil {
-		return nil, fmt.Errorf("server: open kit store %q: %w", storePath, err)
-	}
 
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: cfg.Namespace,
 		CallerID:  cfg.Namespace,
 		Transport: cfg.Transport,
 		FSRoot:    cfg.FSRoot,
-		Store:     store,
+		Store:     cfg.Store,
 		SecretKey: cfg.SecretKey,
 		Providers: cfg.Providers,
 		Storages:  cfg.Storages,
@@ -134,6 +97,9 @@ func New(cfg Config) (*Server, error) {
 		Modules:   cfg.Modules,
 	})
 	if err != nil {
+		if cfg.Store != nil {
+			_ = cfg.Store.Close()
+		}
 		return nil, fmt.Errorf("server: build kit: %w", err)
 	}
 
@@ -145,9 +111,12 @@ func New(cfg Config) (*Server, error) {
 // listening at this point (gateway module's Init starts it); this
 // method is the long-running supervisor loop.
 func (s *Server) Start(ctx context.Context) error {
-	for _, pkg := range s.cfg.Packages {
-		if _, err := packages.Deploy(ctx, s.kit, pkg); err != nil {
-			return fmt.Errorf("server: deploy package: %w", err)
+	for _, hook := range s.cfg.OnStart {
+		if hook == nil {
+			continue
+		}
+		if err := hook(ctx, s.kit); err != nil {
+			return err
 		}
 	}
 
@@ -195,7 +164,7 @@ func validate(cfg Config) error {
 	return nil
 }
 
-func hasModule(mods []brainkit.Module, id string) bool {
+func hasModule(mods []bkmodule.Module, id string) bool {
 	for _, m := range mods {
 		if m != nil && m.ID() == id {
 			return true

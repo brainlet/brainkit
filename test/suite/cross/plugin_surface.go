@@ -3,6 +3,7 @@ package cross
 import (
 	"context"
 	"encoding/json"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"testing"
 	"time"
 
@@ -30,7 +31,7 @@ func testPluginSurfaceGoToolFromPlugin(t *testing.T, env *suite.TestEnv) {
 		CallerID:  "host",
 		FSRoot:    tmpDir,
 		Transport: transports.EmbeddedNATS(),
-		Modules:   []brainkit.Module{toolsmod.New()},
+		Modules:   []bkmodule.Module{toolsmod.New()},
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -153,7 +154,7 @@ func testPluginSurfaceSecretsFromNode(t *testing.T, env *suite.TestEnv) {
 		CallerID:  "host",
 		FSRoot:    tmpDir,
 		Transport: tf.Transport,
-		Modules:   []brainkit.Module{secretsmod.New()},
+		Modules:   []bkmodule.Module{secretsmod.New()},
 	})
 	require.NoError(t, err)
 	defer kit.Close()

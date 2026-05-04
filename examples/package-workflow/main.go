@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"path/filepath"
@@ -113,7 +114,7 @@ func run(out string, keep bool) error {
 		Namespace: "package-workflow-demo",
 		Transport: brainkit.Memory(),
 		FSRoot:    filepath.Dir(out),
-		Modules:   []brainkit.Module{packages.New()},
+		Modules:   []bkmodule.Module{packages.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

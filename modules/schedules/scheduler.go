@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/types"
@@ -34,6 +35,15 @@ type Scheduler struct {
 
 	mu        sync.Mutex
 	schedules map[string]*entry
+	closed    bool
+	closing   bool
+	ctx       context.Context
+	cancel    context.CancelFunc
+	fireWG    sync.WaitGroup
+	closeWait sync.Once
+	closeDone chan struct{}
+
+	activeFires atomic.Int64
 }
 
 type eventPublisher interface {
@@ -49,6 +59,7 @@ type entry struct {
 // via the module so this file stays free of brainkit imports (no cycle).
 func newScheduler(publisher eventPublisher, store Store, logger *slog.Logger,
 	isCommand func(string) bool, isDraining func() bool, reportError func(error)) *Scheduler {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Scheduler{
 		publisher:   publisher,
 		store:       store,
@@ -57,6 +68,9 @@ func newScheduler(publisher eventPublisher, store Store, logger *slog.Logger,
 		isDraining:  isDraining,
 		reportError: reportError,
 		schedules:   make(map[string]*entry),
+		ctx:         ctx,
+		cancel:      cancel,
+		closeDone:   make(chan struct{}),
 	}
 }
 
@@ -74,6 +88,12 @@ func parseScheduleExpression(expr string) (time.Duration, bool, error) {
 
 // Schedule creates a new scheduled bus message. Implements types.ScheduleHandler.
 func (s *Scheduler) Schedule(ctx context.Context, cfg ScheduleConfig) (string, error) {
+	s.mu.Lock()
+	closed := s.closed
+	s.mu.Unlock()
+	if closed {
+		return "", fmt.Errorf("scheduler is closed")
+	}
 	if s.isCommand != nil && s.isCommand(cfg.Topic) {
 		return "", &sdkerrors.ValidationError{Field: "topic", Message: cfg.Topic + " is a command topic; schedules cannot target commands"}
 	}
@@ -96,7 +116,9 @@ func (s *Scheduler) Schedule(ctx context.Context, cfg ScheduleConfig) (string, e
 		NextFire:   time.Now().Add(duration),
 		OneTime:    oneTime,
 	}
-	s.add(ps)
+	if !s.add(ps) {
+		return "", fmt.Errorf("scheduler is closed")
+	}
 	if s.store != nil {
 		if err := s.store.SaveSchedule(ps); err != nil {
 			s.persistenceError(ctx, "SaveSchedule", id, err)
@@ -124,13 +146,47 @@ func (s *Scheduler) List() []types.PersistedSchedule {
 
 // Close stops all schedule timers. Safe to call more than once.
 func (s *Scheduler) Close() error {
+	return s.CloseContext(context.Background())
+}
+
+// CloseContext stops all timers, cancels in-flight fires, and waits for
+// already-started publishes to return under the caller's lifecycle context.
+func (s *Scheduler) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	cancel := s.cancel
+	s.cancel = nil
+	s.closed = true
+	s.closing = true
 	for _, e := range s.schedules {
 		e.timer.Stop()
 	}
 	s.schedules = map[string]*entry{}
-	return nil
+	closeDone := s.closeDone
+	s.closeWait.Do(func() {
+		go func() {
+			s.fireWG.Wait()
+			close(closeDone)
+		}()
+	})
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.closing = false
+		s.mu.Unlock()
+	}()
+
+	if cancel != nil {
+		cancel()
+	}
+	select {
+	case <-closeDone:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // Restore replays persisted schedules. Called by the module during Mount
@@ -160,15 +216,16 @@ func (s *Scheduler) Restore() {
 			ps.NextFire = now.Add(ps.Duration)
 			_ = s.store.SaveSchedule(ps)
 		}
-		s.add(ps)
-		restored++
+		if s.add(ps) {
+			restored++
+		}
 	}
 	if restored > 0 && s.logger != nil {
 		s.logger.Info("restored persisted schedules", slog.Int("count", restored))
 	}
 }
 
-func (s *Scheduler) add(ps types.PersistedSchedule) {
+func (s *Scheduler) add(ps types.PersistedSchedule) bool {
 	delay := time.Until(ps.NextFire)
 	if delay < 0 {
 		delay = 0
@@ -176,8 +233,13 @@ func (s *Scheduler) add(ps types.PersistedSchedule) {
 	e := &entry{PersistedSchedule: ps}
 	e.timer = time.AfterFunc(delay, func() { s.fire(e) })
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		e.timer.Stop()
+		return false
+	}
 	s.schedules[ps.ID] = e
-	s.mu.Unlock()
+	return true
 }
 
 func (s *Scheduler) remove(id string) {
@@ -194,6 +256,28 @@ func (s *Scheduler) remove(id string) {
 }
 
 func (s *Scheduler) fire(e *entry) {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	current, ok := s.schedules[e.ID]
+	if !ok || current != e {
+		s.mu.Unlock()
+		return
+	}
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s.fireWG.Add(1)
+	s.activeFires.Add(1)
+	s.mu.Unlock()
+	defer func() {
+		s.activeFires.Add(-1)
+		s.fireWG.Done()
+	}()
+
 	if s.isDraining != nil && s.isDraining() {
 		return
 	}
@@ -205,10 +289,14 @@ func (s *Scheduler) fire(e *entry) {
 		}
 	}
 
-	_ = s.publish(context.Background(), e.Topic, e.Payload)
+	_ = s.publish(ctx, e.Topic, e.Payload)
 
 	if e.OneTime {
 		s.mu.Lock()
+		if s.closed {
+			s.mu.Unlock()
+			return
+		}
 		delete(s.schedules, e.ID)
 		s.mu.Unlock()
 		if s.store != nil {
@@ -221,6 +309,15 @@ func (s *Scheduler) fire(e *entry) {
 	// the same lock so -race doesn't see a torn read on the
 	// re-arm path.
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	current, ok = s.schedules[e.ID]
+	if !ok || current != e {
+		s.mu.Unlock()
+		return
+	}
 	e.NextFire = time.Now().Add(e.Duration)
 	snapshot := e.PersistedSchedule
 	s.mu.Unlock()

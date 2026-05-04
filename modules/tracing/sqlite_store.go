@@ -1,9 +1,12 @@
 package tracing
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	coretracing "github.com/brainlet/brainkit/internal/tracing"
@@ -41,6 +44,15 @@ type SQLiteTraceStore struct {
 	db        *sql.DB
 	retention time.Duration
 	stopClean chan struct{}
+	cleanWG   sync.WaitGroup
+	closeMu   sync.Mutex
+	cleanWait sync.Once
+	cleanDone chan struct{}
+
+	closeStarted   bool
+	closing        bool
+	closed         bool
+	cleanupRunning atomic.Bool
 }
 
 // SQLiteTraceStoreOption configures a SQLiteTraceStore.
@@ -58,17 +70,23 @@ func NewSQLiteTraceStore(db *sql.DB, opts ...SQLiteTraceStoreOption) (*SQLiteTra
 	if _, err := db.Exec(sqliteTraceSchema); err != nil {
 		return nil, fmt.Errorf("tracing: create table: %w", err)
 	}
-	s := &SQLiteTraceStore{db: db, stopClean: make(chan struct{})}
+	s := &SQLiteTraceStore{db: db, stopClean: make(chan struct{}), cleanDone: make(chan struct{})}
 	for _, opt := range opts {
 		opt(s)
 	}
 	if s.retention > 0 {
+		s.cleanupRunning.Store(true)
+		s.cleanWG.Add(1)
 		go s.cleanupLoop()
 	}
 	return s, nil
 }
 
 func (s *SQLiteTraceStore) cleanupLoop() {
+	defer func() {
+		s.cleanupRunning.Store(false)
+		s.cleanWG.Done()
+	}()
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 	for {
@@ -179,10 +197,71 @@ func (s *SQLiteTraceStore) ListTraces(query TraceQuery) ([]TraceSummary, error) 
 }
 
 func (s *SQLiteTraceStore) Close() error {
-	if s.retention > 0 {
-		close(s.stopClean)
+	return s.CloseContext(context.Background())
+}
+
+func (s *SQLiteTraceStore) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	return nil
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+	}
+	if s == nil {
+		return nil
+	}
+	s.closeMu.Lock()
+	if s.closed {
+		s.closeMu.Unlock()
+		return nil
+	}
+	if !s.closeStarted {
+		close(s.stopClean)
+		s.closeStarted = true
+	}
+	s.closing = true
+	cleanDone := s.cleanDone
+	if cleanDone == nil {
+		cleanDone = make(chan struct{})
+		s.cleanDone = cleanDone
+	}
+	s.cleanWait.Do(func() {
+		go func() {
+			s.cleanWG.Wait()
+			close(cleanDone)
+		}()
+	})
+	s.closeMu.Unlock()
+
+	select {
+	case <-cleanDone:
+	case <-ctx.Done():
+		s.closeMu.Lock()
+		s.closing = false
+		s.closeMu.Unlock()
+		return ctx.Err()
+	}
+
+	var err error
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+	if s.closed {
+		s.closing = false
+		return nil
+	}
+	if s.db != nil {
+		err = s.db.Close()
+		if err != nil {
+			s.closing = false
+			return err
+		}
+		s.db = nil
+	}
+	s.closed = true
+	s.closing = false
+	return err
 }
 
 func scanSpans(rows *sql.Rows) ([]Span, error) {

@@ -21,6 +21,7 @@ import (
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 )
 
@@ -139,7 +140,7 @@ func secSendAndReceive(t *testing.T, k *brainkit.Kit, msg sdk.BrainkitMessage, t
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	pr, err := sdk.Publish(k, ctx, msg)
+	pr, err := protocol.Publish(k, ctx, msg)
 	if err != nil {
 		t.Logf("publish failed: %v", err)
 		return nil, false

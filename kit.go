@@ -18,27 +18,26 @@ import (
 // Go process share this ID. Used to distinguish local vs remote messages.
 var runtimeID = uuid.NewString()
 
-// RuntimeID returns the process-level identity shared by all Kits.
-// Two Kits with the same RuntimeID are in the same OS process.
-func RuntimeID() string { return runtimeID }
-
 // Kit is a brainkit runtime.
 //
-// Kit implements sdk.Runtime — interact with it through sdk.Publish and sdk.SubscribeTo.
-// Every feature is a typed bus command: deploy packages, manage providers, schedule messages,
-// manage secrets, control plugins — all through async message passing.
+// Kit implements sdk.Runtime for low-level transport operations. Normal
+// request/reply callers should use brainkit.Call or package-owned CallXxx
+// helpers, while fire-and-forget events use sdk.Emit.
 //
-// Create with New(). Use sdk.Publish(kit, ctx, msg) to send commands.
-// Use sdk.SubscribeTo[Resp](kit, ctx, replyTo, handler) to receive responses.
+// Create with New(). Every optional feature is exposed by mounted modules:
+// deploy packages, manage providers, schedule messages, manage secrets, and
+// control plugins all through typed module-owned bus commands.
 type Kit struct {
-	kernel  *engine.Kernel
-	node    *engine.Node
-	modules map[string]bkmodule.Module
-	mounted map[string]bkmodule.Scope
-	descs   map[string]bkmodule.Descriptor
-	mountMu sync.Mutex
-	caps    *bkmodule.CapabilityRegistry
-	fsRoot  string
+	kernel         *engine.Kernel
+	node           *engine.Node
+	modules        map[string]bkmodule.Module
+	mounted        map[string]bkmodule.Scope
+	descs          map[string]bkmodule.Descriptor
+	mountOrder     []string
+	mountMu        sync.Mutex
+	caps           *bkmodule.CapabilityRegistry
+	lifecycleDebug *lifecycleDebugRegistry
+	fsRoot         string
 }
 
 // New creates a brainkit runtime from config.
@@ -54,11 +53,12 @@ type Kit struct {
 //   - SecretKey set → auto-create EncryptedKVStore
 func New(cfg Config) (*Kit, error) {
 	kit := &Kit{
-		modules: map[string]bkmodule.Module{},
-		mounted: map[string]bkmodule.Scope{},
-		descs:   map[string]bkmodule.Descriptor{},
-		caps:    bkmodule.NewCapabilityRegistry(),
-		fsRoot:  cfg.FSRoot,
+		modules:        map[string]bkmodule.Module{},
+		mounted:        map[string]bkmodule.Scope{},
+		descs:          map[string]bkmodule.Descriptor{},
+		caps:           bkmodule.NewCapabilityRegistry(),
+		lifecycleDebug: newLifecycleDebugRegistry(),
+		fsRoot:         cfg.FSRoot,
 	}
 
 	// Zero-value transport defaults to Memory — no disk side-effects, no
@@ -239,12 +239,15 @@ func (k *Kit) runtime() sdk.Runtime {
 
 // --- sdk.Runtime implementation ---
 
-// PublishRaw sends a message to a topic. Returns correlationID.
+// PublishRaw sends a raw message to a topic. It is a protocol/diagnostic
+// primitive; normal request/reply callers should use brainkit.Call,
+// brainkit.CallStream, or generated CallXxx helpers.
 func (k *Kit) PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error) {
 	return k.runtime().PublishRaw(ctx, topic, payload)
 }
 
-// SubscribeRaw subscribes to a topic. Returns cancel function.
+// SubscribeRaw subscribes to a raw topic. It is for protocol/event surfaces;
+// normal request/reply code should use the shared Caller through Call helpers.
 func (k *Kit) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.Message)) (func(), error) {
 	return k.runtime().SubscribeRaw(ctx, topic, handler)
 }
@@ -254,6 +257,7 @@ func (k *Kit) Close() error {
 	var err error
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	k.kernel.SetDraining(true)
 	err = errors.Join(err, k.closeMounted(ctx))
 	err = errors.Join(err, k.runtime().Close())
 	return err
@@ -261,19 +265,21 @@ func (k *Kit) Close() error {
 
 // --- sdk.CrossNamespaceRuntime implementation ---
 
-// PublishRawTo publishes to a specific Kit's namespace.
+// PublishRawTo publishes a raw message to a specific Kit's namespace. Use
+// brainkit.Call with WithCallTo for normal cross-namespace request/reply.
 func (k *Kit) PublishRawTo(ctx context.Context, targetNamespace, topic string, payload json.RawMessage) (string, error) {
 	return k.kernel.PublishRawTo(ctx, targetNamespace, topic, payload)
 }
 
-// SubscribeRawTo subscribes to a topic in a specific Kit's namespace.
+// SubscribeRawTo subscribes to a raw topic in a specific Kit's namespace.
 func (k *Kit) SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(sdk.Message)) (func(), error) {
 	return k.kernel.SubscribeRawTo(ctx, targetNamespace, topic, handler)
 }
 
 // --- sdk.Replier implementation (gateway type-asserts for this) ---
 
-// ReplyRaw publishes directly to a resolved replyTo topic.
+// ReplyRaw publishes directly to a resolved replyTo topic. It is reserved for
+// protocol bridges and handlers replying to a message they received.
 func (k *Kit) ReplyRaw(ctx context.Context, replyTo, correlationID string, payload json.RawMessage, done bool) error {
 	return k.kernel.ReplyRaw(ctx, replyTo, correlationID, payload, done)
 }
@@ -300,6 +306,7 @@ func (k *Kit) IsDraining() bool {
 // Shutdown drains in-flight handlers then closes. Use Close() for quick shutdown.
 func (k *Kit) Shutdown(ctx context.Context) error {
 	var err error
+	k.kernel.SetDraining(true)
 	err = errors.Join(err, k.closeMounted(ctx))
 	if k.node != nil {
 		err = errors.Join(err, k.node.Shutdown(ctx))

@@ -2,21 +2,35 @@ package audit
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"path/filepath"
+	"sync"
+	"sync/atomic"
 
+	"github.com/brainlet/brainkit/internal/closejob"
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/modules/audit/auditmsg"
-	"github.com/brainlet/brainkit/modules/audit/stores"
 )
 
-// Module is the brainkit.Module form of the audit log. Mount attaches a
+// Module is the bkmodule.Module form of the audit log. Mount attaches a
 // store to the core Recorder (so every subsystem's Record calls start
 // persisting) and registers the audit.query / audit.stats / audit.prune
 // bus commands.
 type Module struct {
-	cfg    Config
-	domain *domain
+	closeMu         sync.Mutex
+	mu              sync.RWMutex
+	cfg             Config
+	domain          *domain
+	storeLease      bkmodule.Handle
+	verbosityLease  bkmodule.Handle
+	storeAttached   atomic.Bool
+	verboseAttached atomic.Bool
+	closing         atomic.Bool
+	storeClosing    atomic.Bool
+	storeCloseJob   closejob.Job
+}
+
+type contextCloseableStore interface {
+	CloseContext(context.Context) error
 }
 
 // NewModule builds the audit module from config.
@@ -24,23 +38,51 @@ func NewModule(cfg Config) *Module { return &Module{cfg: cfg} }
 
 func (m *Module) ID() string { return "audit" }
 
-func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
-	setStore, err := bkmodule.RequireCapability[func(Store)](host, bkmodule.CapabilitySetAuditStore)
+func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
+	leaseStore, err := bkmodule.RequireCapability[bkmodule.LeaseFunc[Store]](host, bkmodule.CapabilityAuditStoreLease)
 	if err != nil {
 		return fmt.Errorf("audit: %w", err)
 	}
-	setVerbosity, err := bkmodule.RequireCapability[func(Verbosity)](host, bkmodule.CapabilitySetAuditVerbosity)
+	leaseVerbosity, err := bkmodule.RequireCapability[bkmodule.LeaseFunc[Verbosity]](host, bkmodule.CapabilityAuditVerbosityLease)
 	if err != nil {
 		return fmt.Errorf("audit: %w", err)
 	}
-	host.Scope().Defer(func(context.Context) error {
-		setStore(nil)
-		if m.cfg.Verbose {
-			setVerbosity(VerbosityNormal)
+	m.domain = newDomain(m.cfg.Store)
+
+	if m.cfg.Store != nil {
+		handle, err := leaseStore(ctx, m.cfg.Store)
+		if err != nil {
+			return fmt.Errorf("audit: %w", err)
 		}
-		return m.closeStore()
-	})
-	m.attach(auditCoreFuncs{setStore: setStore, setVerbosity: setVerbosity})
+		m.mu.Lock()
+		m.storeLease = handle
+		m.storeAttached.Store(true)
+		m.mu.Unlock()
+	}
+	if m.cfg.Verbose {
+		handle, err := leaseVerbosity(ctx, VerbosityVerbose)
+		if err != nil {
+			return errors.Join(fmt.Errorf("audit: %w", err), m.CloseContext(ctx))
+		}
+		m.mu.Lock()
+		m.verbosityLease = handle
+		m.verboseAttached.Store(true)
+		m.mu.Unlock()
+	}
+	host.Scope().Defer(func(closeCtx context.Context) error { return m.CloseContext(closeCtx) })
+	if m.cfg.Store != nil {
+		host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindStore, "audit.store", "Attached persistent audit event store."))
+	}
+	lifecycleDebug, _ := bkmodule.Capability[bkmodule.LifecycleDebugRegistry](host, bkmodule.CapabilityLifecycleDebugRegistry)
+	if lifecycleDebug != nil {
+		handle, err := lifecycleDebug.RegisterLifecycleDebug(ctx, "audit", func() any {
+			return m.DebugSnapshot()
+		})
+		if err != nil {
+			return fmt.Errorf("audit: lifecycle debug: %w", err)
+		}
+		host.Scope().Defer(handle.Close)
+	}
 	if _, err := host.Commands().Handle(bkmodule.Command(m.domain.Query)); err != nil {
 		return err
 	}
@@ -53,109 +95,74 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 	return nil
 }
 
-type auditCore interface {
-	SetAuditStore(Store)
-	SetAuditVerbosity(Verbosity)
-}
-
-type auditCoreFuncs struct {
-	setStore     func(Store)
-	setVerbosity func(Verbosity)
-}
-
-func (f auditCoreFuncs) SetAuditStore(store Store) { f.setStore(store) }
-
-func (f auditCoreFuncs) SetAuditVerbosity(verbosity Verbosity) { f.setVerbosity(verbosity) }
-
-func (m *Module) attach(core auditCore) {
-	m.domain = newDomain(m.cfg.Store)
-
-	// Attach the store to core's Recorder so writes start persisting.
-	core.SetAuditStore(m.cfg.Store)
-	if m.cfg.Verbose {
-		core.SetAuditVerbosity(VerbosityVerbose)
-	}
-}
-
 func (m *Module) Close() error {
-	return m.closeStore()
+	return m.CloseContext(context.Background())
 }
 
-func (m *Module) closeStore() error {
-	if m.cfg.OwnStore && m.cfg.Store != nil {
-		err := m.cfg.Store.Close()
-		m.cfg.Store = nil
-		return err
+func (m *Module) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	return nil
-}
+	m.closeMu.Lock()
+	defer m.closeMu.Unlock()
+	m.closing.Store(true)
+	defer m.closing.Store(false)
+	var err error
 
-// YAML is the config shape decoded by the registry factory. Empty
-// Path falls back to `<FSRoot>/audit.db`. Other backends (postgres,
-// in-memory) can be selected via Type.
-type YAML struct {
-	Type             string `yaml:"type"`
-	Path             string `yaml:"path"`
-	ConnectionString string `yaml:"connection_string"`
-	Verbose          bool   `yaml:"verbose"`
-}
+	m.mu.RLock()
+	verbosityLease := m.verbosityLease
+	storeLease := m.storeLease
+	ownedStore := m.cfg.Store
+	ownsStore := m.cfg.OwnStore
+	m.mu.RUnlock()
 
-// Factory is the registered ModuleFactory for audit.
-type Factory struct{}
-
-// Build opens the audit store and returns the module. OwnStore is
-// always true — the factory opened it, the factory's module closes it.
-func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
-	var y YAML
-	if err := ctx.Decode(&y); err != nil {
-		return nil, err
-	}
-	store, err := openAuditStore(ctx, y)
-	if err != nil {
-		return nil, err
-	}
-	return NewModule(Config{Store: store, Verbose: y.Verbose, OwnStore: true}), nil
-}
-
-func openAuditStore(ctx bkmodule.BuildContext, y YAML) (Store, error) {
-	switch y.Type {
-	case "", "sqlite":
-		path := y.Path
-		if path == "" {
-			path = filepath.Join(ctx.FSRoot, "audit.db")
+	if verbosityLease != nil {
+		if closeErr := verbosityLease.Close(ctx); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		} else {
+			m.mu.Lock()
+			m.verbosityLease = nil
+			m.verboseAttached.Store(false)
+			m.mu.Unlock()
 		}
-		s, err := stores.NewSQLite(path)
-		if err != nil {
-			return nil, fmt.Errorf("audit: open sqlite %q: %w", path, err)
-		}
-		return s, nil
-	case "postgres":
-		s, err := stores.NewPostgres(y.ConnectionString)
-		if err != nil {
-			return nil, fmt.Errorf("audit: open postgres: %w", err)
-		}
-		return s, nil
-	default:
-		return nil, fmt.Errorf("audit: unknown store type %q (want sqlite or postgres)", y.Type)
 	}
+	if storeLease != nil {
+		if closeErr := storeLease.Close(ctx); closeErr != nil {
+			return errors.Join(err, closeErr)
+		}
+		m.mu.Lock()
+		m.storeLease = nil
+		m.storeAttached.Store(false)
+		ownedStore = m.cfg.Store
+		ownsStore = m.cfg.OwnStore
+		m.mu.Unlock()
+	}
+	if ownsStore && ownedStore != nil {
+		done := m.storeCloseJob.Start(func() error {
+			m.storeClosing.Store(true)
+			defer m.storeClosing.Store(false)
+			closeErr := closeAuditStore(ctx, ownedStore)
+			if closeErr == nil {
+				m.mu.Lock()
+				if m.cfg.Store == ownedStore {
+					m.cfg.Store = nil
+					m.cfg.OwnStore = false
+				}
+				m.mu.Unlock()
+			}
+			return closeErr
+		})
+		closeErr := m.storeCloseJob.Wait(ctx, done)
+		if closeErr != nil {
+			return errors.Join(err, closeErr)
+		}
+	}
+	return err
 }
 
-// Describe surfaces module metadata for `brainkit modules list`.
-func (Factory) Describe() bkmodule.Descriptor {
-	return bkmodule.Descriptor{
-		Name:    "audit",
-		Status:  bkmodule.StatusStable,
-		Summary: "Persistent audit log with query/stats/prune bus commands.",
-		Commands: []bkmodule.MessageDescriptor{
-			bkmodule.CommandMessage[auditmsg.AuditPruneMsg, auditmsg.AuditPruneResp](),
-			bkmodule.CommandMessage[auditmsg.AuditQueryMsg, auditmsg.AuditQueryResp](),
-			bkmodule.CommandMessage[auditmsg.AuditStatsMsg, auditmsg.AuditStatsResp](),
-		},
-		Capabilities: []bkmodule.CapabilityDescriptor{
-			bkmodule.RequiredCapabilityOf[func(Store)](bkmodule.CapabilitySetAuditStore),
-			bkmodule.RequiredCapabilityOf[func(Verbosity)](bkmodule.CapabilitySetAuditVerbosity),
-		},
+func closeAuditStore(ctx context.Context, store Store) error {
+	if closer, ok := store.(contextCloseableStore); ok {
+		return closer.CloseContext(ctx)
 	}
+	return store.Close()
 }
-
-func init() { bkmodule.Register("audit", Factory{}) }

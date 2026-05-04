@@ -22,7 +22,7 @@ d := discovery.NewModule(discovery.ModuleConfig{
 
 brainkit.New(brainkit.Config{
     Transport: brainkit.NATS(url),
-    Modules: []brainkit.Module{
+    Modules: []module.Module{
         d,
         topology.NewModule(topology.Config{Discovery: d}),
     },
@@ -34,6 +34,31 @@ brainkit.New(brainkit.Config{
 - `"static"` — fixed peer list from `ModuleConfig.StaticPeers`.
 - `"bus"` — heartbeat + presence announcements over the transport.
 - `""` — disabled (module is a no-op).
+
+## Capabilities
+
+- Requires: `brainkit.core.namespace` and
+  `brainkit.core.presence_transport` when bus discovery is active.
+- Optional: `brainkit.core.lifecycle_debug_registry`.
+- Provides: `discovery.provider`.
+
+## Runtime resources
+
+Owns the `discovery.provider` capability/resource and, in bus mode, the
+presence heartbeat subscription/announcement loop.
+When lifecycle debug is available, it registers a scoped `discovery` component
+with provider, peer-count, subscription, heartbeat, and TTL state.
+
+## Hot unmount
+
+Unmounting closes the provider, stops bus presence work, unregisters the
+capability, and removes the resource lease. Provider close failures keep the
+provider attached so a later unmount retry can finish cleanup. Bus-mode close
+is context-aware: it cancels the heartbeat/eviction loops, waits for active
+loops under the unmount context, and keeps the subscription attached when that
+wait times out so retry can finish the cleanup. Bus-mode providers also reject
+duplicate active registration instead of starting a second heartbeat/subscription
+set over the same provider.
 
 Standalone use (without Module lifecycle): call
 `discovery.NewStaticFromConfig` or `discovery.NewBus` directly.

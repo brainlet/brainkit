@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/packages"
@@ -70,8 +73,8 @@ func Run(t *testing.T, env *suite.TestEnv) {
 	})
 }
 
-func packageModules(extra ...brainkit.Module) []brainkit.Module {
-	modules := make([]brainkit.Module, 0, 1+len(extra))
+func packageModules(extra ...bkmodule.Module) []bkmodule.Module {
+	modules := make([]bkmodule.Module, 0, 1+len(extra))
 	modules = append(modules, packages.New())
 	modules = append(modules, extra...)
 	return modules
@@ -101,7 +104,7 @@ func wfPublishAndWait[Req sdk.BrainkitMessage, Resp any](
 	require.NoError(t, err)
 	defer unsub()
 
-	_, err = sdk.Publish(k, ctx, msg, sdk.WithReplyTo(replyTo))
+	_, err = protocol.Publish(k, ctx, msg, protocol.WithReplyTo(replyTo))
 	require.NoError(t, err)
 
 	select {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
@@ -25,6 +26,7 @@ type JSEvaluator interface {
 // adapter for this host capability.
 type Domain struct {
 	tools     *toolreg.ToolRegistry
+	evalMu    sync.RWMutex
 	eval      JSEvaluator
 	tracer    *tracing.Tracer
 	audit     *auditpkg.Recorder
@@ -37,7 +39,15 @@ func NewDomain(tools *toolreg.ToolRegistry, eval JSEvaluator, tracer *tracing.Tr
 }
 
 func (d *Domain) SetEvaluator(eval JSEvaluator) {
+	d.evalMu.Lock()
+	defer d.evalMu.Unlock()
 	d.eval = eval
+}
+
+func (d *Domain) Evaluator() JSEvaluator {
+	d.evalMu.RLock()
+	defer d.evalMu.RUnlock()
+	return d.eval
 }
 
 func (d *Domain) CallTool(ctx context.Context, req bkmodule.ToolCallRequest) (*bkmodule.ToolCallResponse, error) {
@@ -115,7 +125,7 @@ func (d *Domain) Resolve(_ context.Context, req bkmodule.ToolResolveRequest) (*b
 
 // Register adds a tool to the registry. Returns the fully qualified name.
 func (d *Domain) Register(_ context.Context, name, description string, inputSchema json.RawMessage, callerID string) (string, error) {
-	if d.eval == nil {
+	if d.Evaluator() == nil {
 		return "", &sdkerrors.NotConfiguredError{Feature: "js runtime"}
 	}
 	var fullName string
@@ -134,13 +144,17 @@ func (d *Domain) Register(_ context.Context, name, description string, inputSche
 		InputSchema: inputSchema,
 		Executor: &toolreg.GoFuncExecutor{
 			Fn: func(ctx context.Context, _ string, input json.RawMessage) (json.RawMessage, error) {
+				eval := d.Evaluator()
+				if eval == nil {
+					return nil, &sdkerrors.NotConfiguredError{Feature: "js runtime"}
+				}
 				rawInput := strings.TrimSpace(string(input))
 				if rawInput == "" {
 					rawInput = "null"
 				}
 				argsJSON, _ := json.Marshal(map[string]any{"name": shortName, "input": json.RawMessage(rawInput)})
 				script := fmt.Sprintf(`(async () => { return JSON.stringify(await __brainkit.tools.execute(JSON.parse(%q))); })()`, string(argsJSON))
-				out, err := d.eval.EvalOnJSThread("__dispatch_tool__.js", script)
+				out, err := eval.EvalOnJSThread("__dispatch_tool__.js", script)
 				if err != nil {
 					return nil, err
 				}

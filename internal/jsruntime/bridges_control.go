@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	js "github.com/brainlet/brainkit/internal/contract"
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/modulehost/agenthost"
 	provreg "github.com/brainlet/brainkit/modulehost/providerhost/providerreg"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
@@ -82,20 +83,39 @@ func (r *Runtime) registerControlBridges(qctx *quickjs.Context) {
 				var typeHolder struct {
 					Type string `json:"type"`
 				}
-				json.Unmarshal(req.Config, &typeHolder)
+				if err = json.Unmarshal(req.Config, &typeHolder); err != nil {
+					return r.throwBrainkitError(qctx, err)
+				}
 				switch req.Category {
 				case "provider":
-					r.registry.ProviderRegistry().RegisterAIProvider(req.Name, provreg.AIProviderRegistration{
-						Type: provreg.AIProviderType(typeHolder.Type),
-					})
+					cfg, cfgErr := provreg.DecodeAIProviderConfig(typeHolder.Type, req.Config)
+					if cfgErr != nil {
+						return r.throwBrainkitError(qctx, cfgErr)
+					}
+					if err = r.registry.ProviderRegistry().RegisterAIProvider(req.Name, provreg.AIProviderRegistration{
+						Type:   provreg.AIProviderType(typeHolder.Type),
+						Config: cfg,
+					}); err != nil {
+						return r.throwBrainkitError(qctx, err)
+					}
 				case "vectorStore":
-					r.registry.ProviderRegistry().RegisterVectorStore(req.Name, provreg.VectorStoreRegistration{
-						Type: provreg.VectorStoreType(typeHolder.Type),
-					})
+					cfg, cfgErr := decodeBridgeVectorConfig(typeHolder.Type, req.Config)
+					if cfgErr != nil {
+						return r.throwBrainkitError(qctx, cfgErr)
+					}
+					if err = r.storage.AddVector(req.Name, cfg); err != nil {
+						return r.throwBrainkitError(qctx, err)
+					}
 				case "storage":
-					r.registry.ProviderRegistry().RegisterStorage(req.Name, provreg.StorageRegistration{
-						Type: provreg.StorageType(typeHolder.Type),
-					})
+					cfg, cfgErr := decodeBridgeStorageConfig(typeHolder.Type, req.Config)
+					if cfgErr != nil {
+						return r.throwBrainkitError(qctx, cfgErr)
+					}
+					if err = r.storage.AddStorage(req.Name, cfg); err != nil {
+						return r.throwBrainkitError(qctx, err)
+					}
+				default:
+					return r.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "category", Message: "unknown registry category: " + req.Category})
 				}
 				resp, _ = json.Marshal(map[string]bool{"ok": true})
 			case "registry.unregister":
@@ -110,9 +130,15 @@ func (r *Runtime) registerControlBridges(qctx *quickjs.Context) {
 				case "provider":
 					r.registry.ProviderRegistry().UnregisterAIProvider(req.Name)
 				case "vectorStore":
-					r.registry.ProviderRegistry().UnregisterVectorStore(req.Name)
+					if err = r.storage.RemoveVector(req.Name); err != nil {
+						return r.throwBrainkitError(qctx, err)
+					}
 				case "storage":
-					r.registry.ProviderRegistry().UnregisterStorage(req.Name)
+					if err = r.storage.RemoveStorage(req.Name); err != nil {
+						return r.throwBrainkitError(qctx, err)
+					}
+				default:
+					return r.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "category", Message: "unknown registry category: " + req.Category})
 				}
 				resp, _ = json.Marshal(map[string]bool{"ok": true})
 			default:
@@ -120,4 +146,58 @@ func (r *Runtime) registerControlBridges(qctx *quickjs.Context) {
 			}
 			return qctx.NewString(string(resp))
 		}))
+}
+
+func decodeBridgeStorageConfig(typ string, raw json.RawMessage) (types.StorageConfig, error) {
+	var cfg struct {
+		Type             string `json:"type"`
+		Path             string `json:"path"`
+		ConnectionString string `json:"connectionString"`
+		URI              string `json:"uri"`
+		DBName           string `json:"dbName"`
+		URL              string `json:"url"`
+		Token            string `json:"token"`
+	}
+	if len(raw) > 0 && string(raw) != "null" {
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			return types.StorageConfig{}, err
+		}
+	}
+	if cfg.Type == "" {
+		cfg.Type = typ
+	}
+	return types.StorageConfig{
+		Type:             cfg.Type,
+		Path:             cfg.Path,
+		ConnectionString: cfg.ConnectionString,
+		URI:              cfg.URI,
+		DBName:           cfg.DBName,
+		URL:              cfg.URL,
+		Token:            cfg.Token,
+	}, nil
+}
+
+func decodeBridgeVectorConfig(typ string, raw json.RawMessage) (types.VectorConfig, error) {
+	var cfg struct {
+		Type             string `json:"type"`
+		Path             string `json:"path"`
+		ConnectionString string `json:"connectionString"`
+		URI              string `json:"uri"`
+		DBName           string `json:"dbName"`
+	}
+	if len(raw) > 0 && string(raw) != "null" {
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			return types.VectorConfig{}, err
+		}
+	}
+	if cfg.Type == "" {
+		cfg.Type = typ
+	}
+	return types.VectorConfig{
+		Type:             cfg.Type,
+		Path:             cfg.Path,
+		ConnectionString: cfg.ConnectionString,
+		URI:              cfg.URI,
+		DBName:           cfg.DBName,
+	}, nil
 }

@@ -3,6 +3,7 @@ package brainkit_test
 import (
 	"context"
 	"encoding/json"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ func TestCallWrapperRoundTrip(t *testing.T) {
 		Namespace: "call-wrapper-test",
 		CallerID:  "test",
 		FSRoot:    t.TempDir(),
-		Modules:   []brainkit.Module{healthmod.New()},
+		Modules:   []bkmodule.Module{healthmod.New()},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { kit.Close() })
@@ -48,7 +49,7 @@ func TestCallWrapperParity(t *testing.T) {
 		Namespace: "call-wrapper-parity",
 		CallerID:  "test",
 		FSRoot:    t.TempDir(),
-		Modules:   []brainkit.Module{healthmod.New()},
+		Modules:   []bkmodule.Module{healthmod.New()},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { kit.Close() })
@@ -84,7 +85,7 @@ func TestCallWrapperRespectsOptions(t *testing.T) {
 		Namespace: "call-wrapper-opts",
 		CallerID:  "test",
 		FSRoot:    t.TempDir(),
-		Modules:   []brainkit.Module{healthmod.New()},
+		Modules:   []bkmodule.Module{healthmod.New()},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { kit.Close() })

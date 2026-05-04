@@ -35,8 +35,20 @@
     has: function(category, name) { return __go_registry_has(category, name) === "true"; },
     list: function(category) { return JSON.parse(__go_registry_list(category)); },
     resolve: function(category, name) { var r = __go_registry_resolve(category, name); return r ? JSON.parse(r) : null; },
-    register: function(category, name, config) { bridgeControl("registry.register", { category: category, name: name, config: config }); },
-    unregister: function(category, name) { bridgeControl("registry.unregister", { category: category, name: name }); },
+    register: function(category, name, config) {
+      var raw = bridgeControl("registry.register", { category: category, name: name, config: config });
+      if (typeof globalThis.__kit_clearRegistryCache === "function") {
+        globalThis.__kit_clearRegistryCache(category, name);
+      }
+      return raw ? JSON.parse(raw) : undefined;
+    },
+    unregister: function(category, name) {
+      var raw = bridgeControl("registry.unregister", { category: category, name: name });
+      if (typeof globalThis.__kit_clearRegistryCache === "function") {
+        globalThis.__kit_clearRegistryCache(category, name);
+      }
+      return raw ? JSON.parse(raw) : undefined;
+    },
   };
 
   globalThis.__kit_secrets = {

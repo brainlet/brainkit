@@ -9,8 +9,9 @@ import (
 	quickjs "github.com/buke/quickjs-go"
 )
 
-// registerRegistryBridges adds __go_registry_resolve, __go_registry_has, __go_registry_list,
-// and __go_resource_register bridges.
+// registerRegistryBridges adds __go_registry_resolve,
+// __go_registry_runtime_resolve, __go_registry_has, __go_registry_list, and
+// __go_resource_register bridges.
 func (r *Runtime) registerRegistryBridges(qctx *quickjs.Context) {
 	// __go_registry_resolve(category, name) → configJSON or ""
 	qctx.Globals().Set(js.JSBridgeRegistryResolve,
@@ -18,40 +19,19 @@ func (r *Runtime) registerRegistryBridges(qctx *quickjs.Context) {
 			if len(args) < 2 {
 				return qctx.NewString("")
 			}
-			category := args[0].String()
-			name := args[1].String()
+			return qctx.NewString(r.registryConfigJSON(args[0].String(), args[1].String(), true))
+		}))
 
-			var configJSON []byte
-			switch category {
-			case "provider":
-				if reg, ok := r.registry.ProviderRegistry().GetAIProvider(name); ok {
-					configJSON, _ = json.Marshal(map[string]any{
-						"type":   string(reg.Type),
-						"name":   name,
-						"config": redactCredentials(reg.Config),
-					})
-				}
-			case "vectorStore":
-				if reg, ok := r.registry.ProviderRegistry().GetVectorStore(name); ok {
-					configJSON, _ = json.Marshal(map[string]any{
-						"type":   string(reg.Type),
-						"name":   name,
-						"config": redactCredentials(reg.Config),
-					})
-				}
-			case "storage":
-				if reg, ok := r.registry.ProviderRegistry().GetStorage(name); ok {
-					configJSON, _ = json.Marshal(map[string]any{
-						"type":   string(reg.Type),
-						"name":   name,
-						"config": redactCredentials(reg.Config),
-					})
-				}
-			}
-			if configJSON == nil {
+	// __go_registry_runtime_resolve(category, name) → unredacted configJSON or "".
+	// This bridge is for runtime construction only. Public JS registry.resolve
+	// keeps using __go_registry_resolve, which redacts credentials before exposing
+	// config to user code.
+	qctx.Globals().Set(js.JSBridgeRegistryRuntimeResolve,
+		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+			if len(args) < 2 {
 				return qctx.NewString("")
 			}
-			return qctx.NewString(string(configJSON))
+			return qctx.NewString(r.registryConfigJSON(args[0].String(), args[1].String(), false))
 		}))
 
 	// __go_registry_has(category, name) → "true" or "false"
@@ -114,4 +94,41 @@ func (r *Runtime) registerRegistryBridges(qctx *quickjs.Context) {
 			})
 			return qctx.NewUndefined()
 		}))
+}
+
+func (r *Runtime) registryConfigJSON(category, name string, redact bool) string {
+	var configJSON []byte
+	config := func(v any) any {
+		if redact {
+			return redactCredentials(v)
+		}
+		return v
+	}
+	switch category {
+	case "provider":
+		if reg, ok := r.registry.ProviderRegistry().GetAIProvider(name); ok {
+			configJSON, _ = json.Marshal(map[string]any{
+				"type":   string(reg.Type),
+				"name":   name,
+				"config": config(reg.Config),
+			})
+		}
+	case "vectorStore":
+		if reg, ok := r.registry.ProviderRegistry().GetVectorStore(name); ok {
+			configJSON, _ = json.Marshal(map[string]any{
+				"type":   string(reg.Type),
+				"name":   name,
+				"config": config(reg.Config),
+			})
+		}
+	case "storage":
+		if reg, ok := r.registry.ProviderRegistry().GetStorage(name); ok {
+			configJSON, _ = json.Marshal(map[string]any{
+				"type":   string(reg.Type),
+				"name":   name,
+				"config": config(reg.Config),
+			})
+		}
+	}
+	return string(configJSON)
 }

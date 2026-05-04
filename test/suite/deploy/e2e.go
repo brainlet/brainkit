@@ -10,6 +10,7 @@ import (
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -78,7 +79,7 @@ func testE2EDeployListRedeployTeardown(t *testing.T, _ *suite.TestEnv) {
 
 	// Deploy v1
 	mp1, _ := json.Marshal(map[string]string{"name": "lifecycle-e2e-deploy", "entry": "lifecycle-e2e-deploy.ts"})
-	pr1, err := sdk.Publish(freshEnv.Kit, ctx, packagemsg.PackageDeployMsg{
+	pr1, err := protocol.Publish(freshEnv.Kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: mp1,
 		Files:    map[string]string{"lifecycle-e2e-deploy.ts": `const v1 = createTool({ id: "version-check-e2e", description: "v1", execute: async () => ({ version: 1 }) }); kit.register("tool", "version-check-e2e", v1);`},
 	})
@@ -93,7 +94,7 @@ func testE2EDeployListRedeployTeardown(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// List — should show lifecycle-e2e-deploy
-	pr2, err := sdk.Publish(freshEnv.Kit, ctx, packagemsg.PackageListDeployedMsg{})
+	pr2, err := protocol.Publish(freshEnv.Kit, ctx, packagemsg.PackageListDeployedMsg{})
 	require.NoError(t, err)
 	ch2 := make(chan packagemsg.PackageListDeployedResp, 1)
 	us2, err := sdk.SubscribeTo[packagemsg.PackageListDeployedResp](freshEnv.Kit, ctx, pr2.ReplyTo, func(r packagemsg.PackageListDeployedResp, m sdk.Message) { ch2 <- r })
@@ -113,7 +114,7 @@ func testE2EDeployListRedeployTeardown(t *testing.T, _ *suite.TestEnv) {
 
 	// Redeploy with v2 (hot-replace via same deploy message)
 	mp3, _ := json.Marshal(map[string]string{"name": "lifecycle-e2e-deploy", "entry": "lifecycle-e2e-deploy.ts"})
-	pr3, err := sdk.Publish(freshEnv.Kit, ctx, packagemsg.PackageDeployMsg{
+	pr3, err := protocol.Publish(freshEnv.Kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: mp3,
 		Files:    map[string]string{"lifecycle-e2e-deploy.ts": `const v2 = createTool({ id: "version-check-e2e-v2", description: "v2", execute: async () => ({ version: 2 }) }); kit.register("tool", "version-check-e2e-v2", v2);`},
 	})
@@ -128,7 +129,7 @@ func testE2EDeployListRedeployTeardown(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// Teardown
-	pr4, err := sdk.Publish(freshEnv.Kit, ctx, packagemsg.PackageTeardownMsg{Name: "lifecycle-e2e-deploy"})
+	pr4, err := protocol.Publish(freshEnv.Kit, ctx, packagemsg.PackageTeardownMsg{Name: "lifecycle-e2e-deploy"})
 	require.NoError(t, err)
 	ch4 := make(chan packagemsg.PackageTeardownResp, 1)
 	us4, err := sdk.SubscribeTo[packagemsg.PackageTeardownResp](freshEnv.Kit, ctx, pr4.ReplyTo, func(r packagemsg.PackageTeardownResp, m sdk.Message) { ch4 <- r })
@@ -141,7 +142,7 @@ func testE2EDeployListRedeployTeardown(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// List — should not contain lifecycle-e2e-deploy.ts
-	pr5, err := sdk.Publish(freshEnv.Kit, ctx, packagemsg.PackageListDeployedMsg{})
+	pr5, err := protocol.Publish(freshEnv.Kit, ctx, packagemsg.PackageListDeployedMsg{})
 	require.NoError(t, err)
 	ch5 := make(chan packagemsg.PackageListDeployedResp, 1)
 	us5, err := sdk.SubscribeTo[packagemsg.PackageListDeployedResp](freshEnv.Kit, ctx, pr5.ReplyTo, func(r packagemsg.PackageListDeployedResp, m sdk.Message) { ch5 <- r })

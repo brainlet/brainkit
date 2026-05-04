@@ -23,6 +23,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"time"
@@ -65,7 +66,7 @@ func run() error {
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
-		Modules:   []brainkit.Module{packages.New()},
+		Modules:   []bkmodule.Module{packages.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

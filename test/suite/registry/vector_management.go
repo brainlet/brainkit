@@ -98,7 +98,10 @@ func testVectorAddThenResolveFromTS(t *testing.T, _ *suite.TestEnv) {
 	if result == "null" || result == "" {
 		t.Fatal("expected vector store to resolve, got null")
 	}
-	if !strings.Contains(result, "sqlite") {
-		t.Fatalf("expected 'sqlite' in resolved config, got: %s", result)
+	if !strings.Contains(result, "libsql") {
+		t.Fatalf("expected 'libsql' in resolved config, got: %s", result)
+	}
+	if !strings.Contains(result, `"URL":"http://127.0.0.1:`) {
+		t.Fatalf("expected live bridge URL in resolved config, got: %s", result)
 	}
 }

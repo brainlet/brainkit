@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	bkmodule "github.com/brainlet/brainkit/module"
 	registrymod "github.com/brainlet/brainkit/modules/registry"
 	"github.com/brainlet/brainkit/modules/registry/registrymsg"
 	secretsmod "github.com/brainlet/brainkit/modules/secrets"
@@ -22,7 +23,7 @@ func TestRegistryModuleMessages(t *testing.T) {
 		Transport: brainkit.Memory(),
 		Namespace: "module-message-registry-test",
 		FSRoot:    t.TempDir(),
-		Modules:   []brainkit.Module{registrymod.New()},
+		Modules:   []bkmodule.Module{registrymod.New()},
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -45,6 +46,14 @@ func TestRegistryModuleMessages(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, has.Found)
 
+	var caller bkmodule.RequestCaller = kit.Caller()
+	hasViaCaller, err := registrymsg.CallRegistryHasWithCaller(caller, ctx, registrymsg.RegistryHasMsg{
+		Category: "provider",
+		Name:     "demo",
+	})
+	require.NoError(t, err)
+	assert.True(t, hasViaCaller.Found)
+
 	list, err := registrymsg.CallRegistryList(kit, ctx, registrymsg.RegistryListMsg{Category: "provider"})
 	require.NoError(t, err)
 	assert.Contains(t, string(list.Items), `"name":"demo"`)
@@ -65,7 +74,7 @@ func TestSecretsModuleMessages(t *testing.T) {
 		FSRoot:    tmp,
 		Store:     store,
 		SecretKey: "unit-test-key-that-is-32-bytes!!",
-		Modules:   []brainkit.Module{secretsmod.New()},
+		Modules:   []bkmodule.Module{secretsmod.New()},
 	})
 	require.NoError(t, err)
 	defer kit.Close()

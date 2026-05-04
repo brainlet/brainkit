@@ -23,6 +23,7 @@ package main
 import (
 	"context"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"strings"
@@ -68,7 +69,7 @@ func run() error {
 		Namespace: "harness-lite-demo",
 		Transport: brainkit.Memory(),
 		FSRoot:    tmp,
-		Modules:   []brainkit.Module{harnessMod},
+		Modules:   []bkmodule.Module{harnessMod},
 	})
 	if err != nil {
 		if isHarnessJSMissing(err) {

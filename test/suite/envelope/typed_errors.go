@@ -10,6 +10,7 @@ import (
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +23,7 @@ func testNotFoundRoundTrip(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{Name: "ghost-tool-env-rt"})
+	pr, err := protocol.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{Name: "ghost-tool-env-rt"})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
@@ -57,7 +58,7 @@ func testValidationErrorRoundTrip(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "", Value: "val"})
+	pr, err := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "", Value: "val"})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)

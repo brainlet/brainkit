@@ -8,6 +8,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/reference/referencemsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/google/uuid"
 )
@@ -63,7 +64,7 @@ func testReferenceNoModuleCommandsAbsent(t *testing.T, _ *suite.TestEnv) {
 	}
 	defer unsub()
 
-	_, err = sdk.Publish(k, ctx, referencemsg.KitReferenceListMsg{}, sdk.WithReplyTo(replyTo))
+	_, err = protocol.Publish(k, ctx, referencemsg.KitReferenceListMsg{}, protocol.WithReplyTo(replyTo))
 	if err != nil {
 		t.Fatalf("publish kit.reference.list: %v", err)
 	}

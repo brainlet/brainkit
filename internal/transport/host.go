@@ -7,11 +7,11 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"sync"
 
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
+	"github.com/google/uuid"
 )
 
 // RawCommandBinding binds a logical command topic to a raw JSON handler.
@@ -25,13 +25,13 @@ type RawCommandBinding struct {
 // Host binds raw command handlers onto a router and transport.
 type Host struct {
 	namespace      string
-	router         *message.Router
-	sub            message.Subscriber
-	pub            message.Publisher
+	router         *Router
+	sub            Subscriber
+	pub            Publisher
 	topicSanitizer func(string) string
 }
 
-func NewHost(namespace string, router *message.Router, sub message.Subscriber, pub message.Publisher) *Host {
+func NewHost(namespace string, router *Router, sub Subscriber, pub Publisher) *Host {
 	return &Host{
 		namespace: namespace,
 		router:    router,
@@ -41,7 +41,7 @@ func NewHost(namespace string, router *message.Router, sub message.Subscriber, p
 }
 
 // NewHostWithTransport creates a Host that uses the transport's topic sanitizer.
-func NewHostWithTransport(namespace string, router *message.Router, transport *Transport) *Host {
+func NewHostWithTransport(namespace string, router *Router, transport *Transport) *Host {
 	return &Host{
 		namespace:      namespace,
 		router:         router,
@@ -61,7 +61,9 @@ func (h *Host) resolvedTopic(logicalTopic string) string {
 
 // CommandHandle stops a mounted command handler.
 type CommandHandle struct {
-	handler *message.Handler
+	router     *Router
+	handler    *Handler
+	removeOnce sync.Once
 }
 
 // Stop stops the command handler and waits for it to stop or ctx to expire.
@@ -69,18 +71,32 @@ func (h *CommandHandle) Stop(ctx context.Context) error {
 	if h == nil || h.handler == nil {
 		return nil
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	select {
 	case <-h.handler.Started():
 	default:
+		h.handler.Stop()
+		h.remove()
 		return nil
 	}
 	h.handler.Stop()
 	select {
 	case <-h.handler.Stopped():
+		h.remove()
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func (h *CommandHandle) remove() {
+	h.removeOnce.Do(func() {
+		if h.router != nil {
+			h.router.removeHandler(h.handler)
+		}
+	})
 }
 
 // RegisterCommand installs one command binding onto the router and returns a
@@ -89,33 +105,36 @@ func (h *CommandHandle) Stop(ctx context.Context) error {
 func (h *Host) RegisterCommand(ctx context.Context, binding RawCommandBinding) (*CommandHandle, error) {
 	commandTopic := h.resolvedTopic(binding.Topic)
 	handlerName := rawHandlerName(binding.Name, binding.Topic)
-	if isRouterRunning(h.router) {
-		handlerName = handlerName + "." + watermill.NewUUID()
+	if h.router.IsRunning() {
+		handlerName = handlerName + "." + uuid.NewString()
 	}
 
-	handler := h.router.AddConsumerHandler(
+	handler := h.router.addConsumerHandlerWithMetricTopic(
 		handlerName,
 		commandTopic,
+		binding.Topic,
 		h.sub,
-		func(wmsg *message.Message) error {
+		func(wmsg *Message) error {
 			return h.handleCommandMessage(binding, wmsg)
 		},
 	)
 
-	if isRouterRunning(h.router) {
+	if h.router.IsRunning() {
 		if err := h.router.RunHandlers(ctx); err != nil {
 			handler.Stop()
+			h.router.removeHandler(handler)
 			return nil, err
 		}
 		select {
 		case <-handler.Started():
 		case <-ctx.Done():
 			handler.Stop()
+			h.router.removeHandler(handler)
 			return nil, ctx.Err()
 		}
 	}
 
-	return &CommandHandle{handler: handler}, nil
+	return &CommandHandle{router: h.router, handler: handler}, nil
 }
 
 // RegisterCommands installs all command bindings onto the router.
@@ -125,18 +144,19 @@ func (h *Host) RegisterCommands(bindings []RawCommandBinding) {
 		binding := binding
 		commandTopic := h.resolvedTopic(binding.Topic)
 		handlerName := rawHandlerName(binding.Name, binding.Topic)
-		h.router.AddConsumerHandler(
+		h.router.addConsumerHandlerWithMetricTopic(
 			handlerName,
 			commandTopic,
+			binding.Topic,
 			h.sub,
-			func(wmsg *message.Message) error {
+			func(wmsg *Message) error {
 				return h.handleCommandMessage(binding, wmsg)
 			},
 		)
 	}
 }
 
-func (h *Host) handleCommandMessage(binding RawCommandBinding, wmsg *message.Message) error {
+func (h *Host) handleCommandMessage(binding RawCommandBinding, wmsg *Message) error {
 	cmdCtx := withInboundMetadata(wmsg.Context(), wmsg, binding.Topic)
 	payload, err := binding.Handle(cmdCtx, json.RawMessage(wmsg.Payload))
 	if err == nil && payload == nil {
@@ -165,7 +185,7 @@ func (h *Host) handleCommandMessage(binding RawCommandBinding, wmsg *message.Mes
 	}
 	responsePayload, _ := sdk.EncodeEnvelope(envelope)
 
-	result := message.NewMessage(watermill.NewUUID(), responsePayload)
+	result := NewMessage(responsePayload)
 	correlationID := wmsg.Metadata.Get("correlationId")
 	if correlationID != "" {
 		result.Metadata.Set("correlationId", correlationID)
@@ -174,15 +194,6 @@ func (h *Host) handleCommandMessage(binding RawCommandBinding, wmsg *message.Mes
 	result.Metadata.Set("envelope", "true")
 
 	return h.pub.Publish(replyTo, result)
-}
-
-func isRouterRunning(router *message.Router) bool {
-	select {
-	case <-router.Running():
-		return true
-	default:
-		return false
-	}
 }
 
 // SerializeBrainkitError converts an error to a wire envelope. Typed

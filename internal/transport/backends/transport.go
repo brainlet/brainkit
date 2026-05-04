@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill/message"
 
 	wmamqp "github.com/ThreeDotsLabs/watermill-amqp/v3/pkg/amqp"
 	wmnats "github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
@@ -157,9 +156,9 @@ func newNATSTransport(cfg core.TransportConfig, logger watermill.LoggerAdapter) 
 
 	return core.NewManagedTransport(
 		"nats",
-		publisher,
-		subscriber,
-		fanOutSub,
+		watermillPublisher{inner: publisher},
+		watermillSubscriber{inner: subscriber},
+		watermillSubscriber{inner: fanOutSub},
 		func(topic string) string {
 			r := strings.NewReplacer(".", "-", "/", "-", "@", "-", " ", "-")
 			return r.Replace(topic)
@@ -214,9 +213,9 @@ func newAMQPTransport(cfg core.TransportConfig, logger watermill.LoggerAdapter) 
 
 	return core.NewManagedTransport(
 		"amqp",
-		publisher,
-		subscriber,
-		fanOutSub,
+		watermillPublisher{inner: publisher},
+		watermillSubscriber{inner: subscriber},
+		watermillSubscriber{inner: fanOutSub},
 		func(topic string) string {
 			r := strings.NewReplacer("/", "-", "@", "-", " ", "-")
 			return r.Replace(topic)
@@ -292,9 +291,9 @@ func newRedisTransport(cfg core.TransportConfig, logger watermill.LoggerAdapter)
 
 	return core.NewManagedTransport(
 		"redis",
-		publisher,
-		subscriber,
-		fanOutSub,
+		watermillPublisher{inner: publisher},
+		watermillSubscriber{inner: subscriber},
+		watermillSubscriber{inner: fanOutSub},
 		nil,
 		core.OnceCloser(publisher.Close),
 		core.OnceCloser(subscriber.Close),
@@ -338,7 +337,7 @@ func newEmbeddedNATSTransport(cfg core.TransportConfig, logger watermill.LoggerA
 // ---------------------------------------------------------------------------
 
 // NewTransport preserves the old pub/sub factory signature for tests and helpers.
-func NewTransport(cfg core.TransportConfig) (message.Publisher, message.Subscriber, error) {
+func NewTransport(cfg core.TransportConfig) (core.Publisher, core.Subscriber, error) {
 	transport, err := NewTransportSet(cfg)
 	if err != nil {
 		return nil, nil, err

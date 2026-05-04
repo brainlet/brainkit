@@ -78,4 +78,4 @@ func TestModuleRegisterCommandDuplicatePanics(t *testing.T) {
 
 // Module close ordering is owned by brainkit.Kit (reverses its own
 // modules slice). The kernel-scoped Module interface was retired
-// when every shipped module migrated to brainkit.Module.
+// when every shipped module migrated to the module package.

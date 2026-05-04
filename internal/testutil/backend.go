@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/transport"
 	transportbackends "github.com/brainlet/brainkit/internal/transport/backends"
@@ -168,7 +166,7 @@ func splitEnvVar(ev string) [2]string {
 // WaitForBackendReady verifies the transport is fully operational by publishing
 // a probe message and waiting for it to round-trip. Retries up to 3 times with
 // increasing delay for slow backends (SQL table creation, AMQP queue binding).
-func WaitForBackendReady(t *testing.T, transport *transport.Transport) {
+func WaitForBackendReady(t *testing.T, transportSet *transport.Transport) {
 	t.Helper()
 
 	for attempt := 0; attempt < 5; attempt++ {
@@ -178,19 +176,19 @@ func WaitForBackendReady(t *testing.T, transport *transport.Transport) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		probeTopic := fmt.Sprintf("probe_%d_%d", time.Now().UnixNano(), attempt)
-		if transport.TopicSanitizer != nil {
-			probeTopic = transport.TopicSanitizer(probeTopic)
+		if transportSet.TopicSanitizer != nil {
+			probeTopic = transportSet.TopicSanitizer(probeTopic)
 		}
 
-		ch, err := transport.Subscriber.Subscribe(ctx, probeTopic)
+		ch, err := transportSet.Subscriber.Subscribe(ctx, probeTopic)
 		if err != nil {
 			t.Logf("probe attempt %d: subscribe failed: %v", attempt, err)
 			cancel()
 			continue
 		}
 
-		msg := message.NewMessage(watermill.NewUUID(), []byte(`{"probe":true}`))
-		if err := transport.Publisher.Publish(probeTopic, msg); err != nil {
+		msg := transport.NewMessage([]byte(`{"probe":true}`))
+		if err := transportSet.Publisher.Publish(probeTopic, msg); err != nil {
 			t.Logf("probe attempt %d: publish failed: %v", attempt, err)
 			cancel()
 			continue

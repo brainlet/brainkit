@@ -1,6 +1,6 @@
 # AI SDK v5 — API Reference (brainkit runtime)
 
-Source of truth: `internal/engine/runtime/ai.d.ts`. The `"ai"` module inside `.ts` deployments re-exports the real Vercel AI SDK v5 — no wrapping, no shim. This doc is the ingestion-ready reference for what the embedded surface exposes.
+Source of truth: `internal/dts/runtime/ai.d.ts`. The `"ai"` module inside `.ts` deployments re-exports the real Vercel AI SDK v5 — no wrapping, no shim. This doc is the ingestion-ready reference for what the embedded surface exposes.
 
 ```typescript
 import {

@@ -49,8 +49,14 @@ type GatewayStatusMsg struct{}
 func (GatewayStatusMsg) BusTopic() string { return "gateway.http.status" }
 
 type GatewayStatusResp struct {
-	Listening         bool   `json:"listening"`
-	Address           string `json:"address"`
-	RouteCount        int    `json:"routeCount"`
-	ActiveConnections int64  `json:"activeConnections"`
+	Listening           bool   `json:"listening"`
+	ServerAttached      bool   `json:"serverAttached"`
+	Address             string `json:"address"`
+	RouteCount          int    `json:"routeCount"`
+	RouteSubscriptions  int    `json:"routeSubscriptions"`
+	ActiveConnections   int64  `json:"activeConnections"`
+	StreamSessions      int    `json:"streamSessions"`
+	TerminalSessions    int    `json:"terminalStreamSessions"`
+	StreamSubscriptions int    `json:"streamSubscriptions"`
+	SessionSweepRunning bool   `json:"sessionSweepRunning"`
 }

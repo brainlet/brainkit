@@ -33,7 +33,7 @@ func (d *Static) Resolve(name string) (string, error) {
 	if !ok {
 		return "", &sdk.NotFoundError{Resource: "peer", Name: name}
 	}
-	// Return namespace if set, otherwise address (backward compat)
+	// Namespace is the preferred routing key; address is the static fallback.
 	if peer.Namespace != "" {
 		return peer.Namespace, nil
 	}

@@ -89,7 +89,7 @@ func (s *scope) Resources() []ResourceDescriptor {
 
 func (s *scope) Close(ctx context.Context) error {
 	s.mu.Lock()
-	if s.closed {
+	if s.closed && len(s.cleanups) == 0 {
 		s.mu.Unlock()
 		return nil
 	}
@@ -99,12 +99,19 @@ func (s *scope) Close(ctx context.Context) error {
 	s.mu.Unlock()
 
 	var err error
+	var failed []Cleanup
 	for i := len(cleanups) - 1; i >= 0; i-- {
 		if e := cleanups[i](ctx); e != nil {
 			err = errors.Join(err, e)
+			failed = append(failed, cleanups[i])
 		}
 	}
 	if err != nil && s.id != "" {
+		s.mu.Lock()
+		for i := len(failed) - 1; i >= 0; i-- {
+			s.cleanups = append(s.cleanups, failed[i])
+		}
+		s.mu.Unlock()
 		return fmt.Errorf("scope %s: %w", s.id, err)
 	}
 	return err

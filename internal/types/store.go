@@ -38,13 +38,27 @@ type KitStore interface {
 	Close() error
 }
 
-// PersistedDeployment is the on-disk format for a .ts deployment.
+// PersistedDeployment is the on-disk format for a JS/TS deployment.
 type PersistedDeployment struct {
-	Source      string    `json:"source"`
-	Code        string    `json:"code"`
-	Order       int       `json:"order"`
-	DeployedAt  time.Time `json:"deployedAt"`
-	PackageName string    `json:"packageName,omitempty"`
+	Source       string             `json:"source"`
+	Code         string             `json:"code"`
+	Order        int                `json:"order"`
+	DeployedAt   time.Time          `json:"deployedAt"`
+	PackageName  string             `json:"packageName,omitempty"`
+	ArtifactKind DeployArtifactKind `json:"artifactKind,omitempty"`
+}
+
+// EffectiveArtifactKind returns the stored artifact kind. Empty values default
+// to source; older package records are treated as normalized JS because package
+// deployment has always stored bundled code.
+func (d PersistedDeployment) EffectiveArtifactKind() DeployArtifactKind {
+	if d.ArtifactKind != "" {
+		return d.ArtifactKind
+	}
+	if d.PackageName != "" {
+		return DeployArtifactNormalizedJS
+	}
+	return DeployArtifactSource
 }
 
 // PersistedSchedule is the on-disk format for a scheduled bus message.

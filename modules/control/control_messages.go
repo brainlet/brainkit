@@ -44,7 +44,19 @@ func (KitModulesMsg) BusTopic() string { return "kit.modules" }
 
 // KitModulesResp reports every module currently mounted in the Kit.
 type KitModulesResp struct {
-	Modules []bkmodule.Descriptor `json:"modules"`
+	Modules    []bkmodule.Descriptor               `json:"modules"`
+	Preflights map[string]bkmodule.ModulePreflight `json:"preflights,omitempty"`
+}
+
+// KitLifecycleMsg requests the runtime lifecycle debug snapshot.
+type KitLifecycleMsg struct{}
+
+func (KitLifecycleMsg) BusTopic() string { return "kit.lifecycle" }
+
+// KitLifecycleResp reports core lifecycle counters plus mounted component
+// snapshots.
+type KitLifecycleResp struct {
+	Lifecycle bkmodule.LifecycleDebugSnapshot `json:"lifecycle"`
 }
 
 // KitModuleMountMsg mounts a registered module into the running Kit.
@@ -58,7 +70,8 @@ func (KitModuleMountMsg) BusTopic() string { return "kit.module.mount" }
 
 // KitModuleMountResp reports the mounted module manifest.
 type KitModuleMountResp struct {
-	Module bkmodule.Descriptor `json:"module"`
+	Module    bkmodule.Descriptor      `json:"module"`
+	Preflight bkmodule.ModulePreflight `json:"preflight,omitempty"`
 }
 
 // KitModuleUnmountMsg unmounts a mounted module from the running Kit.
@@ -82,6 +95,7 @@ func (KitModuleDescribeMsg) BusTopic() string { return "kit.module.describe" }
 
 // KitModuleDescribeResp reports a module manifest and whether it is live.
 type KitModuleDescribeResp struct {
-	Module  bkmodule.Descriptor `json:"module"`
-	Mounted bool                `json:"mounted"`
+	Module    bkmodule.Descriptor      `json:"module"`
+	Mounted   bool                     `json:"mounted"`
+	Preflight bkmodule.ModulePreflight `json:"preflight,omitempty"`
 }

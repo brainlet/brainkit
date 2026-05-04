@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"time"
@@ -74,7 +75,7 @@ func run() error {
 		CallerID:  "orchestrator",
 		Transport: transports.NATS(natsURL),
 		FSRoot:    ".",
-		Modules: []brainkit.Module{packages.New(),
+		Modules: []bkmodule.Module{packages.New(),
 			topology.NewModule(topology.Config{
 				Peers: []topology.Peer{
 					{Name: "analytics", Namespace: "analytics-prod"},

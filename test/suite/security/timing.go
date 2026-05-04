@@ -14,6 +14,7 @@ import (
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -38,7 +39,7 @@ func testTimingPreemptiveReplySubscribe(t *testing.T, env *suite.TestEnv) {
 	})
 	defer unsub()
 
-	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
+	pr, _ := protocol.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.timing-svc-sec.data", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
@@ -126,7 +127,7 @@ func testTimingMessageDuringRestore(t *testing.T, env *suite.TestEnv) {
 	var responded atomic.Int64
 	for i := 0; i < 10; i++ {
 		go func() {
-			pr, _ := sdk.Publish(k2, ctx, sdk.CustomMsg{
+			pr, _ := protocol.Publish(k2, ctx, sdk.CustomMsg{
 				Topic: "ts.slow-restore-sec.ping", Payload: json.RawMessage(`{}`),
 			})
 			ch := make(chan []byte, 1)
@@ -300,7 +301,7 @@ func testTimingStorageRaceWithDeploy(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			sdk.Publish(k, ctx, registrymsg.StorageAddMsg{
+			protocol.Publish(k, ctx, registrymsg.StorageAddMsg{
 				Name: "race-storage-sec",
 				Type: "memory",
 			})
@@ -309,7 +310,7 @@ func testTimingStorageRaceWithDeploy(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			sdk.Publish(k, ctx, registrymsg.StorageRemoveMsg{
+			protocol.Publish(k, ctx, registrymsg.StorageRemoveMsg{
 				Name: "race-storage-sec",
 			})
 		}

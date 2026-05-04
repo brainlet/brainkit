@@ -40,18 +40,19 @@ vector admin commands:
 ```go
 kit, _ := brainkit.New(brainkit.Config{
     Transport: brainkit.Memory(),
-    Modules: []brainkit.Module{
+    Modules: []module.Module{
         registrymod.New(),
     },
 })
 
+providerConfig, _ := json.Marshal(map[string]any{
+    "APIKey":  os.Getenv("OPENAI_API_KEY"),
+    "BaseURL": "https://proxy.internal/v1",
+})
 _, _ = registrymsg.CallProviderAdd(kit, ctx, registrymsg.ProviderAddMsg{
     Name:   "proxy-openai",
     Type:   "openai",
-    Config: brainkit.MustJSON(map[string]any{
-        "APIKey":  os.Getenv("OPENAI_API_KEY"),
-        "BaseURL": "https://proxy.internal/v1",
-    }),
+    Config: providerConfig,
 })
 
 list, _ := registrymsg.CallRegistryList(kit, ctx,
@@ -71,7 +72,21 @@ Available commands:
 | `vectors.add` / `vectors.remove` | `registrymsg.VectorAddMsg`, `VectorRemoveMsg` |
 
 The root `brainkit` package does not expose registry mutator accessors. Runtime
-mutation is explicit module behavior.
+mutation is explicit module behavior. Internally, the registry command module
+delegates live mutations through the typed `brainkit.core.registry_mutation`
+capability, so provider registry updates, storage/vector bridge ownership, and
+active JS runtime cache invalidation stay in the runtime hosts instead of the
+bus command handlers.
+
+## Probing Ownership
+
+The registry stores probe results, but it does not schedule application
+background work by default. Core exposes explicit `Kit.ProbeAll` /
+`ProbeAllContext` helpers and the typed `brainkit.core.probe_all` capability.
+Mount `modules/probes` when a Kit should run an initial sweep on mount or
+periodic sweeps over providers, storages, and vector stores. Without that
+module, health output marks registered providers as "not yet probed" until an
+explicit probe runs.
 
 ## Secrets Module
 
@@ -82,7 +97,7 @@ kit, _ := brainkit.New(brainkit.Config{
     Transport: brainkit.Memory(),
     Store:     store,
     SecretKey: "32-byte-or-longer-application-key",
-    Modules: []brainkit.Module{
+    Modules: []module.Module{
         secretsmod.New(),
     },
 })

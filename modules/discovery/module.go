@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Module is the brainkit.Module form of peer discovery. It owns a Provider
+// Module is the bkmodule.Module form of peer discovery. It owns a Provider
 // (bus or static) and self-registers the local peer on Mount so other
 // kits on the same cluster can find it. The bus surface (peers.list /
 // peers.resolve) now lives in modules/topology — callers that want the
@@ -19,6 +19,10 @@ import (
 type Module struct {
 	cfg      ModuleConfig
 	provider Provider
+}
+
+type contextCloseProvider interface {
+	CloseContext(context.Context) error
 }
 
 // NewModule builds the discovery Module from config. Pass it to
@@ -51,9 +55,17 @@ func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 		map[string]string{"type": m.cfg.Type},
 		"Peer discovery provider.",
 	))
-	host.Scope().Defer(func(context.Context) error {
-		return m.Close()
-	})
+	host.Scope().Defer(m.CloseContext)
+	lifecycleDebug, _ := bkmodule.Capability[bkmodule.LifecycleDebugRegistry](host, bkmodule.CapabilityLifecycleDebugRegistry)
+	if lifecycleDebug != nil {
+		handle, err := lifecycleDebug.RegisterLifecycleDebug(ctx, "discovery", func() any {
+			return m.DebugSnapshot()
+		})
+		if err != nil {
+			return fmt.Errorf("discovery: lifecycle debug: %w", err)
+		}
+		host.Scope().Defer(handle.Close)
+	}
 	_, err = host.Capabilities().Provide(ctx, "discovery.provider", m)
 	return err
 }
@@ -89,11 +101,22 @@ func (m *Module) start(namespace string, presence transport.Presence) error {
 }
 
 func (m *Module) Close() error {
+	return m.CloseContext(context.Background())
+}
+
+func (m *Module) CloseContext(ctx context.Context) error {
 	if m.provider == nil {
 		return nil
 	}
-	err := m.provider.Close()
-	m.provider = nil
+	var err error
+	if provider, ok := m.provider.(contextCloseProvider); ok {
+		err = provider.CloseContext(ctx)
+	} else {
+		err = m.provider.Close()
+	}
+	if err == nil {
+		m.provider = nil
+	}
 	return err
 }
 
@@ -152,7 +175,7 @@ func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	return NewModule(cfg), nil
 }
 
-// Describe surfaces module metadata for `brainkit modules list`.
+// Describe surfaces module metadata for module manifests.
 func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "discovery",
@@ -163,8 +186,9 @@ func (Factory) Describe() bkmodule.Descriptor {
 		},
 		Capabilities: []bkmodule.CapabilityDescriptor{
 			bkmodule.ProvidedCapabilityOf[*Module]("discovery.provider"),
+			bkmodule.OptionalCapabilityOf[transport.Presence](bkmodule.CapabilityPresenceTransport),
+			bkmodule.OptionalCapabilityOf[bkmodule.LifecycleDebugRegistry](bkmodule.CapabilityLifecycleDebugRegistry),
 			bkmodule.RequiredCapabilityOf[string](bkmodule.CapabilityNamespace),
-			bkmodule.RequiredCapabilityOf[transport.Presence](bkmodule.CapabilityPresenceTransport),
 		},
 		Resources: []bkmodule.ResourceDescriptor{
 			bkmodule.Resource(bkmodule.ResourceKindCustom, "discovery.provider", "Peer discovery provider."),

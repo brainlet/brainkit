@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,7 +32,7 @@ func testTwoServiceInteraction(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	time.Sleep(300 * time.Millisecond)
 
-	sendPR, err := sdk.SendToService(env.Kit, ctx, "service-a-int.ts", "ask", map[string]string{"data": "hello"})
+	sendPR, err := protocol.SendToService(env.Kit, ctx, "service-a-int.ts", "ask", map[string]string{"data": "hello"})
 	require.NoError(t, err)
 
 	replyCh := make(chan json.RawMessage, 1)

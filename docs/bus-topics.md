@@ -21,6 +21,7 @@ Generated from `sdk/**/*_messages.go` and `modules/**/*_messages.go` via `go run
 | `kit.deployed` | `KitDeployedEvent` | `(no reply)` | `sdk/systemmsg/system_messages.go` |
 | `kit.eval` | `KitEvalMsg` | `KitEvalResp` | `modules/eval/evalmsg/eval_messages.go` |
 | `kit.health` | `KitHealthMsg` | `KitHealthResp` | `modules/health/health_messages.go` |
+| `kit.lifecycle` | `KitLifecycleMsg` | `KitLifecycleResp` | `modules/control/control_messages.go` |
 | `kit.module.describe` | `KitModuleDescribeMsg` | `KitModuleDescribeResp` | `modules/control/control_messages.go` |
 | `kit.module.mount` | `KitModuleMountMsg` | `KitModuleMountResp` | `modules/control/control_messages.go` |
 | `kit.module.unmount` | `KitModuleUnmountMsg` | `KitModuleUnmountResp` | `modules/control/control_messages.go` |

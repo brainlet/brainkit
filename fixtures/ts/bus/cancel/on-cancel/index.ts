@@ -13,7 +13,7 @@ bus.on("maybe-cancel", async (msg) => {
   msg.reply({ ok: true });
 });
 
-await bus.call("ts.bus-on-cancel-demo.maybe-cancel", {}, { timeoutMs: 5000 });
+await bus.callService("on-cancel.ts", "maybe-cancel", {}, { timeoutMs: 5000 });
 // Assert onCancel callback was attached (callback registration
 // path runs even if cancellation never happens).
 output({

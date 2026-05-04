@@ -8,6 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,7 +53,7 @@ func testParallelPublish(t *testing.T, env *suite.TestEnv) {
 
 	results := make([]bool, 10)
 	testutil.ConcurrentDo(t, 10, func(i int) {
-		sendPR, err := sdk.SendToService(k, ctx, "echo-stress.ts", "echo", map[string]int{"id": i})
+		sendPR, err := protocol.SendToService(k, ctx, "echo-stress.ts", "echo", map[string]int{"id": i})
 		if err != nil {
 			t.Errorf("goroutine %d: publish failed: %v", i, err)
 			return
@@ -110,7 +111,7 @@ func testDeployDuringHandler(t *testing.T, env *suite.TestEnv) {
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	sdk.SendToService(k, ctx, "slow-stress.ts", "slow", map[string]bool{"go": true})
+	protocol.SendToService(k, ctx, "slow-stress.ts", "slow", map[string]bool{"go": true})
 
 	done := make(chan error, 1)
 	go func() {
@@ -141,7 +142,7 @@ func testTeardownDuringHandler(t *testing.T, env *suite.TestEnv) {
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	sdk.SendToService(k, ctx, "teardown-stress-target.ts", "work", map[string]bool{"go": true})
+	protocol.SendToService(k, ctx, "teardown-stress-target.ts", "work", map[string]bool{"go": true})
 	time.Sleep(50 * time.Millisecond)
 
 	done := make(chan struct{}, 1)
@@ -271,7 +272,7 @@ func testDeployDuringDrain(t *testing.T, env *suite.TestEnv) {
 	if err != nil {
 		t.Logf("deploy during drain returned error (acceptable): %v", err)
 	} else {
-		pr, pubErr := sdk.SendToService(k, ctx, "drain-stress-deploy.ts", "ping", map[string]bool{"go": true})
+		pr, pubErr := protocol.SendToService(k, ctx, "drain-stress-deploy.ts", "ping", map[string]bool{"go": true})
 		if pubErr == nil {
 			replyCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()

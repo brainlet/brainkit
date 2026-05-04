@@ -10,6 +10,7 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -89,7 +90,7 @@ func testE2EMultiDomain(t *testing.T, _ *suite.TestEnv) {
 	readData := testutil.EvalTS(t, freshEnv.Kit, "__test_multi_read.ts", `return fs.readFileSync("input.json", "utf8");`)
 
 	// 3. Process with the "echo" tool
-	pr, err := sdk.Publish(freshEnv.Kit, ctx, toolmsg.ToolCallMsg{
+	pr, err := protocol.Publish(freshEnv.Kit, ctx, toolmsg.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": readData},
 	})

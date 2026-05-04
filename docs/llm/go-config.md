@@ -19,6 +19,7 @@ import (
     "github.com/brainlet/brainkit/modules/topology"
     "github.com/brainlet/brainkit/modules/tracing"
     "github.com/brainlet/brainkit/modules/workflow"
+    "github.com/brainlet/brainkit/transports"
 )
 ```
 
@@ -51,8 +52,7 @@ type Config struct {
     SecretKey       string                      // master key for encrypted secret store
     SecretStore     SecretStore                 // explicit store overrides SecretKey auto-create
 
-    Tracing         bool                        // true = auto-create MemoryTraceStore
-    TraceStore      TraceStore                  // explicit store overrides the Tracing flag
+    TraceStore      TraceStore                  // explicit span store; nil = no-op unless module attaches one
     TraceSampleRate float64                     // 0.0–1.0; default 1.0
 
     Store           KitStore                    // persistence for deploys + schedules + plugins
@@ -66,7 +66,7 @@ type Config struct {
     MaxStackSize    int                         // QuickJS stack bytes; default 1 MiB
     RetryPolicies   map[string]RetryPolicy      // per-topic retry (§10.1)
 
-    Modules         []Module                    // opt-in subsystems (§4)
+    Modules         []module.Module             // opt-in subsystems (§4)
 }
 ```
 
@@ -84,7 +84,7 @@ type Config struct {
 | `Logger` | `slog.Default()` |
 | `JSRuntime` | `false`; when true, root requests the registered `jsruntime` module. JS-dependent modules such as eval/packages/workflow also request it. |
 | `MaxStackSize` | `1 * 1024 * 1024` |
-| `TraceSampleRate` | `1.0` when tracing is active |
+| `TraceSampleRate` | `1.0` when a trace store is active |
 
 Transport-connected Kits (`"embedded"`, `"nats"`, `"amqp"`, `"redis"`) resolve their JetStream / external connection during `brainkit.New`. For embedded NATS, JetStream persists under `<FSRoot>/nats-data` when `FSRoot != ""`; empty `FSRoot` gives ephemeral JetStream.
 
@@ -102,7 +102,7 @@ Returns a `*Kit`. Use `Close()` for immediate shutdown, `Shutdown(ctx)` for grac
 func QuickStart(namespace, fsRoot string) (*Kit, error)
 ```
 
-Bare-Kit shortcut: embedded NATS + SQLite at `<fsRoot>/kit.db`, no module set composed. For the batteries-included path including HTTP gateway, use `server.QuickStart` (§13.3).
+Bare-Kit shortcut: embedded NATS + SQLite at `<fsRoot>/kit.db`, no module set composed. For the batteries-included path including HTTP gateway, use `server/quickstart` (§13.3).
 
 ---
 
@@ -193,7 +193,7 @@ Zero-value `TransportConfig{}` is treated as `Memory()` by `brainkit.New`. Topic
 
 ## 4. Modules
 
-`Config.Modules []Module` takes values from `brainkit.Module`:
+`Config.Modules []module.Module` takes values from `github.com/brainlet/brainkit/module`:
 
 ```go
 type Module interface {
@@ -201,14 +201,14 @@ type Module interface {
     Mount(context.Context, module.Host) error
 }
 
-type ModuleStatus = string
+type module.Status = string
 const (
-    ModuleStatusStable ModuleStatus = "stable"
-    ModuleStatusBeta   ModuleStatus = "beta"
-    ModuleStatusWIP    ModuleStatus = "wip"
+    module.StatusStable module.Status = "stable"
+    module.StatusBeta   module.Status = "beta"
+    module.StatusWIP    module.Status = "wip"
 )
 
-type StatusReporter interface { Status() ModuleStatus }
+type StatusReporter interface { Status() module.Status }
 ```
 
 Configured modules are mounted in slice order after the router starts. Modules register bus topics through `module.Host.Commands().Handle(...)`, which returns scoped handles that are closed on unmount. `Close` is invoked in reverse mount order.
@@ -217,19 +217,30 @@ Configured modules are mounted in slice order after the router starts. Modules r
 
 | Module | Constructor | Status | Adds |
 |--------|-------------|--------|------|
-| audit | `audit.NewModule(audit.Config{Store, Verbose, OwnStore})` | (no `Status()`) | `audit.query`, `audit.stats`, `audit.prune` |
-| discovery | `discovery.NewModule(discovery.ModuleConfig{Type, StaticPeers, Heartbeat, TTL, Name})` | (no `Status()`) | Presence registration (static or bus) |
+| agents | `agents.New()` | stable | `agents.list`, `agents.discover`, `agents.get-status`, `agents.set-status` |
+| audit | `audit.NewModule(audit.Config{Store, Verbose, OwnStore})` | stable | `audit.query`, `audit.stats`, `audit.prune` |
+| control | `control.New()` | stable | `kit.set-draining`, `kit.modules`, module mount/unmount/describe, `cluster.peers` |
+| discovery | `discovery.NewModule(discovery.ModuleConfig{Type, StaticPeers, Heartbeat, TTL, Name})` | beta | Presence registration (static or bus) |
+| eval | `eval.New()` | beta | `kit.eval` |
 | gateway | `gateway.New(gateway.Config{Listen, Timeout, CORS, RateLimit, Stream, Middleware, NoHealth, NoBusAPI, Logger, Tracer})` | stable | HTTP: `/healthz`, `/readyz`, `POST /api/bus`, `POST /api/stream`, user routes |
+| health | `health.New()` | stable | `kit.health` |
 | harness | `harness.NewModule(harness.Config{Harness HarnessConfig})` | wip | Display/harness adapter (in flux) |
+| jsruntime | `jsruntime.New()` | beta | Embedded JS/TS runtime capabilities |
 | mcp | `mcp.New(map[string]mcp.ServerConfig{})` | stable | `mcp.listTools`, `mcp.callTool`; auto-registers MCP tools |
-| plugins | `pluginsmod.NewModule(pluginsmod.Config{Plugins []PluginConfig, Store})` | (no `Status()`) | `plugin.start/stop/restart/status/list`, subprocess supervision |
+| messaging | `messaging.New()` | stable | `kit.send` |
+| metrics | `metrics.New()` | stable | `metrics.get` |
+| packages | `packages.New()` | stable | `package.deploy`, `package.teardown`, `package.list`, `package.info` |
+| plugins | `pluginsmod.NewModule(pluginsmod.Config{Plugins []PluginConfig, Store})` | stable | `plugin.start/stop/restart/status/list`, subprocess supervision |
 | probes | `probes.New(probes.Config{Interval, ProbeOnRegister})` | beta | Periodic provider / storage / vector probing |
-| schedules | `schedules.NewModule(schedules.Config{Store})` | (no `Status()`) | `schedules.create/list/cancel`; JS `bus.schedule` |
+| reference | `reference.New()` | stable | `kit.reference`, `kit.reference.list` |
+| registry | `registry.New()` | stable | `registry.*`, `providers.*`, `storages.*`, `vectors.*` |
+| schedules | `schedules.NewModule(schedules.Config{Store})` | beta | `schedules.create/list/cancel`; JS `bus.schedule` |
+| secrets | `secrets.New()` | stable | `secrets.set/get/delete/list/rotate` |
+| testing | `testing.New()` | beta | `test.run` |
+| tools | `tools.New()` | stable | `tools.call`, `tools.resolve`, `tools.list` |
 | topology | `topology.NewModule(topology.Config{Peers, Discovery})` | beta | `peers.list`, `peers.resolve`; `WithCallTo` resolver |
-| tracing | `tracing.New(tracing.Config{Store TraceStore})` | beta | `trace.get`, `trace.list`; promotes in-memory ring buffer to durable store |
-| workflow | `workflow.New()` | beta | `workflow.start/startAsync/status/resume/cancel/list/runs/restart` |
-
-Modules without a declared `Status()` are treated as unclassified (audit / discovery / plugins / schedules).
+| tracing | `tracing.New(tracing.Config{Store TraceStore})` | beta | `trace.get`, `trace.list`; attaches a trace store |
+| workflow | `workflow.New()` | stable | `workflow.start/startAsync/status/resume/cancel/list/runs/restart` |
 
 ### Module-specific helpers
 
@@ -412,11 +423,12 @@ type KitStore interface {
 
 ```go
 type PersistedDeployment struct {
-    Source      string
-    Code        string
-    Order       int
-    DeployedAt  time.Time
-    PackageName string
+    Source       string
+    Code         string
+    Order        int
+    DeployedAt   time.Time
+    PackageName  string
+    ArtifactKind DeployArtifactKind
 }
 
 type PersistedSchedule struct {
@@ -550,20 +562,20 @@ type TraceSummary struct {
 }
 ```
 
-In-memory ring buffer:
+In-memory ring-buffer stores live in the internal tracing package and are used
+by tests. Production code should pass an explicit store or mount the tracing
+module.
 
-```go
-func brainkit.NewMemoryTraceStore(maxSpans int) TraceStore
-```
-
-Durable SQLite store (via the `tracing` module):
+Durable SQLite store:
 
 ```go
 func tracing.NewSQLiteTraceStore(db *sql.DB, opts ...SQLiteTraceStoreOption) (*SQLiteTraceStore, error)
 func tracing.WithRetention(d time.Duration) SQLiteTraceStoreOption // background cleanup loop
 ```
 
-Precedence in `brainkit.Config`: `TraceStore` (explicit) > `Tracing: true` (auto-create a `MemoryTraceStore`). `TraceSampleRate` (0.0–1.0) throttles span recording.
+`brainkit.Config.TraceStore` attaches a store at startup. The tracing module can
+attach or replace the store while mounted. `TraceSampleRate` (0.0-1.0) throttles
+span recording when a store is active.
 
 ---
 
@@ -639,10 +651,12 @@ type KernelMetrics struct {
     ActivePlugins     int
     Plugins           []PluginMetrics
     Bus               *MetricsSnapshot
+    Transport         *TransportMetrics
 }
 ```
 
 Surfaced over the `kit.health` and `metrics.get` bus commands; `HealthStatus` and `KernelMetrics` are the decoded response types.
+`Bus` contains logical-topic publish/handle/error counters plus handler duration summaries; `Transport` contains low-cardinality transport/router gauges.
 
 ---
 
@@ -692,7 +706,7 @@ Each is a `string` whose value is the exact .d.ts text shipped with the runtime.
 
 ## 13. `brainkit/server` — composed runtime
 
-`server` bundles a Kit with the standard service-mode module set (gateway, tracing, probes, audit, optional plugins) behind a single lifecycle.
+`server` bundles an explicit Kit module set behind a single lifecycle. YAML loading, package boot hooks, standard module registration, and quickstart presets live in subpackages so importing core `server` stays light.
 
 ### 13.1 Config
 
@@ -703,24 +717,16 @@ type Config struct {
     Namespace    string                    // required
     Transport    brainkit.TransportConfig  // required; rejects Memory()
     FSRoot       string                    // required
-    KitStorePath string                    // default: "<FSRoot>/kit.db"
+    Store        brainkit.KitStore         // optional; configfile/quickstart install SQLite
     SecretKey    string                    // empty = cleartext fallback (warned)
-
-    Gateway gateway.Config                 // required; Listen must be set
 
     // Pass-through to brainkit.Config
     Providers []brainkit.ProviderConfig
     Storages  map[string]brainkit.StorageConfig
     Vectors   map[string]brainkit.VectorConfig
 
-    Plugins []plugins.PluginConfig         // wires the plugins module when non-empty
-
-    Audit   *AuditConfig                   // nil = SQLite at <FSRoot>/audit.db
-    Tracing *bool                          // nil/true = on
-    Probes  *bool                          // nil/true = on
-
-    Packages []packages.Package            // auto-deployed after boot
-    Extra    []brainkit.Module             // appended to the composed module set
+    Modules []module.Module                // explicit module set
+    OnStart []server.StartHook             // optional startup hooks
 }
 
 type AuditConfig struct {
@@ -734,7 +740,7 @@ Validation (`New` fails fast):
 - `Namespace == ""` → error
 - `Transport == TransportConfig{}` → error (explicit transport required)
 - `FSRoot == ""` → error
-- `Gateway.Listen == ""` → error
+- No module with ID `gateway` → error
 
 ### 13.2 Server
 
@@ -743,7 +749,7 @@ type Server struct { /* unexported */ }
 
 func New(cfg Config) (*Server, error)
 
-func (s *Server) Start(ctx context.Context) error // auto-deploys cfg.Packages; blocks on ctx / SIGINT / SIGTERM
+func (s *Server) Start(ctx context.Context) error // runs OnStart hooks; blocks on ctx / SIGINT / SIGTERM
 func (s *Server) Stop(ctx context.Context) error  // graceful drain via Kit.Shutdown
 func (s *Server) Close() error                    // immediate shutdown
 func (s *Server) Kit() *brainkit.Kit              // full underlying Kit
@@ -752,32 +758,31 @@ func (s *Server) Kit() *brainkit.Kit              // full underlying Kit
 ### 13.3 QuickStart
 
 ```go
-func server.QuickStart(namespace, fsRoot string, opts ...QuickStartOption) (*Server, error)
+func quickstart.New(namespace, fsRoot string, opts ...Option) (*server.Server, error)
 
-type QuickStartOption func(*Config)
-func server.WithListen(addr string) QuickStartOption                  // override :8080
-func server.WithSecretKey(key string) QuickStartOption
-func server.WithPackages(pkgs ...packages.Package) QuickStartOption
-func server.WithExtraModules(mods ...brainkit.Module) QuickStartOption
+type quickstart.Option func(*server.Config)
+func quickstart.WithListen(addr string) Option                  // override :8080
+func quickstart.WithSecretKey(key string) Option
+func quickstart.WithPackages(pkgs ...packages.Package) Option
+func quickstart.WithExtraModules(mods ...module.Module) Option
 ```
 
 Defaults applied by `QuickStart`:
 
 | Field | Value |
 |-------|-------|
-| `Transport` | `brainkit.EmbeddedNATS()` |
-| `Gateway.Listen` | `":8080"` |
-| `Tracing`, `Probes`, `Audit` | on (nil pointers → defaults) |
-| `KitStorePath` | `<fsRoot>/kit.db` |
-| `AuditConfig.Path` | `<fsRoot>/audit.db` |
+| `Transport` | `transports.EmbeddedNATS()` |
+| `gateway` module | listen `":8080"` |
+| standard command modules | on |
+| `Store` | SQLite at `<fsRoot>/kit.db` |
 
 ### 13.4 YAML config
 
 ```go
-func server.LoadConfig(path string) (Config, error)
+func configfile.Load(path string) (server.Config, error)
 ```
 
-Reads a YAML file, expands `$VAR` / `${VAR}` against `os.Getenv`, and projects onto `server.Config`. Unknown transport / provider types return errors; unknown storage / vector types default to `InMemoryStorage()` / `SQLiteVector(v.Path)`.
+Reads a YAML file, expands `$VAR` / `${VAR}` against `os.Getenv`, and projects onto `server.Config`. Import `server/standard` for built-in YAML module names. Unknown transport / provider types return errors; unknown storage / vector types default to `InMemoryStorage()` / `SQLiteVector(v.Path)`.
 
 YAML shape:
 
@@ -847,7 +852,7 @@ packages:
   - path: ./packages/api          # packages.FromDir(...)
 ```
 
-Provider types accepted by `LoadConfig`: `openai`, `anthropic`, `google`, `mistral`, `groq`, `deepseek`, `xai`, `cohere`, `perplexity`, `togetherai`, `fireworks`, `cerebras`. Unknown types return `"server: unknown provider type %q"`.
+Provider types accepted by `configfile.Load`: `openai`, `anthropic`, `google`, `mistral`, `groq`, `deepseek`, `xai`, `cohere`, `perplexity`, `togetherai`, `fireworks`, `cerebras`. Unknown types return `"server: unknown provider type %q"`.
 
 ---
 
@@ -873,7 +878,7 @@ defer kit.Close()
 ```go
 srv, err := server.New(server.Config{
     Namespace: "prod",
-    Transport: brainkit.NATS("nats://nats:4222", brainkit.WithNATSName("prod")),
+    Transport: transports.NATS("nats://nats:4222", transports.WithNATSName("prod")),
     FSRoot:    "/var/lib/brainkit",
     SecretKey: os.Getenv("BRAINKIT_SECRET_KEY"),
 
@@ -889,7 +894,7 @@ srv, err := server.New(server.Config{
 
     // Every module is constructed explicitly and passed via Modules.
     // The server validates that a "gateway" module is present.
-    Modules: []brainkit.Module{
+    Modules: []module.Module{
         gateway.New(gateway.Config{Listen: ":8080"}),
 
         // Audit: open the SQLite store via the module's own stores
@@ -920,7 +925,9 @@ srv, err := server.New(server.Config{
     // YAML-driven path, the registry factories construct these
     // stores for you from `modules.audit.path` / `modules.tracing.path`.
 
-    Packages: []packages.Package{must(packages.FromDir("./packages/api"))},
+    OnStart: []server.StartHook{
+        packageboot.Deploy(must(packages.FromDir("./packages/api"))),
+    },
 })
 if err != nil { return err }
 defer srv.Close()
@@ -933,7 +940,7 @@ _ = srv.Start(ctx) // blocks until signal or ctx cancels
 ### 14.3 YAML-driven startup
 
 ```go
-cfg, err := server.LoadConfig("/etc/brainkit/config.yaml")
+cfg, err := configfile.Load("/etc/brainkit/config.yaml")
 if err != nil { log.Fatal(err) }
 srv, err := server.New(cfg)
 if err != nil { log.Fatal(err) }
@@ -946,9 +953,9 @@ log.Fatal(srv.Start(ctx))
 ```go
 srv, err := server.New(server.Config{
     Namespace: "svc",
-    Transport: brainkit.EmbeddedNATS(),
+    Transport: transports.EmbeddedNATS(),
     FSRoot:    tmp,
-    Modules: []brainkit.Module{
+    Modules: []module.Module{
         gateway.New(gateway.Config{Listen: ":8080"}),
         tracing.New(tracing.Config{Store: mustTraceStore(tmp + "/tracing.db")}),
         workflow.New(),

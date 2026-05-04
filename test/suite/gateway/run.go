@@ -33,6 +33,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("path_params", func(t *testing.T) { testPathParams(t, env) })
 		t.Run("route_table", func(t *testing.T) { testRouteTable(t, env) })
 		t.Run("bus_route_add", func(t *testing.T) { testBusRouteAdd(t, env) })
+		t.Run("bus_route_add_from_deployment", func(t *testing.T) { testBusRouteAddFromDeployment(t, env) })
 		t.Run("bus_route_remove_by_owner", func(t *testing.T) { testBusRouteRemoveByOwner(t, env) })
 		t.Run("health_endpoints", func(t *testing.T) { testHealthEndpoints(t, env) })
 		t.Run("readyz_during_drain", func(t *testing.T) { testReadyzDuringDrain(t, env) })
@@ -91,6 +92,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("attack_error_info_leak", func(t *testing.T) { testAttackErrorInfoLeak(t, env) })
 		t.Run("attack_slowloris", func(t *testing.T) { testAttackSlowloris(t, env) })
 		t.Run("attack_route_removal_via_bus", func(t *testing.T) { testAttackRouteRemovalViaBus(t, env) })
+		t.Run("attack_route_hijack_via_bus", func(t *testing.T) { testAttackRouteHijackViaBus(t, env) })
 	})
 }
 

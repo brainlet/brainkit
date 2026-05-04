@@ -31,7 +31,7 @@ type alias so callers only need one import:
 | `*TimeoutError`        | `TIMEOUT`             | A discrete operation exceeded its deadline.           |
 | `*WorkspaceEscapeError`| `WORKSPACE_ESCAPE`    | An fs path tries to escape `FSRoot`.                  |
 | `*NotConfiguredError`  | `NOT_CONFIGURED`      | A feature was invoked without its required config.    |
-| `*TransportError`      | `TRANSPORT_ERROR`     | Watermill/NATS/Redis/AMQP/embedded backend failed.    |
+| `*TransportError`      | `TRANSPORT_ERROR`     | bus transport backend failed.    |
 | `*PersistenceError`    | `PERSISTENCE_ERROR`   | `KitStore` (SQLite/libsql/…) operation failed.        |
 | `*DeployError`         | `DEPLOY_ERROR`        | A deploy stage (transpile/eval/compartment) failed.   |
 | `*BridgeError`         | `BRIDGE_ERROR`        | A Go↔JS bridge function returned an error.           |
@@ -48,7 +48,7 @@ Three classic sentinels for boolean checks with `errors.Is`:
 | --------------------------- | ----------------------------------------------------- |
 | `sdk.ErrNoReplyTo`          | `Reply`/`SendChunk` on an emitted (fire-and-forget) message. |
 | `sdk.ErrNotReplier`         | Runtime does not implement `sdk.Replier`.             |
-| `sdk.ErrNotCrossNamespace`  | `PublishTo` on a runtime without cross-Kit support.   |
+| `sdk.ErrNotCrossNamespace`  | Cross-namespace call/publish on a runtime without cross-Kit support. |
 
 ## The Envelope
 

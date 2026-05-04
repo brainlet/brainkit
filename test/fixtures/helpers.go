@@ -19,13 +19,16 @@ func FixturesRoot(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("getwd: %v", err)
 	}
-	// test/fixtures/ is two levels below the project root
-	root := filepath.Join(wd, "..", "..")
-	// Verify go.mod exists at the expected root
-	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
-		t.Fatalf("project root not found at %s: %v", root, err)
+
+	for dir := wd; ; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return filepath.Join(dir, "fixtures")
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("project root not found walking up from %s", wd)
+		}
 	}
-	return filepath.Join(root, "fixtures")
 }
 
 // LoadTSFixtureRaw reads the raw .ts source for a fixture given its relative path

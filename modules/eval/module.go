@@ -9,7 +9,6 @@ import (
 	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/modulecap/runtime"
 	"github.com/brainlet/brainkit/modules/eval/evalmsg"
-	_ "github.com/brainlet/brainkit/modules/jsruntime"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/google/uuid"
 )
@@ -68,7 +67,7 @@ func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	return New(), nil
 }
 
-// Describe surfaces module metadata for `brainkit modules list`.
+// Describe surfaces module metadata for module manifests.
 func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "eval",
@@ -88,7 +87,7 @@ func (Factory) Describe() bkmodule.Descriptor {
 
 func init() { bkmodule.Register("eval", Factory{}) }
 
-// Eval handles kit.eval. Mode dispatch preserves the legacy behavior:
+// Eval handles kit.eval. Mode dispatch is:
 // script deploys a temporary module and reads globalThis.__module_result; ts
 // evaluates in the current runtime context; module evaluates as an ES module.
 func (m *Module) Eval(ctx context.Context, req evalmsg.KitEvalMsg) (*evalmsg.KitEvalResp, error) {
@@ -126,11 +125,10 @@ func (m *Module) Eval(ctx context.Context, req evalmsg.KitEvalMsg) (*evalmsg.Kit
 		return &evalmsg.KitEvalResp{Result: result}, nil
 	case "script":
 		source := "__cli_eval_" + uuid.NewString() + ".ts"
-		if _, err := m.runtime.Deploy(ctx, source, req.Code); err != nil {
+		result, err := m.runtime.EvalScript(ctx, source, req.Code)
+		if err != nil {
 			return nil, err
 		}
-		defer m.runtime.Teardown(ctx, source)
-		result, _ := m.runtime.EvalTS(ctx, "__read_eval.ts", `return globalThis.__module_result || "null";`)
 		return &evalmsg.KitEvalResp{Result: result}, nil
 	default:
 		return nil, &sdkerrors.ValidationError{Field: "mode", Message: "unknown eval mode: " + mode + " (want script|ts|module)"}

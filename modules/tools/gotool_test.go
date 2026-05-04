@@ -22,7 +22,7 @@ func TestGoToolModuleMountsScopedTool(t *testing.T) {
 	const toolName = "test.go.echo"
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			toolsmod.New(),
 			toolsmod.GoTool(toolName, toolsmod.TypedTool[echoInput]{
 				Description: "echoes from a typed Go tool module",

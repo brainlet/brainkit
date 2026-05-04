@@ -13,6 +13,7 @@ import (
 	bkgw "github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/modules/gateway/gatewaymsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
@@ -211,7 +212,7 @@ func testBusRouteAdd(t *testing.T, _ *suite.TestEnv) {
 	gw, addr := gwStart(t, env.Kit)
 
 	// Add route via bus command
-	pr, err := sdk.Publish(env.Kit, context.Background(), gatewaymsg.GatewayRouteAddMsg{
+	pr, err := protocol.Publish(env.Kit, context.Background(), gatewaymsg.GatewayRouteAddMsg{
 		Method: "POST", Path: "/api/dynamic", Topic: "ts.gw-bus.dynamic",
 		Type: "handle", Owner: "gw-bus.ts",
 	})
@@ -247,6 +248,33 @@ func testBusRouteAdd(t *testing.T, _ *suite.TestEnv) {
 	assert.True(t, result["dynamic"])
 }
 
+func testBusRouteAddFromDeployment(t *testing.T, _ *suite.TestEnv) {
+	env := suite.Full(t)
+	_, addr := gwStart(t, env.Kit)
+
+	testutil.Deploy(t, env.Kit, "gw-self-route.ts", `
+		bus.on("dynamic", (msg) => {
+			msg.reply({ self: true });
+		});
+		await bus.call("gateway.http.route.add", {
+			method: "GET",
+			path: "/api/self-route",
+			topic: "ts.gw-self-route.dynamic",
+			type: "handle"
+		}, { timeoutMs: 1000 });
+	`)
+
+	resp, err := http.Get(addr + "/api/self-route")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, 200, resp.StatusCode)
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]bool
+	json.Unmarshal(body, &result)
+	assert.True(t, result["self"])
+}
+
 func testBusRouteRemoveByOwner(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
 	gw, _ := gwStart(t, env.Kit)
@@ -256,7 +284,7 @@ func testBusRouteRemoveByOwner(t *testing.T, _ *suite.TestEnv) {
 	gw.Handle("POST", "/c", "topic.c", bkgw.OwnedBy("other.ts"))
 	assert.Len(t, gw.ListRoutes(), 3)
 
-	pr, _ := sdk.Publish(env.Kit, context.Background(), gatewaymsg.GatewayRouteRemoveMsg{Owner: "svc.ts"})
+	pr, _ := protocol.Publish(env.Kit, context.Background(), gatewaymsg.GatewayRouteRemoveMsg{Owner: "svc.ts"})
 	done := make(chan gatewaymsg.GatewayRouteRemoveResp, 1)
 	unsub, _ := sdk.SubscribeTo[gatewaymsg.GatewayRouteRemoveResp](env.Kit, context.Background(), pr.ReplyTo, func(resp gatewaymsg.GatewayRouteRemoveResp, msg sdk.Message) {
 		done <- resp
@@ -428,7 +456,7 @@ func testBusRouteList(t *testing.T, _ *suite.TestEnv) {
 	gw.Handle("POST", "/a", "topic.a")
 	gw.HandleWebhook("POST", "/b", "topic.b")
 
-	pr, err := sdk.Publish(env.Kit, context.Background(), gatewaymsg.GatewayRouteListMsg{})
+	pr, err := protocol.Publish(env.Kit, context.Background(), gatewaymsg.GatewayRouteListMsg{})
 	require.NoError(t, err)
 
 	done := make(chan gatewaymsg.GatewayRouteListResp, 1)
@@ -453,7 +481,7 @@ func testBusStatus(t *testing.T, _ *suite.TestEnv) {
 	gw.Handle("POST", "/b", "topic.b")
 	gw.Handle("POST", "/c", "topic.c")
 
-	pr, err := sdk.Publish(env.Kit, context.Background(), gatewaymsg.GatewayStatusMsg{})
+	pr, err := protocol.Publish(env.Kit, context.Background(), gatewaymsg.GatewayStatusMsg{})
 	require.NoError(t, err)
 
 	done := make(chan gatewaymsg.GatewayStatusResp, 1)
@@ -465,6 +493,7 @@ func testBusStatus(t *testing.T, _ *suite.TestEnv) {
 	select {
 	case resp := <-done:
 		assert.True(t, resp.Listening)
+		assert.True(t, resp.ServerAttached)
 		assert.Equal(t, 3, resp.RouteCount)
 		assert.NotEmpty(t, resp.Address)
 	case <-time.After(5 * time.Second):

@@ -174,7 +174,7 @@ in JS is simpler, cheaper, and deterministic.
 Earlier attempts injected just the `agent-author` pack (~130kb).
 The coder kept inventing symbols or using shapes that exist in
 Mastra proper but not in brainkit's fork (e.g. ES `import`
-statements, legacy `LibSQLVector({ connectionUrl })`). Feeding
+statements, older `LibSQLVector({ connectionUrl })`). Feeding
 the full `everything` pack (~250kb) costs a few more tokens but
 eliminates that entire class of bug. Modern models easily fit
 this inside their context window.

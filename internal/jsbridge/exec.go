@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
 	"github.com/brainlet/brainkit/internal/syncx"
 
 	quickjs "github.com/buke/quickjs-go"
@@ -22,7 +23,7 @@ type spawnedProcess struct {
 	linesDone chan struct{}
 	waitErr   chan error
 	stdinPipe io.WriteCloser // stdin pipe for writing to the process
-	chunks    chan string     // raw stdout chunks (for LSP/JSON-RPC)
+	chunks    chan string    // raw stdout chunks (for LSP/JSON-RPC)
 }
 
 // ExecPolyfill provides child_process.exec and child_process.spawn.
@@ -74,6 +75,35 @@ func (p *ExecPolyfill) resolveCwd(cwd string) string {
 
 func (p *ExecPolyfill) Name() string { return "exec" }
 
+func (p *ExecPolyfill) goContext() context.Context {
+	if p != nil && p.bridge != nil {
+		return p.bridge.GoContext()
+	}
+	return context.Background()
+}
+
+func watchCommandContext(ctx context.Context, cmd *exec.Cmd) func() {
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			killCommandTree(cmd)
+		case <-done:
+		}
+	}()
+	return func() { close(done) }
+}
+
+func runWatchedCommand(ctx context.Context, cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	stopKill := watchCommandContext(ctx, cmd)
+	err := cmd.Wait()
+	stopKill()
+	return err
+}
+
 func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 	// Async exec: shell command runs in a separate goroutine.
 	// The bridge is NOT held during command execution.
@@ -93,23 +123,27 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 
 		return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
 			polyfill := p
-			polyfill.bridge.Go(func(goCtx context.Context) {
+			if !polyfill.bridge.TryGo(func(goCtx context.Context) {
 				var cmd *exec.Cmd
 				if runtime.GOOS == "windows" {
-					cmd = exec.Command("cmd", "/C", command)
+					cmd = exec.CommandContext(goCtx, "cmd", "/C", command)
 				} else {
-					cmd = exec.Command("sh", "-c", command)
+					cmd = exec.CommandContext(goCtx, "sh", "-c", command)
 				}
 				if cwd != "" {
 					cmd.Dir = cwd
 				}
+				configureCommandProcessGroup(cmd)
 
 				var stdoutBuf, stderrBuf strings.Builder
 				cmd.Stdout = &stdoutBuf
 				cmd.Stderr = &stderrBuf
 
 				exitCode := 0
-				err := cmd.Run()
+				err := runWatchedCommand(goCtx, cmd)
+				if goCtx.Err() != nil {
+					return
+				}
 				if err != nil {
 					if exitErr, ok := err.(*exec.ExitError); ok {
 						exitCode = exitErr.ExitCode()
@@ -133,7 +167,11 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 				ctx.Schedule(func(ctx *quickjs.Context) {
 					resolve(ctx.NewString(resultJSON))
 				})
-			})
+			}) {
+				errVal := ctx.NewError(context.Canceled)
+				defer errVal.Free()
+				reject(errVal)
+			}
 		})
 	}))
 
@@ -151,7 +189,9 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 			}
 		}
 
-		cmd := exec.Command(command, cmdArgs...)
+		cmdCtx := p.goContext()
+		cmd := exec.CommandContext(cmdCtx, command, cmdArgs...)
+		configureCommandProcessGroup(cmd)
 
 		// Set up cwd if provided as 3rd arg — rebased under
 		// the Kit FSRoot so relative paths can't escape the
@@ -174,10 +214,6 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 			return ctx.ThrowError(fmt.Errorf("spawn: stdin pipe: %w", err))
 		}
 
-		if err := cmd.Start(); err != nil {
-			return ctx.ThrowError(fmt.Errorf("spawn: start: %w", err))
-		}
-
 		proc := &spawnedProcess{
 			cmd:       cmd,
 			lines:     make(chan string, 256),
@@ -186,9 +222,25 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 			stdinPipe: stdinPipe,
 			chunks:    make(chan string, 256),
 		}
+		startIO := make(chan struct{})
+		abortIO := make(chan struct{})
+		var stopKill func()
 
 		// Read stdout in two modes: line-based (for spawn_read) and raw chunks (for LSP)
-		go func() {
+		readerStarted := p.bridge.TryGo(func(goCtx context.Context) {
+			select {
+			case <-startIO:
+			case <-abortIO:
+				close(proc.lines)
+				close(proc.chunks)
+				close(proc.linesDone)
+				return
+			case <-goCtx.Done():
+				close(proc.lines)
+				close(proc.chunks)
+				close(proc.linesDone)
+				return
+			}
 			reader := bufio.NewReader(stdoutPipe)
 			for {
 				// Read raw bytes (up to 64KB) for chunk mode
@@ -220,12 +272,35 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 			close(proc.lines)
 			close(proc.chunks)
 			close(proc.linesDone)
-		}()
+		})
 
-		go func() {
+		waitStarted := p.bridge.TryGo(func(goCtx context.Context) {
+			select {
+			case <-startIO:
+			case <-abortIO:
+				return
+			case <-goCtx.Done():
+				return
+			}
 			<-proc.linesDone
 			proc.waitErr <- cmd.Wait()
-		}()
+			if stopKill != nil {
+				stopKill()
+			}
+		})
+		if !readerStarted || !waitStarted {
+			close(abortIO)
+			_ = stdinPipe.Close()
+			return ctx.ThrowError(context.Canceled)
+		}
+
+		if err := cmd.Start(); err != nil {
+			close(abortIO)
+			_ = stdinPipe.Close()
+			return ctx.ThrowError(fmt.Errorf("spawn: start: %w", err))
+		}
+		stopKill = watchCommandContext(cmdCtx, cmd)
+		close(startIO)
 
 		p.mu.Lock()
 		id := p.nextID
@@ -253,7 +328,9 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 		return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
 			p.bridge.Go(func(goCtx context.Context) {
 				line, ok := <-proc.lines
-				if goCtx.Err() != nil { return }
+				if goCtx.Err() != nil {
+					return
+				}
 				ctx.Schedule(func(ctx *quickjs.Context) {
 					if !ok {
 						resolve(ctx.NewNull())
@@ -293,7 +370,9 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 				delete(p.procs, id)
 				p.mu.Unlock()
 
-				if goCtx.Err() != nil { return }
+				if goCtx.Err() != nil {
+					return
+				}
 				ctx.Schedule(func(ctx *quickjs.Context) {
 					resolve(ctx.NewInt32(int32(exitCode)))
 				})
@@ -382,9 +461,7 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 			return ctx.Undefined()
 		}
 
-		if proc.cmd.Process != nil {
-			_ = proc.cmd.Process.Kill()
-		}
+		killCommandTree(proc.cmd)
 		if proc.stdinPipe != nil {
 			_ = proc.stdinPipe.Close()
 		}
@@ -404,17 +481,18 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 
 		var cmd *exec.Cmd
 		if runtime.GOOS == "windows" {
-			cmd = exec.Command("cmd", "/C", command)
+			cmd = exec.CommandContext(p.goContext(), "cmd", "/C", command)
 		} else {
-			cmd = exec.Command("sh", "-c", command)
+			cmd = exec.CommandContext(p.goContext(), "sh", "-c", command)
 		}
+		configureCommandProcessGroup(cmd)
 
 		var stdoutBuf, stderrBuf strings.Builder
 		cmd.Stdout = &stdoutBuf
 		cmd.Stderr = &stderrBuf
 
 		exitCode := 0
-		err := cmd.Run()
+		err := runWatchedCommand(p.goContext(), cmd)
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				exitCode = exitErr.ExitCode()
@@ -442,7 +520,8 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 			json.Unmarshal([]byte(args[1].ToString()), &cmdArgs)
 		}
 
-		cmd := exec.Command(file, cmdArgs...)
+		cmd := exec.CommandContext(p.goContext(), file, cmdArgs...)
+		configureCommandProcessGroup(cmd)
 		if len(args) >= 3 && args[2].ToString() != "" {
 			cmd.Dir = args[2].ToString()
 		}
@@ -452,7 +531,7 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 		cmd.Stderr = &stderrBuf
 
 		exitCode := 0
-		err := cmd.Run()
+		err := runWatchedCommand(p.goContext(), cmd)
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				exitCode = exitErr.ExitCode()

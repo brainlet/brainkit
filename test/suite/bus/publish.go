@@ -12,6 +12,7 @@ import (
 	"github.com/brainlet/brainkit/modules/agents/agentmsg"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -124,10 +125,10 @@ func testJSReplyDoneFlag(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	defer unsub()
 
-	pubResult, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	pubResult, err := protocol.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "test.reply.trigger",
 		Payload: json.RawMessage(`{"go":"true"}`),
-	}, sdk.WithReplyTo(replyTo))
+	}, protocol.WithReplyTo(replyTo))
 	require.NoError(t, err)
 
 	var msgs []sdk.Message
@@ -237,13 +238,13 @@ func testDeployWithBusOn(t *testing.T, env *suite.TestEnv) {
 	`
 	testutil.Deploy(t, env.Kit, "greeter.ts", tsCode)
 	resp, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
-		Topic:   sdk.ResolveServiceTopic("greeter.ts", "greet"),
+		Topic:   protocol.ResolveServiceTopic("greeter.ts", "greet"),
 		Payload: json.RawMessage(`{"name":"world"}`),
 	})
 	require.NoError(t, err)
 	assert.Contains(t, string(resp), "hello world")
 
-	sdk.Publish(env.Kit, ctx, pkgTeardown("greeter.ts"))
+	protocol.Publish(env.Kit, ctx, pkgTeardown("greeter.ts"))
 }
 
 func testJSCallServiceUsesSharedCaller(t *testing.T, env *suite.TestEnv) {
@@ -268,7 +269,7 @@ func testJSCallServiceUsesSharedCaller(t *testing.T, env *suite.TestEnv) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	sdk.Publish(env.Kit, ctx, pkgTeardown("service-caller.ts"))
+	protocol.Publish(env.Kit, ctx, pkgTeardown("service-caller.ts"))
 }
 
 // testStreamingChunks verifies msg.send (chunks) + msg.reply (final) from a .ts service.
@@ -291,7 +292,7 @@ func testStreamingChunks(t *testing.T, env *suite.TestEnv) {
 	})
 	defer replyUnsub()
 
-	_, err := sdk.SendToService(env.Kit, ctx, "streamer.ts", "stream", json.RawMessage(`{}`), sdk.WithReplyTo(replyTopic))
+	_, err := protocol.SendToService(env.Kit, ctx, "streamer.ts", "stream", json.RawMessage(`{}`), protocol.WithReplyTo(replyTopic))
 	require.NoError(t, err)
 
 	var chunks []sdk.Message
@@ -312,7 +313,7 @@ done:
 	assert.Equal(t, "true", lastMsg.Metadata["done"], "last message should have done=true")
 	assert.Contains(t, string(lastMsg.Payload), "final")
 
-	sdk.Publish(env.Kit, ctx, pkgTeardown("streamer.ts"))
+	protocol.Publish(env.Kit, ctx, pkgTeardown("streamer.ts"))
 }
 
 // testKitRegisterAgentDiscovery verifies kit.register("agent") makes it
@@ -336,7 +337,7 @@ func testKitRegisterAgentDiscovery(t *testing.T, env *suite.TestEnv) {
 	}
 	assert.True(t, found, "test-bot should be in agents.list")
 
-	sdk.Publish(env.Kit, ctx, pkgTeardown("bot.ts"))
+	protocol.Publish(env.Kit, ctx, pkgTeardown("bot.ts"))
 	time.Sleep(100 * time.Millisecond)
 
 	lr, err = brainkit.Call[agentmsg.AgentListMsg, agentmsg.AgentListResp](env.Kit, ctx, agentmsg.AgentListMsg{})

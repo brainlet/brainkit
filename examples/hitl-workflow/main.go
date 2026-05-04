@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"path/filepath"
@@ -53,7 +54,7 @@ func run() error {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmp, "workflow.db")),
 		},
-		Modules: []brainkit.Module{packages.New(), workflowmod.New()},
+		Modules: []bkmodule.Module{packages.New(), workflowmod.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

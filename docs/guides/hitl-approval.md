@@ -336,7 +336,7 @@ kit, _ := brainkit.New(brainkit.Config{
     Namespace: "harness-demo",
     Transport: brainkit.Memory(),
     FSRoot:    "/tmp/harness",
-    Modules:   []brainkit.Module{mod},
+    Modules:   []module.Module{mod},
 })
 
 inst := mod.Instance()

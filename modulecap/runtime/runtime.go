@@ -10,6 +10,7 @@ import (
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
+	bkmodule "github.com/brainlet/brainkit/module"
 	agenthost "github.com/brainlet/brainkit/modulehost/agenthost"
 	provreg "github.com/brainlet/brainkit/modulehost/providerhost/providerreg"
 	toolhost "github.com/brainlet/brainkit/modulehost/toolhost"
@@ -24,24 +25,80 @@ type DeploymentInfo struct {
 	Order     int                  `json:"order"`
 }
 
-// Deployer handles lifecycle of .ts/.js file deployments.
-type Deployer interface {
+// DebugSnapshot reports JS runtime ownership counters for lifecycle inspect
+// surfaces. It intentionally contains state and counts only.
+type DebugSnapshot struct {
+	Phase                               string         `json:"phase"`
+	Closed                              bool           `json:"closed"`
+	ActiveDeployments                   int            `json:"activeDeployments"`
+	ResourceCount                       int            `json:"resourceCount"`
+	ResourcesByType                     map[string]int `json:"resourcesByType,omitempty"`
+	BridgeSubscriptions                 int            `json:"bridgeSubscriptions"`
+	BridgeClosing                       bool           `json:"bridgeClosing"`
+	BridgeClosed                        bool           `json:"bridgeClosed"`
+	BridgeGoroutines                    int            `json:"bridgeGoroutines"`
+	RuntimeHostPropagationSubscriptions int            `json:"runtimeHostPropagationSubscriptions,omitempty"`
+}
+
+// DebugSnapshotter exposes read-only JS runtime lifecycle counters.
+type DebugSnapshotter interface {
+	JSRuntimeDebugSnapshot() DebugSnapshot
+}
+
+// SourceDeployer handles lifecycle of raw .ts/.js source deployments. Callers
+// that already own bundling/normalization should consume ArtifactDeployer
+// instead.
+type SourceDeployer interface {
 	Deploy(ctx context.Context, source, code string, opts ...types.DeployOption) ([]types.ResourceInfo, error)
 	Teardown(ctx context.Context, source string) (int, error)
 	ListDeployments() []DeploymentInfo
 }
 
-// TSRunner evaluates JS/TS code in the active runtime.
+// ArtifactDeployer handles already-normalized JavaScript artifacts. It exists
+// so package/tooling modules do not need broad raw-source deployment access.
+type ArtifactDeployer interface {
+	DeployArtifact(ctx context.Context, source, code string, opts ...types.DeployOption) ([]types.ResourceInfo, error)
+	Teardown(ctx context.Context, source string) (int, error)
+	ListDeployments() []DeploymentInfo
+}
+
+// TSRunner evaluates direct JS/TS snippets in the active runtime. It is not a
+// package/file-graph bundler; package normalization belongs to modules/packages
+// or tooling before deploy handoff.
 type TSRunner interface {
 	EvalTS(ctx context.Context, source, code string) (string, error)
 }
 
-// EvalRuntime is the module-facing JS/TS eval surface. It is narrower than
-// Host so eval consumers cannot reach the runtime activation/kernel adapter.
-type EvalRuntime interface {
-	Deployer
+// DirectEvaluator evaluates direct snippets and modules without exposing raw
+// deploy/teardown to command modules.
+type DirectEvaluator interface {
 	TSRunner
 	EvalModule(ctx context.Context, source, code string) (string, error)
+}
+
+// ScriptEvaluator runs a temporary raw-source script and returns its result.
+// Implementations own the deploy/teardown details.
+type ScriptEvaluator interface {
+	EvalScript(ctx context.Context, source, code string) (string, error)
+}
+
+// EvalRuntime is the module-facing JS/TS eval surface. It is narrower than
+// Host so eval consumers cannot reach the runtime activation/kernel adapter or
+// raw deploy/teardown primitives.
+type EvalRuntime interface {
+	DirectEvaluator
+	ScriptEvaluator
+}
+
+// TestRuntime is the explicit dev/test runtime surface consumed by
+// modules/testing. It keeps raw source deploy and direct TS evaluation out of
+// the general module capability list while still letting the test runner deploy
+// fixture source and already-bundled test artifacts.
+type TestRuntime interface {
+	EvalTS(ctx context.Context, source, code string) (string, error)
+	DeploySource(ctx context.Context, source, code string) ([]types.ResourceInfo, error)
+	DeployArtifact(ctx context.Context, source, code string) ([]types.ResourceInfo, error)
+	Teardown(ctx context.Context, source string) (int, error)
 }
 
 // JSEvaluator runs JavaScript on the runtime bridge's JS thread.
@@ -52,7 +109,7 @@ type JSEvaluator interface {
 // Attachment is the engine-facing surface implemented by the optional JS/TS
 // runtime package.
 type Attachment interface {
-	Deployer
+	SourceDeployer
 	TSRunner
 	EvalModule(ctx context.Context, source, code string) (string, error)
 	ListResources(resourceType ...string) ([]types.ResourceInfo, error)
@@ -60,9 +117,14 @@ type Attachment interface {
 	TeardownFile(filename string) (int, error)
 	RemoveResource(resourceType, id string) error
 	CallJS(ctx context.Context, fn string, args any) (json.RawMessage, error)
-	CallJSSync(fn string, args any)
+	// HarnessRuntime returns the optional harness adapter as an opaque value.
+	// Keep this untyped so the root runtime attachment does not import
+	// QuickJS-shaped harness contracts; modules/jsruntime type-checks it before
+	// providing the typed module-facing capability.
 	HarnessRuntime() any
 	Interrupt()
+	Unmount(ctx context.Context) error
+	Shutdown(ctx context.Context) error
 	Close() error
 	CurrentSource() string
 	SetCurrentSource(source string)
@@ -73,10 +135,13 @@ type Attachment interface {
 // Access is the runtime-facing surface exposed after the JS/TS runtime is
 // attached.
 type Access interface {
-	Deployer
+	SourceDeployer
 	TSRunner
 	EvalModule(ctx context.Context, source, code string) (string, error)
 	CallJS(ctx context.Context, fn string, args any) (json.RawMessage, error)
+	// HarnessRuntime returns the optional harness adapter as an opaque value.
+	// Module consumers receive the typed capability from modules/jsruntime, not
+	// this root-light attachment boundary.
 	HarnessRuntime() any
 }
 
@@ -87,9 +152,9 @@ type ActivationHost interface {
 	HasJSRuntime() bool
 	AttachJSRuntime(Attachment) error
 	DetachJSRuntime(Attachment)
+	DisableJSRuntime(ctx context.Context) error
 	SetDeployOrderSeed(seed int32)
 	RestoreJSRuntimeState(cfg types.KernelConfig)
-	ProbeAll()
 }
 
 // CoreHost exposes identity, logging, tracing, and secret lookup.
@@ -111,16 +176,24 @@ type ToolAgentHost interface {
 	ToolsDomain() *toolhost.Domain
 	AgentsDomain() *agenthost.Domain
 
-	SetToolEvaluator(JSEvaluator)
+	LeaseToolEvaluator(context.Context, JSEvaluator) (bkmodule.Handle, error)
 }
 
 // StorageHost owns storage bridge lifecycle and registry refresh.
 type StorageHost interface {
+	AddStorage(name string, cfg types.StorageConfig) error
+	RemoveStorage(name string) error
+	RemoveStorageContext(context.Context, string) error
+	AddVector(name string, cfg types.VectorConfig) error
+	RemoveVector(name string) error
+	RemoveVectorContext(context.Context, string) error
 	ExistingStorageBridgeNames() map[string]bool
-	CloseStorageBridgesExcept(keep map[string]bool)
+	CloseStorageBridgesExcept(keep map[string]bool) error
+	CloseStorageBridgesExceptContext(context.Context, map[string]bool) error
 	InitStorageBridges(cfg types.KernelConfig) (map[string]string, error)
-	RegisterConfiguredStorages(cfg types.KernelConfig, bridgeURLs map[string]string)
+	RegisterConfiguredStorages(cfg types.KernelConfig, bridgeURLs map[string]string) error
 	RegisterConfiguredVectors(cfg types.KernelConfig, bridgeURLs map[string]string) error
+	RestoreConfiguredStorageRegistry(cfg types.KernelConfig, bridgeURLs map[string]string) error
 }
 
 // BusHost exposes bus operations used by JS bus and command bridges.
@@ -153,11 +226,10 @@ type ScheduleHost interface {
 	ScheduleHandler() types.ScheduleHandler
 }
 
-// Host is the complete kernel surface required to activate and run the optional
-// JS/TS runtime. Keep it as a composition of smaller capability contracts so
-// new dependencies are added to the narrow group that actually needs them.
-type Host interface {
-	Access
+// EnableHost is the kernel surface required to activate and run the optional
+// JS/TS runtime. It intentionally excludes Access: runtime access becomes
+// available only after activation attaches a runtime to the kernel.
+type EnableHost interface {
 	ActivationHost
 	CoreHost
 	RegistryHost
@@ -166,4 +238,12 @@ type Host interface {
 	BusHost
 	HandlerHost
 	ScheduleHost
+}
+
+// Host is the complete module-facing runtime capability. Keep it as a
+// composition of smaller contracts so new dependencies are added to the narrow
+// group that actually needs them.
+type Host interface {
+	Access
+	EnableHost
 }

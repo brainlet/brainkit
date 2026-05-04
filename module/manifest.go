@@ -32,6 +32,7 @@ type CapabilityDirection string
 const (
 	CapabilityProvided CapabilityDirection = "provided"
 	CapabilityRequired CapabilityDirection = "required"
+	CapabilityOptional CapabilityDirection = "optional"
 )
 
 // CapabilityDescriptor describes one named module host capability.
@@ -40,6 +41,15 @@ type CapabilityDescriptor struct {
 	Direction CapabilityDirection `json:"direction,omitempty"`
 	Type      string              `json:"type,omitempty"`
 	Summary   string              `json:"summary,omitempty"`
+}
+
+// CapabilityGroups is the manifest view optimized for humans and operators.
+// The flat Capabilities list remains the source of truth; NormalizeDescriptor
+// derives this grouped view so JSON consumers do not need to re-bucket it.
+type CapabilityGroups struct {
+	Required []CapabilityDescriptor `json:"required,omitempty"`
+	Optional []CapabilityDescriptor `json:"optional,omitempty"`
+	Provided []CapabilityDescriptor `json:"provided,omitempty"`
 }
 
 // ResourceKind identifies a non-bus resource owned by a module scope.
@@ -176,6 +186,26 @@ func RequiredCapabilityOf[T any](name string, summary ...string) CapabilityDescr
 	}
 }
 
+// OptionalCapability describes a capability used when available by a module.
+func OptionalCapability(name string, value any, summary ...string) CapabilityDescriptor {
+	return CapabilityDescriptor{
+		Name:      name,
+		Direction: CapabilityOptional,
+		Type:      valueTypeName(value),
+		Summary:   first(summary),
+	}
+}
+
+// OptionalCapabilityOf describes an optional capability with a generic type.
+func OptionalCapabilityOf[T any](name string, summary ...string) CapabilityDescriptor {
+	return CapabilityDescriptor{
+		Name:      name,
+		Direction: CapabilityOptional,
+		Type:      typeName[T](),
+		Summary:   first(summary),
+	}
+}
+
 // ProvidedCapability describes a capability exported by a module.
 func ProvidedCapability(name string, value any, summary ...string) CapabilityDescriptor {
 	return CapabilityDescriptor{
@@ -244,6 +274,7 @@ func NormalizeDescriptor(name string, desc Descriptor) Descriptor {
 	desc.Events = normalizeMessages(desc.Events, MessageKindEvent)
 	desc.Subscriptions = normalizeMessages(desc.Subscriptions, MessageKindSubscription)
 	desc.Capabilities = normalizeCapabilities(desc.Capabilities)
+	desc.CapabilityGroups = groupCapabilities(desc.Capabilities)
 	desc.Resources = normalizeResources(desc.Resources)
 	return desc
 }
@@ -301,6 +332,27 @@ func normalizeCapabilities(in []CapabilityDescriptor) []CapabilityDescriptor {
 		return out[i].Name < out[j].Name
 	})
 	return out
+}
+
+func groupCapabilities(caps []CapabilityDescriptor) *CapabilityGroups {
+	if len(caps) == 0 {
+		return nil
+	}
+	groups := CapabilityGroups{}
+	for _, cap := range caps {
+		switch cap.Direction {
+		case CapabilityRequired:
+			groups.Required = append(groups.Required, cap)
+		case CapabilityOptional:
+			groups.Optional = append(groups.Optional, cap)
+		case CapabilityProvided:
+			groups.Provided = append(groups.Provided, cap)
+		}
+	}
+	if len(groups.Required) == 0 && len(groups.Optional) == 0 && len(groups.Provided) == 0 {
+		return nil
+	}
+	return &groups
 }
 
 func normalizeResources(in []ResourceDescriptor) []ResourceDescriptor {

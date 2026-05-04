@@ -10,6 +10,7 @@ import (
 	"github.com/brainlet/brainkit/modules/agents/agentmsg"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 )
@@ -36,7 +37,7 @@ func testXDeployTeardownAnother(t *testing.T, env *suite.TestEnv) {
 
 	attackerResult, _ := secEvalTSErr(k, "__atk_td.ts", `return String(globalThis.__module_result || "");`)
 
-	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
+	pr, _ := protocol.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.victim-svc-sec.ping", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
@@ -76,7 +77,7 @@ func testXDeployReplyImpersonation(t *testing.T, env *suite.TestEnv) {
 		output("listening");
 	`)
 
-	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
+	pr, _ := protocol.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.slow-a-sec.ask", Payload: json.RawMessage(`{"q":"test"}`),
 	})
 
@@ -179,7 +180,7 @@ func testXDeployMailboxEavesdrop(t *testing.T, env *suite.TestEnv) {
 	})
 	defer unsub()
 
-	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
+	pr, _ := protocol.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.private-svc-sec.internal-api", Payload: json.RawMessage(`{"q":"legit"}`),
 	})
 	ch := make(chan []byte, 1)
@@ -221,7 +222,7 @@ func testXDeployAgentRegistrationRace(t *testing.T, env *suite.TestEnv) {
 	result, _ := secEvalTSErr(k, "__agent_race.ts", `return String(globalThis.__module_result || "");`)
 	t.Logf("Agent double-registration: %s", result)
 
-	pr, _ := sdk.Publish(k, ctx, agentmsg.AgentListMsg{})
+	pr, _ := protocol.Publish(k, ctx, agentmsg.AgentListMsg{})
 	ch := make(chan []byte, 1)
 	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()

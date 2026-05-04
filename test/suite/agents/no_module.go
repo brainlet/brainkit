@@ -8,6 +8,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/agents/agentmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 )
 
@@ -28,7 +29,7 @@ func testNoModuleCommandsAbsent(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(k, ctx, agentmsg.AgentListMsg{})
+	pr, err := protocol.Publish(k, ctx, agentmsg.AgentListMsg{})
 	if err != nil {
 		t.Fatalf("publish agents.list: %v", err)
 	}

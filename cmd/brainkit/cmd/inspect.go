@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -30,6 +31,8 @@ prints the result. Subjects:
   schedules  — active schedules (schedules.list)
   agents     — registered agents (agents.list)
   modules    — mounted module manifests (kit.modules)
+  module ID  — one module manifest with preflight (kit.module.describe)
+  lifecycle  — runtime lifecycle/debug counters (kit.lifecycle)
   tools      — registered tools (tools.list)
   workflows  — registered workflows (workflow.list)
   resources  — every registered tool + agent + workflow, grouped
@@ -39,11 +42,25 @@ prints the result. Subjects:
 
 Use --json to emit the raw payload instead of the table
 rendering.`,
-		Args: cobra.ExactArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return fmt.Errorf("requires a subject")
+			}
+			if args[0] == "module" {
+				if len(args) != 2 {
+					return fmt.Errorf("inspect module requires a module ID")
+				}
+				return nil
+			}
+			if len(args) != 1 {
+				return fmt.Errorf("inspect %s does not accept extra arguments", args[0])
+			}
+			return nil
+		},
 		ValidArgs: []string{
 			"health", "packages", "plugins", "schedules",
-			"agents", "modules", "tools", "workflows", "resources",
-			"audit", "traces", "routes",
+			"agents", "modules", "module", "tools", "workflows", "resources",
+			"audit", "traces", "routes", "lifecycle",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			subject := args[0]
@@ -55,6 +72,20 @@ rendering.`,
 
 			if subject == "resources" {
 				return renderResources(ctx, cmd, client)
+			}
+			if subject == "module" {
+				payload, err := json.Marshal(map[string]string{"id": args[1]})
+				if err != nil {
+					return err
+				}
+				resp, err := client.call(ctx, "kit.module.describe", json.RawMessage(payload))
+				if err != nil {
+					return err
+				}
+				if jsonOutput {
+					return writeJSONPretty(cmd.OutOrStdout(), resp)
+				}
+				return renderModule(cmd.OutOrStdout(), resp)
 			}
 
 			spec, ok := inspectSubjects[subject]
@@ -90,6 +121,7 @@ var inspectSubjects = map[string]inspectSubject{
 	"schedules": {topic: "schedules.list", payload: "{}", render: renderSchedules},
 	"agents":    {topic: "agents.list", payload: "{}", render: renderAgents},
 	"modules":   {topic: "kit.modules", payload: "{}", render: renderModules},
+	"lifecycle": {topic: "kit.lifecycle", payload: "{}", render: renderLifecycle},
 	"tools":     {topic: "tools.list", payload: "{}", render: renderTools},
 	"workflows": {topic: "workflow.list", payload: "{}", render: renderWorkflows},
 	"audit":     {topic: "audit.query", payload: `{"limit":20}`, render: renderAudit},
@@ -294,6 +326,115 @@ func renderRoutes(w io.Writer, payload json.RawMessage) error {
 	return tw.Flush()
 }
 
+func renderLifecycle(w io.Writer, payload json.RawMessage) error {
+	var resp struct {
+		Lifecycle struct {
+			Runtime struct {
+				RuntimeID      string `json:"runtimeId"`
+				Namespace      string `json:"namespace"`
+				CallerID       string `json:"callerId"`
+				MountedModules int    `json:"mountedModules"`
+				ActiveHandlers int64  `json:"activeHandlers"`
+				Draining       bool   `json:"draining"`
+				Provider       struct {
+					AIProviders      int   `json:"aiProviders"`
+					VectorStores     int   `json:"vectorStores"`
+					Storages         int   `json:"storages"`
+					Closing          bool  `json:"closing"`
+					Closed           bool  `json:"closed"`
+					ActiveProbes     int64 `json:"activeProbes"`
+					ActiveOperations int64 `json:"activeOperations"`
+				} `json:"provider"`
+				Storage struct {
+					Closing      bool     `json:"closing"`
+					BridgeCount  int      `json:"bridgeCount"`
+					BridgeNames  []string `json:"bridgeNames"`
+					ActiveCloses int      `json:"activeCloses"`
+				} `json:"storage"`
+				Transport struct {
+					Kind                   string `json:"kind"`
+					OwnsTransport          bool   `json:"ownsTransport"`
+					ActiveSubscriptions    int64  `json:"activeSubscriptions"`
+					ActiveStreamHeartbeats int    `json:"activeStreamHeartbeats"`
+					ClosingRouter          bool   `json:"closingRouter"`
+					ClosingCaller          bool   `json:"closingCaller"`
+					ClosingTransport       bool   `json:"closingTransport"`
+					ClosedRouter           bool   `json:"closedRouter"`
+					ClosedCaller           bool   `json:"closedCaller"`
+					ClosedTransport        bool   `json:"closedTransport"`
+					Router                 struct {
+						Handlers        int            `json:"handlers"`
+						StartedHandlers int            `json:"startedHandlers"`
+						StoppedHandlers int            `json:"stoppedHandlers"`
+						Topics          map[string]int `json:"topics"`
+					} `json:"router"`
+				} `json:"transport"`
+			} `json:"runtime"`
+			Components []struct {
+				Name  string          `json:"name"`
+				Data  json.RawMessage `json:"data"`
+				Error string          `json:"error"`
+			} `json:"components"`
+		} `json:"lifecycle"`
+	}
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		return writeJSONPretty(w, payload)
+	}
+	tw := newTW(w)
+	fmt.Fprintln(tw, "AREA\tMETRIC\tVALUE")
+	r := resp.Lifecycle.Runtime
+	fmt.Fprintf(tw, "runtime\truntimeId\t%s\n", nonEmpty(r.RuntimeID, "-"))
+	fmt.Fprintf(tw, "runtime\tnamespace\t%s\n", nonEmpty(r.Namespace, "-"))
+	fmt.Fprintf(tw, "runtime\tcallerId\t%s\n", nonEmpty(r.CallerID, "-"))
+	fmt.Fprintf(tw, "runtime\tmountedModules\t%d\n", r.MountedModules)
+	fmt.Fprintf(tw, "runtime\tactiveHandlers\t%d\n", r.ActiveHandlers)
+	fmt.Fprintf(tw, "runtime\tdraining\t%t\n", r.Draining)
+	fmt.Fprintf(tw, "provider\taiProviders\t%d\n", r.Provider.AIProviders)
+	fmt.Fprintf(tw, "provider\tvectorStores\t%d\n", r.Provider.VectorStores)
+	fmt.Fprintf(tw, "provider\tstorages\t%d\n", r.Provider.Storages)
+	fmt.Fprintf(tw, "provider\tclosing\t%t\n", r.Provider.Closing)
+	fmt.Fprintf(tw, "provider\tclosed\t%t\n", r.Provider.Closed)
+	fmt.Fprintf(tw, "provider\tactiveProbes\t%d\n", r.Provider.ActiveProbes)
+	fmt.Fprintf(tw, "provider\tactiveOperations\t%d\n", r.Provider.ActiveOperations)
+	fmt.Fprintf(tw, "storage\tclosing\t%t\n", r.Storage.Closing)
+	fmt.Fprintf(tw, "storage\tbridgeCount\t%d\n", r.Storage.BridgeCount)
+	fmt.Fprintf(tw, "storage\tbridgeNames\t%s\n", nonEmpty(strings.Join(r.Storage.BridgeNames, ","), "-"))
+	fmt.Fprintf(tw, "storage\tactiveCloses\t%d\n", r.Storage.ActiveCloses)
+	fmt.Fprintf(tw, "transport\tkind\t%s\n", nonEmpty(r.Transport.Kind, "-"))
+	fmt.Fprintf(tw, "transport\townsTransport\t%t\n", r.Transport.OwnsTransport)
+	fmt.Fprintf(tw, "transport\tactiveSubscriptions\t%d\n", r.Transport.ActiveSubscriptions)
+	fmt.Fprintf(tw, "transport\tactiveStreamHeartbeats\t%d\n", r.Transport.ActiveStreamHeartbeats)
+	fmt.Fprintf(tw, "transport\tclosingRouter\t%t\n", r.Transport.ClosingRouter)
+	fmt.Fprintf(tw, "transport\tclosingCaller\t%t\n", r.Transport.ClosingCaller)
+	fmt.Fprintf(tw, "transport\tclosingTransport\t%t\n", r.Transport.ClosingTransport)
+	fmt.Fprintf(tw, "transport\tclosedRouter\t%t\n", r.Transport.ClosedRouter)
+	fmt.Fprintf(tw, "transport\tclosedCaller\t%t\n", r.Transport.ClosedCaller)
+	fmt.Fprintf(tw, "transport\tclosedTransport\t%t\n", r.Transport.ClosedTransport)
+	fmt.Fprintf(tw, "transport.router\thandlers\t%d\n", r.Transport.Router.Handlers)
+	fmt.Fprintf(tw, "transport.router\tstartedHandlers\t%d\n", r.Transport.Router.StartedHandlers)
+	fmt.Fprintf(tw, "transport.router\tstoppedHandlers\t%d\n", r.Transport.Router.StoppedHandlers)
+	for _, component := range resp.Lifecycle.Components {
+		if component.Error != "" {
+			fmt.Fprintf(tw, "%s\terror\t%s\n", nonEmpty(component.Name, "component"), component.Error)
+			continue
+		}
+		fields := map[string]any{}
+		if err := json.Unmarshal(component.Data, &fields); err != nil {
+			fmt.Fprintf(tw, "%s\tdata\t%s\n", nonEmpty(component.Name, "component"), compactJSON(component.Data))
+			continue
+		}
+		keys := make([]string, 0, len(fields))
+		for key := range fields {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			fmt.Fprintf(tw, "%s\t%s\t%s\n", nonEmpty(component.Name, "component"), key, inspectValueString(fields[key]))
+		}
+	}
+	return tw.Flush()
+}
+
 func newTW(w io.Writer) *tabwriter.Writer {
 	return tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 }
@@ -305,36 +446,313 @@ func nonEmpty(s, fallback string) string {
 	return s
 }
 
+func inspectValueString(v any) string {
+	switch value := v.(type) {
+	case nil:
+		return "null"
+	case string:
+		return nonEmpty(value, "-")
+	case float64:
+		if value == float64(int64(value)) {
+			return fmt.Sprintf("%d", int64(value))
+		}
+		return fmt.Sprintf("%g", value)
+	case bool:
+		return fmt.Sprintf("%t", value)
+	default:
+		data, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Sprintf("%v", value)
+		}
+		return string(data)
+	}
+}
+
+func compactJSON(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return "-"
+	}
+	var out bytes.Buffer
+	if err := json.Compact(&out, raw); err != nil {
+		return string(raw)
+	}
+	return out.String()
+}
+
+type inspectModuleCapability struct {
+	Name      string `json:"name"`
+	Direction string `json:"direction"`
+	Type      string `json:"type"`
+	Summary   string `json:"summary"`
+}
+
+type inspectModuleCapabilityGroups struct {
+	Required []inspectModuleCapability `json:"required"`
+	Optional []inspectModuleCapability `json:"optional"`
+	Provided []inspectModuleCapability `json:"provided"`
+}
+
+type inspectModuleCapabilityAvailability struct {
+	Module    string `json:"module"`
+	Name      string `json:"name"`
+	Direction string `json:"direction"`
+	Type      string `json:"type"`
+	Summary   string `json:"summary"`
+	Available bool   `json:"available"`
+	Source    string `json:"source"`
+	Provider  string `json:"provider"`
+}
+
+type inspectModuleDependencyStatus struct {
+	Name        string `json:"name"`
+	RequestedBy string `json:"requestedBy"`
+	Mounted     bool   `json:"mounted"`
+	Registered  bool   `json:"registered"`
+	Available   bool   `json:"available"`
+}
+
+type inspectModulePreflight struct {
+	Ready                       bool                                  `json:"ready"`
+	RequiredModules             []inspectModuleDependencyStatus       `json:"requiredModules"`
+	MissingModules              []string                              `json:"missingModules"`
+	RequiredCapabilities        []inspectModuleCapabilityAvailability `json:"requiredCapabilities"`
+	OptionalCapabilities        []inspectModuleCapabilityAvailability `json:"optionalCapabilities"`
+	MissingRequiredCapabilities []inspectModuleCapabilityAvailability `json:"missingRequiredCapabilities"`
+	Errors                      []string                              `json:"errors"`
+}
+
 func renderModules(w io.Writer, payload json.RawMessage) error {
 	var resp struct {
 		Modules []struct {
-			Name         string   `json:"name"`
-			Status       string   `json:"status"`
-			Summary      string   `json:"summary"`
-			Requires     []string `json:"requires"`
-			Commands     []any    `json:"commands"`
-			Events       []any    `json:"events"`
-			Capabilities []any    `json:"capabilities"`
-			Resources    []any    `json:"resources"`
+			Name             string                         `json:"name"`
+			Status           string                         `json:"status"`
+			Summary          string                         `json:"summary"`
+			Provides         []string                       `json:"provides"`
+			Requires         []string                       `json:"requires"`
+			Commands         []any                          `json:"commands"`
+			Events           []any                          `json:"events"`
+			Capabilities     []inspectModuleCapability      `json:"capabilities"`
+			CapabilityGroups *inspectModuleCapabilityGroups `json:"capabilityGroups"`
+			Resources        []any                          `json:"resources"`
 		} `json:"modules"`
+		Preflights map[string]inspectModulePreflight `json:"preflights"`
 	}
 	if err := json.Unmarshal(payload, &resp); err != nil {
 		return writeJSONPretty(w, payload)
 	}
 	tw := newTW(w)
-	fmt.Fprintln(tw, "NAME\tSTATUS\tREQUIRES\tCOMMANDS\tEVENTS\tCAPS\tRES\tSUMMARY")
+	fmt.Fprintln(tw, "NAME\tSTATUS\tPROVIDES\tREQUIRES\tCOMMANDS\tEVENTS\tREQCAPS\tOPTCAPS\tPROVCAPS\tREADY\tMISSING\tRES\tSUMMARY")
 	for _, m := range resp.Modules {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%s\n",
+		required, optional, provided := moduleCapabilityCounts(m.CapabilityGroups, m.Capabilities)
+		ready, missing := modulePreflightSummary(resp.Preflights, m.Name)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%d\t%s\n",
 			nonEmpty(m.Name, "-"),
 			nonEmpty(m.Status, "-"),
+			nonEmpty(strings.Join(m.Provides, ","), "-"),
 			nonEmpty(strings.Join(m.Requires, ","), "-"),
 			len(m.Commands),
 			len(m.Events),
-			len(m.Capabilities),
+			required,
+			optional,
+			provided,
+			ready,
+			missing,
 			len(m.Resources),
 			nonEmpty(m.Summary, "-"))
 	}
 	return tw.Flush()
+}
+
+func modulePreflightSummary(preflights map[string]inspectModulePreflight, name string) (ready, missing string) {
+	if preflights == nil {
+		return "-", "-"
+	}
+	preflight, ok := preflights[name]
+	if !ok {
+		return "-", "-"
+	}
+	var missingParts []string
+	for _, module := range preflight.MissingModules {
+		missingParts = append(missingParts, "module:"+module)
+	}
+	for _, cap := range preflight.MissingRequiredCapabilities {
+		label := cap.Name
+		if cap.Module != "" && cap.Module != name {
+			label = cap.Module + ":" + label
+		}
+		missingParts = append(missingParts, "cap:"+label)
+	}
+	missingParts = append(missingParts, preflight.Errors...)
+	sort.Strings(missingParts)
+	return fmt.Sprintf("%t", preflight.Ready), nonEmpty(strings.Join(missingParts, ","), "-")
+}
+
+func renderModule(w io.Writer, payload json.RawMessage) error {
+	var resp struct {
+		Module struct {
+			Name             string                         `json:"name"`
+			Status           string                         `json:"status"`
+			Summary          string                         `json:"summary"`
+			Provides         []string                       `json:"provides"`
+			Requires         []string                       `json:"requires"`
+			Commands         []any                          `json:"commands"`
+			Events           []any                          `json:"events"`
+			Subscriptions    []any                          `json:"subscriptions"`
+			Capabilities     []inspectModuleCapability      `json:"capabilities"`
+			CapabilityGroups *inspectModuleCapabilityGroups `json:"capabilityGroups"`
+			Resources        []any                          `json:"resources"`
+		} `json:"module"`
+		Mounted   bool                   `json:"mounted"`
+		Preflight inspectModulePreflight `json:"preflight"`
+	}
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		return writeJSONPretty(w, payload)
+	}
+
+	tw := newTW(w)
+	fmt.Fprintln(tw, "FIELD\tVALUE")
+	fmt.Fprintf(tw, "name\t%s\n", nonEmpty(resp.Module.Name, "-"))
+	fmt.Fprintf(tw, "status\t%s\n", nonEmpty(resp.Module.Status, "-"))
+	fmt.Fprintf(tw, "mounted\t%t\n", resp.Mounted)
+	fmt.Fprintf(tw, "ready\t%t\n", resp.Preflight.Ready)
+	fmt.Fprintf(tw, "missingModules\t%s\n", nonEmpty(strings.Join(resp.Preflight.MissingModules, ","), "-"))
+	fmt.Fprintf(tw, "missingCapabilities\t%s\n", nonEmpty(strings.Join(moduleCapabilityNames(resp.Preflight.MissingRequiredCapabilities), ","), "-"))
+	fmt.Fprintf(tw, "errors\t%s\n", nonEmpty(strings.Join(resp.Preflight.Errors, ","), "-"))
+	fmt.Fprintf(tw, "provides\t%s\n", nonEmpty(strings.Join(resp.Module.Provides, ","), "-"))
+	fmt.Fprintf(tw, "requires\t%s\n", nonEmpty(strings.Join(resp.Module.Requires, ","), "-"))
+	fmt.Fprintf(tw, "commands\t%d\n", len(resp.Module.Commands))
+	fmt.Fprintf(tw, "events\t%d\n", len(resp.Module.Events))
+	fmt.Fprintf(tw, "subscriptions\t%d\n", len(resp.Module.Subscriptions))
+	fmt.Fprintf(tw, "resources\t%d\n", len(resp.Module.Resources))
+	fmt.Fprintf(tw, "summary\t%s\n", nonEmpty(resp.Module.Summary, "-"))
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+
+	if len(resp.Preflight.RequiredModules) > 0 || len(resp.Preflight.MissingModules) > 0 {
+		fmt.Fprintln(w)
+		if err := renderModuleDependencies(w, resp.Preflight.RequiredModules); err != nil {
+			return err
+		}
+	}
+
+	fmt.Fprintln(w)
+	return renderModuleCapabilities(w, resp.Module.Name, resp.Module.CapabilityGroups, resp.Module.Capabilities, resp.Preflight)
+}
+
+func renderModuleDependencies(w io.Writer, deps []inspectModuleDependencyStatus) error {
+	tw := newTW(w)
+	fmt.Fprintln(tw, "DEPENDENCY\tREQUESTED_BY\tMOUNTED\tREGISTERED\tAVAILABLE")
+	for _, dep := range deps {
+		fmt.Fprintf(tw, "%s\t%s\t%t\t%t\t%t\n",
+			nonEmpty(dep.Name, "-"),
+			nonEmpty(dep.RequestedBy, "-"),
+			dep.Mounted,
+			dep.Registered,
+			dep.Available)
+	}
+	return tw.Flush()
+}
+
+func moduleCapabilityNames(caps []inspectModuleCapabilityAvailability) []string {
+	out := make([]string, 0, len(caps))
+	for _, cap := range caps {
+		name := cap.Name
+		if cap.Module != "" {
+			name = cap.Module + ":" + name
+		}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func renderModuleCapabilities(w io.Writer, moduleName string, groups *inspectModuleCapabilityGroups, caps []inspectModuleCapability, preflight inspectModulePreflight) error {
+	rows := moduleCapabilityRows(moduleName, groups, caps, preflight)
+	tw := newTW(w)
+	fmt.Fprintln(tw, "DIRECTION\tNAME\tTYPE\tAVAILABLE\tSOURCE\tPROVIDER\tMODULE\tSUMMARY")
+	for _, row := range rows {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%t\t%s\t%s\t%s\t%s\n",
+			nonEmpty(row.Direction, "-"),
+			nonEmpty(row.Name, "-"),
+			nonEmpty(row.Type, "-"),
+			row.Available,
+			nonEmpty(row.Source, "-"),
+			nonEmpty(row.Provider, "-"),
+			nonEmpty(row.Module, "-"),
+			nonEmpty(row.Summary, "-"))
+	}
+	return tw.Flush()
+}
+
+func moduleCapabilityRows(moduleName string, groups *inspectModuleCapabilityGroups, caps []inspectModuleCapability, preflight inspectModulePreflight) []inspectModuleCapabilityAvailability {
+	var rows []inspectModuleCapabilityAvailability
+	rows = append(rows, preflight.RequiredCapabilities...)
+	rows = append(rows, preflight.OptionalCapabilities...)
+	for _, cap := range providedCapabilities(groups, caps) {
+		rows = append(rows, inspectModuleCapabilityAvailability{
+			Name:      cap.Name,
+			Direction: "provided",
+			Type:      cap.Type,
+			Summary:   cap.Summary,
+			Available: true,
+			Source:    "self",
+			Provider:  moduleName,
+		})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Direction != rows[j].Direction {
+			return capabilityDirectionRank(rows[i].Direction) < capabilityDirectionRank(rows[j].Direction)
+		}
+		if rows[i].Module != rows[j].Module {
+			return rows[i].Module < rows[j].Module
+		}
+		return rows[i].Name < rows[j].Name
+	})
+	return rows
+}
+
+func providedCapabilities(groups *inspectModuleCapabilityGroups, caps []inspectModuleCapability) []inspectModuleCapability {
+	if groups != nil {
+		return groups.Provided
+	}
+	var out []inspectModuleCapability
+	for _, cap := range caps {
+		if cap.Direction == "provided" {
+			out = append(out, cap)
+		}
+	}
+	return out
+}
+
+func capabilityDirectionRank(direction string) int {
+	switch direction {
+	case "required":
+		return 0
+	case "optional":
+		return 1
+	case "provided":
+		return 2
+	default:
+		return 3
+	}
+}
+
+func moduleCapabilityCounts(groups *inspectModuleCapabilityGroups, caps []inspectModuleCapability) (required, optional, provided int) {
+	if groups != nil {
+		return len(groups.Required), len(groups.Optional), len(groups.Provided)
+	}
+	for _, cap := range caps {
+		switch cap.Direction {
+		case "required":
+			required++
+		case "optional":
+			optional++
+		case "provided":
+			provided++
+		}
+	}
+	return required, optional, provided
 }
 
 func renderTools(w io.Writer, payload json.RawMessage) error {

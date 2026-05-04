@@ -16,7 +16,8 @@ import (
 Two packages form the public Go surface:
 
 - `brainkit` — runtime construction (`Kit`, `Config`, transports, providers, storages, vectors, modules, generic `Call` / `CallStream`).
-- `sdk` — bus-level primitives that do not depend on a `Kit`: `Runtime` interfaces, typed-message contracts, `Publish`/`Emit`/`SubscribeTo`/`Reply`, envelopes, typed errors.
+- `sdk` — bus-level contracts and helpers that do not depend on a concrete `Kit`: `Runtime` interfaces, typed-message contracts, event helpers (`Emit`/`SubscribeTo`), handler reply helpers (`Reply`/`SendChunk`), envelopes, typed errors. Normal request/reply uses `brainkit.Call`, `brainkit.CallStream`, or package-owned `CallXxx` wrappers.
+- `sdk/protocol` — diagnostics-only raw reply-topic helpers (`Publish`/`PublishTo`/`SendToService`) for protocol bridges and tests that intentionally own reply topics.
 
 A third package, `brainkit/server`, composes a `Kit` with the standard module set — documented in `go-config.md`.
 
@@ -46,7 +47,7 @@ type Replier interface {
 }
 ```
 
-`SubscribeRaw` must be ready to receive before it returns — no handshake race against `Publish`. `correlationId` and `replyTo` are carried on the Watermill message metadata.
+`SubscribeRaw` must be ready to receive before it returns — no handshake race against `Publish`. `correlationId` and `replyTo` are carried on the message metadata.
 
 ---
 
@@ -76,9 +77,10 @@ func (m CustomMsg) BusTopic() string { return m.Topic }
 
 `CustomMsg` is the generic escape hatch for calling `.ts`-deployed topics (`ts.<name>.<topic>`) whose request shape is not a typed Go struct.
 
-### 2.2 Publish / Emit
+### 2.2 Diagnostics Protocol / Emit
 
 ```go
+// package github.com/brainlet/brainkit/sdk/protocol
 type PublishResult struct {
     MessageID     string
     CorrelationID string
@@ -89,10 +91,11 @@ type PublishResult struct {
 type PublishOption func(*publishConfig)
 func WithReplyTo(topic string) PublishOption
 
-// Publish[T] sends a command, always with a replyTo (auto or overridden).
-// Default replyTo: <topic>.reply.<uuid>.
-func Publish[T BrainkitMessage](rt Runtime, ctx context.Context, msg T, opts ...PublishOption) (PublishResult, error)
+// Publish[T] is diagnostics-level command publish with reply metadata.
+// Prefer Call/CallXxx for normal request/reply.
+func Publish[T sdk.BrainkitMessage](rt sdk.Runtime, ctx context.Context, msg T, opts ...PublishOption) (PublishResult, error)
 
+// package github.com/brainlet/brainkit/sdk
 // Emit[T] is fire-and-forget. No replyTo, no response expected.
 func Emit[T BrainkitMessage](rt Runtime, ctx context.Context, msg T) error
 ```
@@ -124,7 +127,7 @@ Both require `rt` to satisfy `Replier`. Both read `replyTo` + `correlationId` fr
 ```go
 // Routes to the specified Kit's namespace. rt must implement
 // CrossNamespaceRuntime.
-func PublishTo[T BrainkitMessage](rt Runtime, ctx context.Context,
+func PublishTo[T sdk.BrainkitMessage](rt sdk.Runtime, ctx context.Context,
     targetNamespace string, msg T, opts ...PublishOption) (PublishResult, error)
 ```
 
@@ -133,7 +136,7 @@ func PublishTo[T BrainkitMessage](rt Runtime, ctx context.Context,
 ```go
 // Convention: "my-agent.ts" + "ask" → "ts.my-agent.ask"
 // "nested/svc" + "rpc" → "ts.nested.svc.rpc"
-func SendToService(rt Runtime, ctx context.Context, service, topic string,
+func SendToService(rt sdk.Runtime, ctx context.Context, service, topic string,
     payload any, opts ...PublishOption) (PublishResult, error)
 
 func ResolveServiceTopic(service, topic string) string
@@ -184,8 +187,6 @@ type Kit struct { /* opaque */ }
 // Memory() — an in-process GoChannel, no disk side-effects, no plugins.
 // Use EmbeddedNATS(), NATS(url), AMQP(url), Redis(url) for real pub/sub.
 func New(cfg Config) (*Kit, error)
-
-func RuntimeID() string // process-level identity shared by all Kits in the same OS process
 ```
 
 ### 4.1 `sdk.Runtime` methods
@@ -303,15 +304,15 @@ type Module interface {
     Mount(context.Context, module.Host) error
 }
 
-type ModuleStatus = string
+type module.Status = string
 const (
-    ModuleStatusStable ModuleStatus = "stable"
-    ModuleStatusBeta   ModuleStatus = "beta"
-    ModuleStatusWIP    ModuleStatus = "wip"
+    module.StatusStable module.Status = "stable"
+    module.StatusBeta   module.Status = "beta"
+    module.StatusWIP    module.Status = "wip"
 )
 
 type StatusReporter interface {
-    Status() ModuleStatus
+    Status() module.Status
 }
 
 // Module lifecycle
@@ -322,7 +323,7 @@ func (k *Kit) Unmount(ctx context.Context, id string) error
 func (k *Kit) Module(name string) (Module, bool)
 ```
 
-Modules extend a `Kit` by mounting scoped commands, tools, subscriptions, capabilities, and generic resources through `module.Host`. Configured modules mount in order after the router starts; later linked-code modules can mount through `Kit.Mount`. When `modules/control` is mounted, operators can use `kit.module.mount`, `kit.module.unmount`, and `kit.module.describe` against the registered module factories compiled into the running binary. Mounted manifests include live command/subscription topics, provided capabilities, registered tools, and explicit `Scope.Resource(...)` entries. Mounted scopes close in reverse order on `Kit.Close` / `Kit.Shutdown`, or individually through `Kit.Unmount`. See `go-config.md` for the bundled module constructors.
+Modules extend a `Kit` by mounting scoped commands, tools, subscriptions, capabilities, and generic resources through `module.Host`. Configured modules mount in order after the router starts; later linked-code modules can mount through `Kit.Mount`. When `modules/control` is mounted, operators can use `kit.module.mount`, `kit.module.unmount`, and `kit.module.describe` against the registered module factories compiled into the running binary. Mounted manifests include live command/subscription topics, registered tools, explicit `Scope.Resource(...)` entries, and required/optional/provided capability groups. `Kit.Mount` dry-runs the required module/capability graph before auto-mounting dependencies and calls the module's `Mount` only when preflight is ready. `kit.module.describe` and `brainkit inspect module <id>` expose that same preflight result for operators, including capability `source` / `provider` provenance for core, mounted, planned, or missing capabilities. Mounted scopes close in reverse order on `Kit.Close` / `Kit.Shutdown`, or individually through `Kit.Unmount`. See `go-config.md` for the bundled module constructors.
 
 ---
 
@@ -471,7 +472,7 @@ type KitHealthMsg struct{}
 func (KitHealthMsg) BusTopic() string { return "kit.health" }
 ```
 
-`evalmsg.KitEvalMsg.Mode` is whitelisted to `script`, `ts`, `module`. `ts` transpiles via esbuild before evaluation.
+`evalmsg.KitEvalMsg.Mode` is whitelisted to `script`, `ts`, `module`. `ts` is a direct eval/dev path through the JS runtime; package/file bundling stays in `modules/packages`.
 
 ---
 
@@ -549,7 +550,7 @@ func ctxkeys.WithPublishMeta(ctx context.Context,
     correlationID, replyTo string) context.Context
 ```
 
-Used internally by `Publish`/`PublishTo`. Callers rarely interact directly.
+Used internally by `protocol.Publish` / `protocol.PublishTo`. Callers rarely interact directly.
 
 ---
 
@@ -627,7 +628,7 @@ resp, err := brainkit.CallStream[sdk.CustomMsg, sdk.StreamEvent, sdk.CustomMsg](
 ```go
 mod := myModule{}
 kit, _ := brainkit.New(brainkit.Config{
-    Modules: []brainkit.Module{&mod},
+    Modules: []module.Module{&mod},
 })
 
 // Inside myModule.Mount(ctx context.Context, host module.Host):

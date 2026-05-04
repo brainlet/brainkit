@@ -21,7 +21,7 @@ curl http://127.0.0.1:8080/health
 
 ## What it shows
 
-- `server.LoadConfig` reads the YAML, substitutes `$VAR` / `${VAR}`
+- `configfile.Load` reads the YAML, substitutes `$VAR` / `${VAR}`
   against `os.Environ`, and projects onto the runtime `Config`.
 - `server.New` composes the standard module set — gateway, probes,
   tracing, audit — behind a single lifecycle.

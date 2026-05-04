@@ -18,7 +18,7 @@ bus.on("send-test", function(msg: any) {
 
 // Trigger and wait for the final reply. Go-level stream tests cover chunk
 // delivery; this fixture verifies msg.send() does not prevent completion.
-const reply: any = await bus.callService("send-no-heartbeat.ts", "send-test", { go: true }, { timeoutMs: 5000 });
+const reply: any = await bus.callService("send-no-heartbeat-adv.ts", "send-test", { go: true }, { timeoutMs: 5000 });
 results.gotFinalReply = !!reply?.final;
 results.chunks = reply?.chunks || 0;
 output(results);

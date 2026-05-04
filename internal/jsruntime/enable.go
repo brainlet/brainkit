@@ -3,14 +3,16 @@ package jsruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	"github.com/brainlet/brainkit/internal/jsbridge"
 	"github.com/brainlet/brainkit/internal/types"
-	"github.com/brainlet/brainkit/modulecap/runtime"
+	runtimecap "github.com/brainlet/brainkit/modulecap/runtime"
 	"github.com/brainlet/brainkit/modulehost/providerhost"
 )
 
@@ -19,6 +21,7 @@ type Runtime struct {
 	core          runtimecap.CoreHost
 	registry      runtimecap.RegistryHost
 	toolAgents    runtimecap.ToolAgentHost
+	storage       runtimecap.StorageHost
 	bus           runtimecap.BusHost
 	handlers      runtimecap.HandlerHost
 	schedules     runtimecap.ScheduleHost
@@ -28,13 +31,25 @@ type Runtime struct {
 	deploymentMgr *DeploymentManager
 
 	mu         sync.Mutex
+	closeMu    sync.Mutex
+	closing    bool
+	closed     bool
+	closeMode  runtimeCloseMode
+	cleanup    func(context.Context, runtimeCloseMode) error
 	bridgeSubs map[string]func()
 }
+
+type runtimeCloseMode int
+
+const (
+	runtimeCloseModeUnmount runtimeCloseMode = iota
+	runtimeCloseModeShutdown
+)
 
 // Enable starts the embedded JS/TS runtime for a light Kernel. It is
 // idempotent and can be called during construction or from a hot-mounted
 // jsruntime module.
-func Enable(ctx context.Context, host runtimecap.Host) error {
+func Enable(ctx context.Context, host runtimecap.EnableHost) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -98,6 +113,7 @@ func Enable(ctx context.Context, host runtimecap.Host) error {
 		core:       host,
 		registry:   host,
 		toolAgents: host,
+		storage:    host,
 		bus:        host,
 		handlers:   host,
 		schedules:  host,
@@ -106,40 +122,51 @@ func Enable(ctx context.Context, host runtimecap.Host) error {
 		agents:     agentSandbox,
 		bridgeSubs: map[string]func(){},
 	}
-	host.SetToolEvaluator(runtime.bridge)
-
-	cleanup := func() {
-		host.CloseStorageBridgesExcept(existingStorages)
-		host.SetToolEvaluator(nil)
-		host.DetachJSRuntime(runtime)
+	toolEvaluatorLease, err := host.LeaseToolEvaluator(ctx, runtime.bridge)
+	if err != nil {
 		agentSandbox.Close()
-		host.RegisterConfiguredStorages(host.RuntimeConfig(), nil)
-		_ = host.RegisterConfiguredVectors(host.RuntimeConfig(), nil)
+		return fmt.Errorf("brainkit: lease tool evaluator: %w", err)
+	}
+
+	cleanup := func(ctx context.Context, mode runtimeCloseMode) error {
+		var err error
+		err = errors.Join(err, host.CloseStorageBridgesExceptContext(ctx, existingStorages))
+		err = errors.Join(err, toolEvaluatorLease.Close(ctx))
+		err = errors.Join(err, agentSandbox.CloseContext(ctx))
+		if mode == runtimeCloseModeUnmount {
+			err = errors.Join(err, host.RestoreConfiguredStorageRegistry(host.RuntimeConfig(), nil))
+		}
+		return err
+	}
+	runtime.cleanup = cleanup
+	cleanupActivation := func() error {
+		err := runtime.Unmount(ctx)
+		host.DetachJSRuntime(runtime)
+		host.SetRuntimeConfigJSRuntime(false)
+		return err
 	}
 
 	runtime.registerBridges()
 
 	bridgeURLs, err := host.InitStorageBridges(cfg)
 	if err != nil {
-		cleanup()
-		return fmt.Errorf("brainkit: start storage: %w", err)
+		return errors.Join(fmt.Errorf("brainkit: start storage: %w", err), cleanupActivation())
 	}
 
-	host.RegisterConfiguredStorages(cfg, bridgeURLs)
+	if err := host.RegisterConfiguredStorages(cfg, bridgeURLs); err != nil {
+		return errors.Join(fmt.Errorf("brainkit: register storages: %w", err), cleanupActivation())
+	}
 	if err := host.RegisterConfiguredVectors(cfg, bridgeURLs); err != nil {
-		cleanup()
-		return fmt.Errorf("brainkit: register vectors: %w", err)
+		return errors.Join(fmt.Errorf("brainkit: register vectors: %w", err), cleanupActivation())
 	}
 
 	runtime.deploymentMgr = runtime.newDeploymentManager(cfg)
 	if err := host.AttachJSRuntime(runtime); err != nil {
-		cleanup()
-		return err
+		return errors.Join(err, cleanupActivation())
 	}
 
 	if err := runtime.initJSRuntimeGlobals(cfg); err != nil {
-		cleanup()
-		return err
+		return errors.Join(err, cleanupActivation())
 	}
 
 	if len(cfg.Storages) > 0 {
@@ -150,8 +177,6 @@ func Enable(ctx context.Context, host runtimecap.Host) error {
 	runtime.startJobPump()
 
 	host.RestoreJSRuntimeState(cfg)
-
-	go host.ProbeAll()
 	return nil
 }
 
@@ -175,10 +200,11 @@ func (r *Runtime) newDeploymentManager(cfg types.KernelConfig) *DeploymentManage
 				cancel()
 			}
 		},
-		ScheduleCleanup: func(id string) {
+		ScheduleCleanup: func(id string) error {
 			if h := r.schedules.ScheduleHandler(); h != nil {
-				_ = h.Unschedule(context.Background(), id)
+				return h.Unschedule(context.Background(), id)
 			}
+			return nil
 		},
 	})
 }
@@ -223,10 +249,6 @@ func (r *Runtime) CallJS(ctx context.Context, fn string, args any) (json.RawMess
 	return r.evalJSCall(ctx, fn, args)
 }
 
-func (r *Runtime) CallJSSync(fn string, args any) {
-	r.evalJSCallSync(fn, args)
-}
-
 func (r *Runtime) Interrupt() {
 	if r.bridge != nil {
 		r.bridge.Interrupt()
@@ -234,7 +256,53 @@ func (r *Runtime) Interrupt() {
 }
 
 func (r *Runtime) Close() error {
-	r.Interrupt()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return r.Shutdown(ctx)
+}
+
+func (r *Runtime) CloseContext(ctx context.Context) error {
+	return r.Shutdown(ctx)
+}
+
+// Unmount strictly detaches the runtime from a live kernel. It returns cleanup
+// errors so hot-remount callers can fail loudly instead of leaving stale
+// runtime-owned resources attached.
+func (r *Runtime) Unmount(ctx context.Context) error {
+	return r.closeWithMode(ctx, runtimeCloseModeUnmount)
+}
+
+// Shutdown closes the runtime for process teardown. It keeps cleanup
+// best-effort for state that only matters to a live, reusable kernel.
+func (r *Runtime) Shutdown(ctx context.Context) error {
+	return r.closeWithMode(ctx, runtimeCloseModeShutdown)
+}
+
+func (r *Runtime) closeWithMode(ctx context.Context, mode runtimeCloseMode) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	r.closeMu.Lock()
+	defer r.closeMu.Unlock()
+	if r.closed {
+		return nil
+	}
+	r.closing = true
+	r.closeMode = mode
+
+	var err error
+	if mode == runtimeCloseModeUnmount {
+		if r.deploymentMgr != nil {
+			err = errors.Join(err, r.deploymentMgr.UnmountAll(ctx))
+		}
+		r.Interrupt()
+	} else {
+		r.Interrupt()
+		if r.deploymentMgr != nil {
+			r.deploymentMgr.UnloadAll()
+		}
+	}
+
 	r.mu.Lock()
 	subs := make([]func(), 0, len(r.bridgeSubs))
 	for _, cancel := range r.bridgeSubs {
@@ -247,8 +315,23 @@ func (r *Runtime) Close() error {
 	}
 	if r.agents != nil {
 		r.toolAgents.AgentsDomain().UnregisterAllForKit(r.agents.ID())
-		r.agents.Close()
 	}
+	if r.cleanup != nil {
+		cleanupErr := r.cleanup(ctx, mode)
+		if mode == runtimeCloseModeUnmount {
+			err = errors.Join(err, cleanupErr)
+		}
+	} else if r.agents != nil {
+		cleanupErr := r.agents.CloseContext(ctx)
+		if mode == runtimeCloseModeUnmount {
+			err = errors.Join(err, cleanupErr)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	r.closed = true
+	r.closing = false
 	return nil
 }
 

@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
@@ -109,7 +112,7 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "test-ws-sub",
 		Transport: transports.EmbeddedNATS(),
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			toolsmod.New(),
 			pluginsmod.NewModule(pluginsmod.Config{
 				Plugins: []pluginsmod.PluginConfig{{
@@ -164,10 +167,10 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 	})
 	defer unsubReply()
 
-	sdk.Publish(kit, ctx, toolmsg.ToolCallMsg{
+	protocol.Publish(kit, ctx, toolmsg.ToolCallMsg{
 		Name:  "status",
 		Input: map[string]any{},
-	}, sdk.WithReplyTo(replyTo))
+	}, protocol.WithReplyTo(replyTo))
 
 	select {
 	case msg := <-replyCh:

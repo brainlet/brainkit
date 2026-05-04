@@ -1,6 +1,6 @@
 // Package brainkit is an embeddable runtime for AI agent teams. It
 // provides a light control-plane [Kit] with a typed pub/sub bus, and
-// lets you compose opt-in subsystems through [Module].
+// lets you compose opt-in subsystems through github.com/brainlet/brainkit/module.
 //
 // # Two entry points
 //
@@ -16,9 +16,9 @@
 //	defer kit.Close()
 //
 // Service mode — run brainkit as a long-lived server, composed from
-// the standard module set (gateway, probes, tracing, audit):
+// the quickstart standard module set (gateway, probes, tracing, audit):
 //
-//	srv, _ := server.QuickStart("my-app", "/var/brainkit")
+//	srv, _ := quickstart.New("my-app", "/var/brainkit")
 //	defer srv.Close()
 //	_ = srv.Start(ctx)
 //
@@ -28,8 +28,8 @@
 //
 // Features are exposed as typed bus commands. Deploy packages, schedule
 // messages, manage secrets, call AI providers, talk to plugins —
-// each goes through [sdk.Publish] / [sdk.SubscribeTo] or the
-// SDK's generated synchronous wrappers (one per Msg/Resp pair):
+// request/reply paths go through [Call], [CallStream], or the SDK's
+// generated synchronous wrappers (one per Msg/Resp pair):
 //
 //	resp, err := packagemsg.CallPackageDeploy(kit, ctx,
 //	    packagemsg.PackageDeployMsg{Path: "./agents/support"},
@@ -52,7 +52,7 @@
 //
 // # Modules
 //
-// Opt-in subsystems implement [Module]. The standard set lives under
+// Opt-in subsystems implement module.Module. The standard set lives under
 // modules/*: gateway, mcp, plugins, schedules, audit, tracing,
 // probes, discovery, topology, workflow, harness. Pass instances in
 // [Config.Modules] or rely on server mode's curated defaults.

@@ -21,8 +21,8 @@ type pluginHost interface {
 	Store() Store
 	Logger() *slog.Logger
 	ReportError(error, types.ErrorContext)
-	SetPluginChecker(bkmodule.PluginChecker)
-	SetPluginRestarter(plugincap.Restarter)
+	LeasePluginChecker(context.Context, bkmodule.PluginChecker) (bkmodule.Handle, error)
+	LeasePluginRestarter(context.Context, plugincap.Restarter) (bkmodule.Handle, error)
 	Audit() *auditpkg.Recorder
 	Tools() *tools.ToolRegistry
 	Tracer() *coretracing.Tracer
@@ -34,19 +34,19 @@ type pluginHost interface {
 }
 
 type pluginMountExt struct {
-	transportKind      string
-	secretStore        types.SecretStore
-	shutdownSignal     <-chan struct{}
-	remote             *transport.RemoteClient
-	tools              *tools.ToolRegistry
-	tracer             *coretracing.Tracer
-	audit              *auditpkg.Recorder
-	reportError        func(error, types.ErrorContext)
-	setPluginChecker   func(bkmodule.PluginChecker)
-	setPluginRestarter func(plugincap.Restarter)
-	namespace          string
-	callerID           string
-	store              Store
+	transportKind        string
+	secretStore          types.SecretStore
+	shutdownSignal       <-chan struct{}
+	remote               *transport.RemoteClient
+	tools                *tools.ToolRegistry
+	tracer               *coretracing.Tracer
+	audit                *auditpkg.Recorder
+	reportError          func(error, types.ErrorContext)
+	leasePluginChecker   bkmodule.LeaseFunc[bkmodule.PluginChecker]
+	leasePluginRestarter bkmodule.LeaseFunc[plugincap.Restarter]
+	namespace            string
+	callerID             string
+	store                Store
 }
 
 type mountedPluginHost struct {
@@ -83,11 +83,11 @@ func newMountedPluginHost(host bkmodule.Host) (pluginHost, error) {
 	if err != nil {
 		return nil, fmt.Errorf("plugins: %w", err)
 	}
-	setPluginChecker, err := bkmodule.RequireCapability[func(bkmodule.PluginChecker)](host, bkmodule.CapabilitySetPluginChecker)
+	leasePluginChecker, err := bkmodule.RequireCapability[bkmodule.LeaseFunc[bkmodule.PluginChecker]](host, bkmodule.CapabilityPluginCheckerLease)
 	if err != nil {
 		return nil, fmt.Errorf("plugins: %w", err)
 	}
-	setPluginRestarter, err := bkmodule.RequireCapability[func(plugincap.Restarter)](host, bkmodule.CapabilitySetPluginRestarter)
+	leasePluginRestarter, err := bkmodule.RequireCapability[bkmodule.LeaseFunc[plugincap.Restarter]](host, bkmodule.CapabilityPluginRestarterLease)
 	if err != nil {
 		return nil, fmt.Errorf("plugins: %w", err)
 	}
@@ -103,19 +103,19 @@ func newMountedPluginHost(host bkmodule.Host) (pluginHost, error) {
 	store, _ := bkmodule.Capability[Store](host, bkmodule.CapabilityKitStore)
 
 	return mountedPluginHost{host: host, ext: pluginMountExt{
-		transportKind:      transportKind,
-		secretStore:        secretStore,
-		shutdownSignal:     shutdownSignal,
-		remote:             remote,
-		tools:              toolRegistry,
-		tracer:             tracer,
-		audit:              audit,
-		reportError:        reportError,
-		setPluginChecker:   setPluginChecker,
-		setPluginRestarter: setPluginRestarter,
-		namespace:          namespace,
-		callerID:           callerID,
-		store:              store,
+		transportKind:        transportKind,
+		secretStore:          secretStore,
+		shutdownSignal:       shutdownSignal,
+		remote:               remote,
+		tools:                toolRegistry,
+		tracer:               tracer,
+		audit:                audit,
+		reportError:          reportError,
+		leasePluginChecker:   leasePluginChecker,
+		leasePluginRestarter: leasePluginRestarter,
+		namespace:            namespace,
+		callerID:             callerID,
+		store:                store,
 	}}, nil
 }
 
@@ -130,11 +130,11 @@ func (h mountedPluginHost) Logger() *slog.Logger { return h.host.Logger() }
 func (h mountedPluginHost) ReportError(err error, ctx types.ErrorContext) {
 	h.ext.reportError(err, ctx)
 }
-func (h mountedPluginHost) SetPluginChecker(checker bkmodule.PluginChecker) {
-	h.ext.setPluginChecker(checker)
+func (h mountedPluginHost) LeasePluginChecker(ctx context.Context, checker bkmodule.PluginChecker) (bkmodule.Handle, error) {
+	return h.ext.leasePluginChecker(ctx, checker)
 }
-func (h mountedPluginHost) SetPluginRestarter(restarter plugincap.Restarter) {
-	h.ext.setPluginRestarter(restarter)
+func (h mountedPluginHost) LeasePluginRestarter(ctx context.Context, restarter plugincap.Restarter) (bkmodule.Handle, error) {
+	return h.ext.leasePluginRestarter(ctx, restarter)
 }
 func (h mountedPluginHost) Audit() *auditpkg.Recorder       { return h.ext.audit }
 func (h mountedPluginHost) Tools() *tools.ToolRegistry      { return h.ext.tools }

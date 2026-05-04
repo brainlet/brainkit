@@ -85,7 +85,7 @@ require github.com/brainlet/brainkit v0.0.0
 			cmd.Println("  go.mod")
 			cmd.Println("  manifest.json")
 			cmd.Printf("\nBuild: cd %s && go build -o %s .\n", name, name)
-			cmd.Printf("Start: brainkit plugin start %s --binary ./%s/%s\n", name, name, name)
+			cmd.Printf("Start: brainkit call plugin.start --payload '{\"name\":%q,\"binary\":\"./%s/%s\"}'\n", name, name, name)
 			return nil
 		},
 	}

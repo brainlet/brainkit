@@ -1,6 +1,6 @@
 // Package pluginws defines the WebSocket protocol between brainkit host and plugins.
 // Plugins connect to the host's WS endpoint, send a manifest, receive tool calls,
-// and send results back. No Watermill dependency — just WebSocket + JSON.
+// and send results back. No in-process transport dependency — just WebSocket + JSON.
 package pluginws
 
 import "encoding/json"

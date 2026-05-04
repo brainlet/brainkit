@@ -10,6 +10,7 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/bench"
 )
 
@@ -27,7 +28,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 	b.Run("roundtrip", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			pr, err := sdk.SendToService(k, ctx, "bench-handler.ts", "bench", map[string]bool{"x": true})
+			pr, err := protocol.SendToService(k, ctx, "bench-handler.ts", "bench", map[string]bool{"x": true})
 			if err != nil {
 				b.Fatalf("send: %v", err)
 			}
@@ -44,7 +45,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 	b.Run("tool_call", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			pr, err := sdk.Publish(k, ctx, toolmsg.ToolCallMsg{
+			pr, err := protocol.Publish(k, ctx, toolmsg.ToolCallMsg{
 				Name:  "echo",
 				Input: json.RawMessage(`{"message":"bench"}`),
 			})
@@ -66,7 +67,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 	b.Run("pump_throughput", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			pr, err := sdk.SendToService(k, ctx, "bench-handler.ts", "bench", map[string]bool{"x": true})
+			pr, err := protocol.SendToService(k, ctx, "bench-handler.ts", "bench", map[string]bool{"x": true})
 			if err != nil {
 				b.Fatalf("send: %v", err)
 			}

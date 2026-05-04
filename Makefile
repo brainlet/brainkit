@@ -1,4 +1,4 @@
-.PHONY: all brainkit install deps deps-go deps-npm build generate test test-v test-compile test-suite test-full bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples clean podman-init podman-start podman-up podman-launchd-up podman-launchd-down podman-link-socket podman-verify podman-down podman-status podman-reset podman-nuke podman-ensure type-check
+.PHONY: all brainkit install deps deps-go deps-npm deps-root deps-root-save deps-root-check deps-modules build generate test test-v test-compile test-suite test-full test-all test-campaigns-transport test-campaigns-transport-embedded test-campaigns-transport-nats test-campaigns-transport-amqp test-campaigns-transport-redis test-campaigns-transport-external bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples clean podman-init podman-start podman-up podman-launchd-up podman-launchd-down podman-link-socket podman-verify podman-down podman-status podman-reset podman-nuke podman-ensure type-check
 
 PODMAN_MACHINE ?= brainkit
 PODMAN_CPUS ?= 4
@@ -7,6 +7,11 @@ PODMAN_DISK ?= 60
 PODMAN_SOCKET ?= /tmp/podman/$(PODMAN_MACHINE)-api.sock
 PODMAN_LAUNCHD_LABEL ?= com.brainkit.podman.keepalive
 PODMAN_LAUNCHD_LOG ?= /tmp/podman/$(PODMAN_MACHINE)-launchd-start.out
+TEST_SUITE_P ?= 2
+TEST_ALL_TIMEOUT ?= 1800s
+TEST_TRANSPORT_TIMEOUT ?= 1200s
+ROOT_DEPS_MANIFEST ?= api/brainkit-root.deps
+ROOT_DEPS_CMD = go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' . | sed '/^$$/d' | sort -u
 
 # Default: build the CLI binary
 all: brainkit
@@ -28,6 +33,26 @@ deps: deps-go deps-npm
 # Download Go module dependencies
 deps-go:
 	go mod download
+
+# Print the non-standard import graph reachable from the light root package.
+deps-root:
+	@$(ROOT_DEPS_CMD)
+
+# Save the root dependency graph manifest used by TestRootDependencyManifest.
+deps-root-save:
+	@$(ROOT_DEPS_CMD) > $(ROOT_DEPS_MANIFEST)
+	@echo "Wrote $(ROOT_DEPS_MANIFEST)"
+
+# Check the root dependency graph manifest without running the full test suite.
+deps-root-check:
+	@tmp=$$(mktemp); \
+	$(ROOT_DEPS_CMD) > $$tmp; \
+	diff -u $(ROOT_DEPS_MANIFEST) $$tmp; \
+	rm -f $$tmp
+
+# List nested Go modules so module-boundary drift is visible.
+deps-modules:
+	@find . -path './.git' -prune -o -name go.mod -print | sort
 
 # Install npm dependencies for all embed packages
 deps-npm:
@@ -71,16 +96,45 @@ generate:
 test: test-suite
 
 test-suite: podman-ensure
-	go test ./test/suite/... -count=1 -timeout=900s
+	go test -p $(TEST_SUITE_P) ./test/suite/... -count=1 -timeout=900s
 
 test-compile:
 	go test ./... -run '^$$' -timeout=600s
 
 test-full: podman-ensure test-compile test-suite
 
+# Run every package with a timeout large enough for campaign packages.
+test-all: podman-ensure
+	go test -p $(TEST_SUITE_P) ./... -count=1 -timeout=$(TEST_ALL_TIMEOUT)
+
+# Run the heavy transport campaign as backend-specific commands so each
+# backend gets its own timeout budget and failures are easier to isolate.
+test-campaigns-transport: podman-ensure
+	go test ./test/campaigns/transport -run '^TestTransport_Embedded$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test ./test/campaigns/transport -run '^TestTransport_NATS$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test ./test/campaigns/transport -run '^TestTransport_AMQP$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test ./test/campaigns/transport -run '^TestTransport_Redis$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+
+test-campaigns-transport-embedded:
+	go test ./test/campaigns/transport -run '^TestTransport_Embedded$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+
+test-campaigns-transport-nats: podman-ensure
+	go test ./test/campaigns/transport -run '^TestTransport_NATS$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+
+test-campaigns-transport-amqp: podman-ensure
+	go test ./test/campaigns/transport -run '^TestTransport_AMQP$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+
+test-campaigns-transport-redis: podman-ensure
+	go test ./test/campaigns/transport -run '^TestTransport_Redis$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+
+test-campaigns-transport-external: podman-ensure
+	go test ./test/campaigns/transport -run '^TestTransport_NATS$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test ./test/campaigns/transport -run '^TestTransport_AMQP$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test ./test/campaigns/transport -run '^TestTransport_Redis$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+
 # Run tests with verbose output
 test-v: podman-ensure
-	go test -v ./test/suite/... -count=1 -timeout=900s
+	go test -p $(TEST_SUITE_P) -v ./test/suite/... -count=1 -timeout=900s
 
 # Run as-embed benchmarks (compilation performance)
 bench:
@@ -319,7 +373,7 @@ podman-nuke: podman-reset
 
 podman-ensure: podman-init podman-up
 
-# Type-check gate for fixtures under fixtures/ts/** against internal/engine/runtime/*.d.ts.
+# Type-check gate for fixtures under fixtures/ts/** against internal/dts/runtime/*.d.ts.
 # Uses the typescript@5.9.x pinned by the repo-root package.json (node_modules/.bin/tsc).
 type-check: ## Run tsc --noEmit on all fixtures
 	node_modules/.bin/tsc --noEmit -p fixtures/tsconfig.base.json

@@ -1,6 +1,6 @@
 # TypeScript Runtime — API Reference
 
-Dense reference for the `.ts` deployment surface in brainkit: the SES Compartment endowments installed on every `packages.Deploy(...)` source. Canonical source: `internal/engine/runtime/kit_runtime.js`, `internal/engine/runtime/bus.js`, `internal/engine/runtime/infrastructure.js`, `internal/engine/runtime/resolve.js`, `internal/engine/runtime/approval.js`, and the `.d.ts` bundle shipped at `internal/engine/runtime/kit.d.ts`. Runtime version: v1.0.0-rc.1.
+Dense reference for the `.ts` deployment surface in brainkit: the SES Compartment endowments installed on every `packages.Deploy(...)` source. Canonical source: `internal/jsruntime/runtime/kit_runtime.js`, `internal/jsruntime/runtime/bus.js`, `internal/jsruntime/runtime/infrastructure.js`, `internal/jsruntime/runtime/resolve.js`, `internal/jsruntime/runtime/approval.js`, and the `.d.ts` bundle shipped at `internal/dts/runtime/kit.d.ts`. Runtime version: v1.0.0-rc.1.
 
 ---
 
@@ -10,7 +10,7 @@ Dense reference for the `.ts` deployment surface in brainkit: the SES Compartmen
 2. TypeScript is transpiled (types stripped, runtime JS preserved) by esbuild.
 3. ES `import` statements are stripped. All symbols arrive through Compartment endowments.
 4. The deployment runs inside a frozen SES Compartment. `globalThis` is the per-deployment endowment map; pre-lockdown (`Date.now`, `Math.random`) is preserved behind the SES taming.
-5. The deployment's mailbox is `ts.<source>.<topic>`, where `<source>` is the file path with `.ts` stripped and `/` → `.`. Subscriptions via `bus.on(localTopic, …)` are scoped here; external callers reach them with `bus.publish("ts.<source>.<topic>", …)` or `bus.sendTo("<source>", "<topic>", …)`.
+5. The deployment's mailbox is `ts.<source>.<topic>`, where `<source>` is the file path with `.ts` stripped and `/` → `.`. Subscriptions via `bus.on(localTopic, …)` are scoped here; external callers use `bus.call("ts.<source>.<topic>", …)` / `bus.callService("<source>", "<topic>", …)` for request/reply, or `bus.publish(...)` / `bus.sendTo(...)` only for fire-and-forget events.
 
 A typical deployment:
 

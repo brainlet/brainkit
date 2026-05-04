@@ -13,6 +13,7 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -268,7 +269,7 @@ func testExhaustionSecretValueBomb(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	bigValue := strings.Repeat("s", 10*1024*1024)
-	pr, err := sdk.Publish(tk, ctx, secretmsg.SecretsSetMsg{Name: "stress-big-secret", Value: bigValue})
+	pr, err := protocol.Publish(tk, ctx, secretmsg.SecretsSetMsg{Name: "stress-big-secret", Value: bigValue})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)

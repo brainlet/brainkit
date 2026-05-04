@@ -65,6 +65,20 @@ func (l kitModuleLifecycle) DescribeModule(_ context.Context, id string) (bkmodu
 	return desc, false, nil
 }
 
+func (l kitModuleLifecycle) PreflightModule(_ context.Context, id string) (bkmodule.ModulePreflight, error) {
+	if id == "" {
+		return bkmodule.ModulePreflight{}, fmt.Errorf("brainkit: module ID is required")
+	}
+	if desc, ok := l.k.mountedModuleDescriptor(id); ok {
+		return l.k.preflightModuleDescriptor(desc), nil
+	}
+	desc, err := registeredModuleDescriptor(id)
+	if err != nil {
+		return bkmodule.ModulePreflight{}, err
+	}
+	return l.k.preflightModuleDescriptor(desc), nil
+}
+
 func (k *Kit) mountedModuleDescriptor(id string) (bkmodule.Descriptor, bool) {
 	k.mountMu.Lock()
 	defer k.mountMu.Unlock()
@@ -111,7 +125,7 @@ func buildRegisteredModuleWithConfig(id, fsRoot string, cfg bkmodule.ModuleBuild
 	factory, ok := bkmodule.Lookup(id)
 	if !ok {
 		if id == "jsruntime" {
-			return nil, fmt.Errorf("brainkit: JS runtime requested but module %q is not registered; import github.com/brainlet/brainkit/modules/jsruntime or github.com/brainlet/brainkit/presets/standard", id)
+			return nil, fmt.Errorf("brainkit: JS runtime requested but module %q is not registered; import github.com/brainlet/brainkit/modules/jsruntime and mount jsruntime.New(), or import github.com/brainlet/brainkit/presets/standard", id)
 		}
 		return nil, fmt.Errorf("brainkit: module %q is not registered", id)
 	}

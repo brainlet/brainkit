@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS deployments (
     deploy_order INTEGER NOT NULL DEFAULT 0,
     deployed_at TEXT NOT NULL,
     package_name TEXT NOT NULL DEFAULT '',
+    artifact_kind TEXT NOT NULL DEFAULT 'source',
     role TEXT NOT NULL DEFAULT 'service'
 );
 

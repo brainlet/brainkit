@@ -59,7 +59,7 @@ Storages: map[string]brainkit.StorageConfig{
 },
 ```
 
-brainkit's `internal/engine/runtime/patches.js` upgrades the
+brainkit's `internal/jsruntime/runtime/patches.js` upgrades the
 workflow's internal `InMemoryStore` to whatever lands in the
 `"default"` slot, so `createWorkflow` + `kit.register("workflow",
 ...)` automatically persist their state.
@@ -150,9 +150,9 @@ watchers.
 
 - `suspend()` + `resume()` on the workflow run are Mastra core
   APIs. brainkit's workflow module forwards through
-  `__brainkit.workflow.resume` (`internal/engine/runtime/dispatch.js:63-73`).
+  `__brainkit.workflow.resume` (`internal/jsruntime/runtime/dispatch.js:63-73`).
 - The `Storage` hook that persists snapshots is wired via
-  `internal/engine/runtime/patches.js:14-55` — it swaps every
+  `internal/jsruntime/runtime/patches.js:14-55` — it swaps every
   workflow's default `InMemoryStore` for whatever `Storages["default"]`
   resolves to.
 - `restartAllActiveWorkflowRuns` (same `dispatch.js`) rehydrates

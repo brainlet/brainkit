@@ -3,11 +3,10 @@ package transport
 import (
 	"context"
 
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/brainlet/brainkit/sdk/ctxkeys"
 )
 
-func withInboundMetadata(ctx context.Context, wmsg *message.Message, logicalTopic string) context.Context {
+func withInboundMetadata(ctx context.Context, wmsg *Message, logicalTopic string) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -41,6 +40,10 @@ func withInboundMetadata(ctx context.Context, wmsg *message.Message, logicalTopi
 // WithPublishMeta stamps correlationID and replyTo into context for PublishRaw.
 func WithPublishMeta(ctx context.Context, correlationID, replyTo string) context.Context {
 	return ctxkeys.WithPublishMeta(ctx, correlationID, replyTo)
+}
+
+func MetadataFromContext(ctx context.Context) map[string]string {
+	return ctxkeys.MetadataFromContext(ctx)
 }
 
 func ContextWithCorrelationID(ctx context.Context, correlationID string) context.Context {

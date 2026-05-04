@@ -13,9 +13,10 @@ import (
 // include in brainkit.Config.Modules when the runtime should expose these
 // control-plane commands over the bus.
 type Module struct {
-	control        bkmodule.RuntimeControl
-	mountedModules func() []bkmodule.Descriptor
-	lifecycle      bkmodule.ModuleLifecycle
+	control           bkmodule.RuntimeControl
+	mountedModules    func() []bkmodule.Descriptor
+	lifecycle         bkmodule.ModuleLifecycle
+	lifecycleSnapshot func() bkmodule.LifecycleDebugSnapshot
 }
 
 // New creates the control module.
@@ -44,10 +45,16 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 		return fmt.Errorf("control: %w", err)
 	}
 	m.lifecycle = lifecycle
+	lifecycleSnapshot, err := bkmodule.RequireCapability[func() bkmodule.LifecycleDebugSnapshot](host, bkmodule.CapabilityLifecycleDebugSnapshot)
+	if err != nil {
+		return fmt.Errorf("control: %w", err)
+	}
+	m.lifecycleSnapshot = lifecycleSnapshot
 	host.Scope().Defer(func(context.Context) error {
 		m.control = nil
 		m.mountedModules = nil
 		m.lifecycle = nil
+		m.lifecycleSnapshot = nil
 		return nil
 	})
 
@@ -55,6 +62,7 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 		bkmodule.Command(m.SetDraining),
 		bkmodule.Command(m.ClusterPeers),
 		bkmodule.Command(m.Modules),
+		bkmodule.Command(m.Lifecycle),
 		bkmodule.Command(m.ModuleMount),
 		bkmodule.Command(m.ModuleUnmount),
 		bkmodule.Command(m.ModuleDescribe),
@@ -72,6 +80,7 @@ func (m *Module) Close() error {
 	m.control = nil
 	m.mountedModules = nil
 	m.lifecycle = nil
+	m.lifecycleSnapshot = nil
 	return nil
 }
 
@@ -90,7 +99,7 @@ func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	return New(), nil
 }
 
-// Describe surfaces module metadata for `brainkit modules list`.
+// Describe surfaces module metadata for module manifests.
 func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "control",
@@ -101,10 +110,12 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.CommandMessage[KitModuleDescribeMsg, KitModuleDescribeResp](),
 			bkmodule.CommandMessage[KitModuleMountMsg, KitModuleMountResp](),
 			bkmodule.CommandMessage[KitModuleUnmountMsg, KitModuleUnmountResp](),
+			bkmodule.CommandMessage[KitLifecycleMsg, KitLifecycleResp](),
 			bkmodule.CommandMessage[KitModulesMsg, KitModulesResp](),
 			bkmodule.CommandMessage[KitSetDrainingMsg, KitSetDrainingResp](),
 		},
 		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[func() bkmodule.LifecycleDebugSnapshot](bkmodule.CapabilityLifecycleDebugSnapshot),
 			bkmodule.RequiredCapabilityOf[bkmodule.ModuleLifecycle](bkmodule.CapabilityModuleLifecycle),
 			bkmodule.RequiredCapabilityOf[func() []bkmodule.Descriptor](bkmodule.CapabilityMountedModules),
 			bkmodule.RequiredCapabilityOf[bkmodule.RuntimeControl](bkmodule.CapabilityRuntimeControl),
@@ -140,11 +151,36 @@ func (m *Module) ClusterPeers(ctx context.Context, _ ClusterPeersMsg) (*ClusterP
 }
 
 // Modules handles kit.modules.
-func (m *Module) Modules(context.Context, KitModulesMsg) (*KitModulesResp, error) {
+func (m *Module) Modules(ctx context.Context, _ KitModulesMsg) (*KitModulesResp, error) {
 	if m.mountedModules == nil {
 		return nil, fmt.Errorf("control: mounted module catalog is not configured")
 	}
-	return &KitModulesResp{Modules: m.mountedModules()}, nil
+	modules := m.mountedModules()
+	preflights := make(map[string]bkmodule.ModulePreflight, len(modules))
+	if m.lifecycle != nil {
+		for _, desc := range modules {
+			if desc.Name == "" {
+				continue
+			}
+			preflight, err := m.lifecycle.PreflightModule(ctx, desc.Name)
+			if err != nil {
+				preflight = bkmodule.ModulePreflight{
+					Ready:  false,
+					Errors: []string{err.Error()},
+				}
+			}
+			preflights[desc.Name] = preflight
+		}
+	}
+	return &KitModulesResp{Modules: modules, Preflights: preflights}, nil
+}
+
+// Lifecycle handles kit.lifecycle.
+func (m *Module) Lifecycle(context.Context, KitLifecycleMsg) (*KitLifecycleResp, error) {
+	if m.lifecycleSnapshot == nil {
+		return nil, fmt.Errorf("control: lifecycle snapshot is not configured")
+	}
+	return &KitLifecycleResp{Lifecycle: m.lifecycleSnapshot()}, nil
 }
 
 // ModuleMount handles kit.module.mount.
@@ -159,7 +195,11 @@ func (m *Module) ModuleMount(ctx context.Context, req KitModuleMountMsg) (*KitMo
 	if err != nil {
 		return nil, err
 	}
-	return &KitModuleMountResp{Module: desc}, nil
+	preflight, err := m.lifecycle.PreflightModule(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &KitModuleMountResp{Module: desc, Preflight: preflight}, nil
 }
 
 // ModuleUnmount handles kit.module.unmount.
@@ -186,5 +226,9 @@ func (m *Module) ModuleDescribe(ctx context.Context, req KitModuleDescribeMsg) (
 	if err != nil {
 		return nil, err
 	}
-	return &KitModuleDescribeResp{Module: desc, Mounted: mounted}, nil
+	preflight, err := m.lifecycle.PreflightModule(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &KitModuleDescribeResp{Module: desc, Mounted: mounted, Preflight: preflight}, nil
 }

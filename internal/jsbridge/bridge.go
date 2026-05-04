@@ -36,6 +36,13 @@ type Config struct {
 	CWD          string    // working directory
 }
 
+// DebugSnapshot reports Bridge-owned goroutine and close lifecycle state.
+type DebugSnapshot struct {
+	Closing          bool `json:"closing"`
+	Closed           bool `json:"closed"`
+	ActiveGoroutines int  `json:"activeGoroutines"`
+}
+
 // Bridge wraps a native QuickJS runtime with polyfills and bridge functions.
 // Bridge is safe for concurrent use from multiple goroutines — calls to Eval
 // are serialized via a mutex. For true parallelism, create multiple Bridges.
@@ -56,6 +63,12 @@ type Bridge struct {
 	goCancel context.CancelFunc // triggers cancellation
 	wg       sync.WaitGroup     // tracks active goroutines
 	closing  atomic.Bool        // set during Close — interrupt handler checks this
+	closed   atomic.Bool        // set after goroutines drain and QuickJS is freed
+
+	lifecycleMu     sync.Mutex // serializes Go Add with close start
+	activeGoroutine atomic.Int64
+	closeOnce       sync.Once
+	closeDone       chan struct{}
 
 	// Pump signal — fires when Schedule'd callbacks are pending.
 	// Buffered 1: coalesces rapid-fire Schedule calls into one pump wake.
@@ -100,6 +113,7 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 		goCtx:      goCtx,
 		goCancel:   goCancel,
 		pumpSignal: make(chan struct{}, 1),
+		closeDone:  make(chan struct{}),
 	}
 
 	// Interrupt handler: checked by QuickJS periodically during eval.
@@ -139,16 +153,56 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 // Tolerates unreleased JS objects (ReadableStream controllers from streaming
 // fetch, large bundle object graphs) by skipping JS_FreeRuntime's assertion.
 func (b *Bridge) Close() {
-	// Set closing flag — the interrupt handler aborts running JS evals,
-	// and the Await loop checks it in the pending-poll path to break out
-	// of Promises waiting on cancelled Go goroutines (timers, fetch).
-	b.Interrupt()
-	// Wait for all goroutines to finish. Safe because:
-	//    - The interrupt handler aborts any running JS eval (~1000 opcodes)
-	//    - The Await loop breaks immediately when interrupt fires
-	//    - The pump goroutine releases the mutex and exits promptly
-	b.wg.Wait()
-	// All goroutines done — safe to free QuickJS
+	_ = b.CloseContext(context.Background())
+}
+
+// CloseContext starts bridge shutdown and waits for tracked goroutines plus
+// QuickJS teardown to finish, or returns ctx.Err(). A timed-out caller can
+// retry; all retries wait on the same retained close barrier.
+func (b *Bridge) CloseContext(ctx context.Context) error {
+	if b == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	b.closeOnce.Do(func() {
+		// Set closing flag before the waiter starts so Bridge.Go cannot race a
+		// positive WaitGroup Add against a zero-counter Wait.
+		b.Interrupt()
+		go func() {
+			// Wait for all goroutines to finish. Safe because:
+			//   - The interrupt handler aborts any running JS eval (~1000 opcodes)
+			//   - The Await loop breaks immediately when interrupt fires
+			//   - The pump goroutine releases the mutex and exits promptly
+			b.wg.Wait()
+			b.freeRuntime()
+			b.closing.Store(false)
+			b.closed.Store(true)
+			close(b.closeDone)
+		}()
+	})
+	select {
+	case <-b.closeDone:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// DebugSnapshot reports Bridge lifecycle state without exposing QuickJS values.
+func (b *Bridge) DebugSnapshot() DebugSnapshot {
+	if b == nil {
+		return DebugSnapshot{Closed: true}
+	}
+	return DebugSnapshot{
+		Closing:          b.closing.Load(),
+		Closed:           b.closed.Load(),
+		ActiveGoroutines: int(b.activeGoroutine.Load()),
+	}
+}
+
+func (b *Bridge) freeRuntime() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.ctx != nil {
@@ -188,6 +242,8 @@ func (b *Bridge) Interrupt() {
 	if b == nil {
 		return
 	}
+	b.lifecycleMu.Lock()
+	defer b.lifecycleMu.Unlock()
 	b.closing.Store(true)
 	b.goCancel()
 }
@@ -196,9 +252,26 @@ func (b *Bridge) Interrupt() {
 // which is cancelled on Close. All goroutines started via Go are waited-on
 // before the QuickJS runtime is freed.
 func (b *Bridge) Go(fn func(ctx context.Context)) {
+	_ = b.TryGo(fn)
+}
+
+// TryGo starts a tracked goroutine unless bridge close has started. It returns
+// false when the bridge is already closing or closed.
+func (b *Bridge) TryGo(fn func(ctx context.Context)) bool {
+	if b == nil || fn == nil {
+		return false
+	}
+	b.lifecycleMu.Lock()
+	if b.closing.Load() || b.closed.Load() {
+		b.lifecycleMu.Unlock()
+		return false
+	}
 	b.wg.Add(1)
+	b.activeGoroutine.Add(1)
+	b.lifecycleMu.Unlock()
 	go func() {
 		defer b.wg.Done()
+		defer b.activeGoroutine.Add(-1)
 		defer func() {
 			if r := recover(); r != nil {
 				// Goroutine panicked — don't crash the process.
@@ -210,6 +283,7 @@ func (b *Bridge) Go(fn func(ctx context.Context)) {
 		}()
 		fn(b.goCtx)
 	}()
+	return true
 }
 
 // GoContext returns the context for goroutines. Cancelled on Close.
@@ -296,6 +370,10 @@ func (b *Bridge) EvalOnJSThread(file string, code string) (string, error) {
 	ch := make(chan evalResult, 1)
 
 	b.ctx.Schedule(func(ctx *quickjs.Context) {
+		if b.closing.Load() {
+			ch <- evalResult{err: context.Canceled}
+			return
+		}
 		val := ctx.Eval(code, quickjs.EvalFileName(file))
 		if val.IsException() {
 			e := ctx.Exception()
@@ -319,8 +397,12 @@ func (b *Bridge) EvalOnJSThread(file string, code string) (string, error) {
 		val.Free()
 	})
 
-	r := <-ch
-	return r.result, r.err
+	select {
+	case r := <-ch:
+		return r.result, r.err
+	case <-b.goCtx.Done():
+		return "", context.Canceled
+	}
 }
 
 // Eval evaluates JavaScript code and returns the result.

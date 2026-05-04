@@ -88,13 +88,29 @@ type KernelMetrics struct {
 
 	// Bus metrics per topic
 	Bus *MetricsSnapshot `json:"bus,omitempty"`
+
+	// Transport reports low-cardinality transport/router health gauges.
+	Transport *TransportMetrics `json:"transport,omitempty"`
 }
 
 // MetricsSnapshot is a point-in-time copy of bus metrics data.
 type MetricsSnapshot struct {
-	Published map[string]int `json:"published"`
-	Handled   map[string]int `json:"handled"`
-	Errors    map[string]int `json:"errors"`
+	Published           map[string]int           `json:"published"`
+	Handled             map[string]int           `json:"handled"`
+	Errors              map[string]int           `json:"errors"`
+	HandleDurationTotal map[string]time.Duration `json:"handleDurationTotal,omitempty"`
+	HandleDurationMax   map[string]time.Duration `json:"handleDurationMax,omitempty"`
+	HandleDurationCount map[string]int           `json:"handleDurationCount,omitempty"`
+}
+
+// TransportMetrics is the stable low-cardinality transport metrics view.
+type TransportMetrics struct {
+	Kind                   string `json:"kind,omitempty"`
+	ActiveSubscriptions    int64  `json:"activeSubscriptions"`
+	RouterHandlers         int    `json:"routerHandlers"`
+	RouterStartedHandlers  int    `json:"routerStartedHandlers"`
+	RouterStoppedHandlers  int    `json:"routerStoppedHandlers"`
+	ActiveStreamHeartbeats int    `json:"activeStreamHeartbeats"`
 }
 
 // PluginMetrics describes a single plugin's runtime state.
@@ -117,13 +133,35 @@ type MCPServerConfig struct {
 
 // ── Deploy Options ───────────────────────────────────────────────────────────
 
+// DeployArtifactKind describes the shape of code handed to the runtime.
+type DeployArtifactKind string
+
+const (
+	// DeployArtifactSource is direct source code that the runtime may prepare
+	// before evaluation.
+	DeployArtifactSource DeployArtifactKind = "source"
+	// DeployArtifactNormalizedJS is already-bundled JavaScript ready for the
+	// runtime Compartment. The runtime must not transpile or bundle it again.
+	DeployArtifactNormalizedJS DeployArtifactKind = "normalized_js"
+)
+
 // DeployOption configures a Deploy call.
 type DeployOption func(*DeployConfig)
 
 // DeployConfig holds deploy options.
 type DeployConfig struct {
-	PackageName string
-	Restoring   bool
+	PackageName  string
+	Restoring    bool
+	ArtifactKind DeployArtifactKind
+}
+
+// EffectiveArtifactKind returns the explicit artifact kind, defaulting to
+// source for callers that do not opt into normalized artifacts.
+func (c DeployConfig) EffectiveArtifactKind() DeployArtifactKind {
+	if c.ArtifactKind != "" {
+		return c.ArtifactKind
+	}
+	return DeployArtifactSource
 }
 
 // WithRestoring marks this Deploy as a restore from persistence.
@@ -134,4 +172,11 @@ func WithRestoring() DeployOption {
 // WithPackageName tags the deployment as part of a package.
 func WithPackageName(name string) DeployOption {
 	return func(c *DeployConfig) { c.PackageName = name }
+}
+
+// WithNormalizedJS marks code as an already-bundled JavaScript artifact. The
+// runtime may still use a .ts logical source name for addressing, but it must
+// not run the package artifact back through TypeScript preparation.
+func WithNormalizedJS() DeployOption {
+	return func(c *DeployConfig) { c.ArtifactKind = DeployArtifactNormalizedJS }
 }

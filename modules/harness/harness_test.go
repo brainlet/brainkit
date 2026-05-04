@@ -1,13 +1,176 @@
 package harness
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
 // Event type serialization
 // ---------------------------------------------------------------------------
+
+func TestHarnessCloseStopsHeartbeatLoop(t *testing.T) {
+	var ticks atomic.Int32
+	var shutdowns atomic.Int32
+	h := &Harness{
+		config: HarnessConfig{HeartbeatHandlers: []HeartbeatHandler{{
+			ID:         "tick",
+			IntervalMs: 5,
+			Handler: func() error {
+				ticks.Add(1)
+				return nil
+			},
+			Shutdown: func() error {
+				shutdowns.Add(1)
+				return nil
+			},
+		}}},
+		heartbeats:    map[string]*time.Ticker{},
+		heartbeatStop: make(chan struct{}),
+	}
+	h.startHeartbeats()
+	deadline := time.After(250 * time.Millisecond)
+	for ticks.Load() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("heartbeat did not tick")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	if err := h.Close(); err != nil {
+		t.Fatalf("close harness: %v", err)
+	}
+	if err := h.Close(); err != nil {
+		t.Fatalf("close harness twice: %v", err)
+	}
+	if got := shutdowns.Load(); got != 1 {
+		t.Fatalf("shutdown calls = %d, want 1", got)
+	}
+	time.Sleep(20 * time.Millisecond)
+	afterClose := ticks.Load()
+	time.Sleep(20 * time.Millisecond)
+	if got := ticks.Load(); got != afterClose {
+		t.Fatalf("heartbeat ticked after close: before=%d after=%d", afterClose, got)
+	}
+}
+
+func TestHarnessCloseContextWaitsForHeartbeatHandlers(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var startedOnce atomic.Bool
+	h := &Harness{
+		config: HarnessConfig{HeartbeatHandlers: []HeartbeatHandler{{
+			ID:         "blocking",
+			IntervalMs: 1,
+			Handler: func() error {
+				if startedOnce.CompareAndSwap(false, true) {
+					close(started)
+				}
+				<-release
+				return nil
+			},
+		}}},
+		heartbeats:    map[string]*time.Ticker{},
+		heartbeatStop: make(chan struct{}),
+	}
+	h.startHeartbeats()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("heartbeat handler did not start")
+	}
+
+	closeCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	err := h.CloseContext(closeCtx)
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("CloseContext error = %v, want context deadline exceeded", err)
+	}
+	snapshot := h.debugSnapshot()
+	if !snapshot.Closing || snapshot.Closed || snapshot.ActiveHeartbeatWorkers == 0 {
+		t.Fatalf("snapshot after timed-out close = %#v, want closing with active heartbeat worker", snapshot)
+	}
+
+	retryDeadlineCtx, retryDeadlineCancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	retryDeadlineErr := h.CloseContext(retryDeadlineCtx)
+	retryDeadlineCancel()
+	if !errors.Is(retryDeadlineErr, context.DeadlineExceeded) {
+		t.Fatalf("second CloseContext error = %v, want context deadline exceeded", retryDeadlineErr)
+	}
+
+	close(release)
+	retryCtx, retryCancel := context.WithTimeout(context.Background(), time.Second)
+	defer retryCancel()
+	if err := h.CloseContext(retryCtx); err != nil {
+		t.Fatalf("retry CloseContext: %v", err)
+	}
+	snapshot = h.debugSnapshot()
+	if snapshot.Closing || !snapshot.Closed || snapshot.ActiveHeartbeatWorkers != 0 || snapshot.HeartbeatTimers != 0 {
+		t.Fatalf("snapshot after successful close = %#v, want closed with no heartbeat workers/timers", snapshot)
+	}
+}
+
+func TestModuleCloseContextKeepsHarnessInstanceWhenCloseTimesOut(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var startedOnce atomic.Bool
+	h := &Harness{
+		config: HarnessConfig{HeartbeatHandlers: []HeartbeatHandler{{
+			ID:         "blocking",
+			IntervalMs: 1,
+			Handler: func() error {
+				if startedOnce.CompareAndSwap(false, true) {
+					close(started)
+				}
+				<-release
+				return nil
+			},
+		}}},
+		heartbeats:    map[string]*time.Ticker{},
+		heartbeatStop: make(chan struct{}),
+	}
+	h.startHeartbeats()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("heartbeat handler did not start")
+	}
+
+	module := &Module{instance: h}
+	closeCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	err := module.CloseContext(closeCtx)
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("CloseContext error = %v, want context deadline exceeded", err)
+	}
+	if module.instance == nil {
+		t.Fatal("module cleared harness instance after timed-out close")
+	}
+	snapshot := module.DebugSnapshot()
+	if !snapshot.InstanceAttached || !snapshot.Closing || snapshot.ActiveHeartbeatWorkers == 0 {
+		t.Fatalf("module snapshot after timed-out close = %#v, want attached closing harness", snapshot)
+	}
+
+	close(release)
+	retryCtx, retryCancel := context.WithTimeout(context.Background(), time.Second)
+	defer retryCancel()
+	if err := module.CloseContext(retryCtx); err != nil {
+		t.Fatalf("retry CloseContext: %v", err)
+	}
+	if module.instance != nil {
+		t.Fatal("module kept harness instance after successful close retry")
+	}
+	snapshot = module.DebugSnapshot()
+	if snapshot.InstanceAttached || snapshot.ActiveHeartbeatWorkers != 0 {
+		t.Fatalf("module snapshot after successful close = %#v, want detached harness", snapshot)
+	}
+}
 
 func TestHarnessEvent_Unmarshal(t *testing.T) {
 	tests := []struct {
@@ -203,9 +366,9 @@ func TestValidateHarnessConfig_SubagentNoTools(t *testing.T) {
 
 func TestStateSchemaOf_Defaults(t *testing.T) {
 	type TestState struct {
-		Name    string  `json:"name" default:"unnamed"`
-		Enabled bool    `json:"enabled" default:"true"`
-		Count   float64 `json:"count" default:"42"`
+		Name    string   `json:"name" default:"unnamed"`
+		Enabled bool     `json:"enabled" default:"true"`
+		Count   float64  `json:"count" default:"42"`
 		Tags    []string `json:"tags" default:"[]"`
 	}
 

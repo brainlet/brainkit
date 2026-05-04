@@ -9,6 +9,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -122,9 +123,9 @@ func testMultipleReplies(t *testing.T, env *suite.TestEnv) {
 	})
 	defer unsub()
 
-	_, _ = sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	_, _ = protocol.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic: "ts.multi-reply-adv.multi", Payload: json.RawMessage(`{}`),
-	}, sdk.WithReplyTo(replyTo))
+	}, protocol.WithReplyTo(replyTo))
 
 	select {
 	case <-done:

@@ -1,4 +1,4 @@
-// Package harness is the brainkit.Module wrapper around the Harness
+// Package harness is the bkmodule.Module wrapper around the Harness
 // agent-orchestration layer.
 //
 // Status: WIP. The inner Harness surface (types.go, harness.go,
@@ -10,7 +10,7 @@
 // Example:
 //
 //	harn := harness.NewModule(harness.Config{Harness: harness.HarnessConfig{...}})
-//	kit, _ := brainkit.New(brainkit.Config{Modules: []brainkit.Module{harn}})
+//	kit, _ := brainkit.New(brainkit.Config{Modules: []bkmodule.Module{harn}})
 //	inst := harn.Instance()
 //	if inst != nil {
 //	    unsubscribe := inst.Subscribe(func(ev harness.Event) { ... })

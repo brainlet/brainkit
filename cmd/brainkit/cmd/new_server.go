@@ -39,13 +39,15 @@ import (
 	"syscall"
 
 	"github.com/brainlet/brainkit/server"
+	"github.com/brainlet/brainkit/server/configfile"
+	_ "github.com/brainlet/brainkit/server/standard"
 )
 
 func main() {
 	cfgPath := flag.String("config", "brainkit.yaml", "path to server config")
 	flag.Parse()
 
-	cfg, err := server.LoadConfig(*cfgPath)
+	cfg, err := configfile.Load(*cfgPath)
 	if err != nil {
 		log.Fatalf("load config: %%v", err)
 	}

@@ -109,16 +109,17 @@ func (q *Queries) DeleteSchedule(ctx context.Context, id string) error {
 }
 
 const loadDeployment = `-- name: LoadDeployment :one
-SELECT source, code, deploy_order, deployed_at, package_name
+SELECT source, code, deploy_order, deployed_at, package_name, artifact_kind
 FROM deployments WHERE source = $1
 `
 
 type LoadDeploymentRow struct {
-	Source      string
-	Code        string
-	DeployOrder int32
-	DeployedAt  time.Time
-	PackageName string
+	Source       string
+	Code         string
+	DeployOrder  int32
+	DeployedAt   time.Time
+	PackageName  string
+	ArtifactKind string
 }
 
 func (q *Queries) LoadDeployment(ctx context.Context, source string) (LoadDeploymentRow, error) {
@@ -130,21 +131,23 @@ func (q *Queries) LoadDeployment(ctx context.Context, source string) (LoadDeploy
 		&i.DeployOrder,
 		&i.DeployedAt,
 		&i.PackageName,
+		&i.ArtifactKind,
 	)
 	return i, err
 }
 
 const loadDeployments = `-- name: LoadDeployments :many
-SELECT source, code, deploy_order, deployed_at, package_name
+SELECT source, code, deploy_order, deployed_at, package_name, artifact_kind
 FROM deployments ORDER BY deploy_order
 `
 
 type LoadDeploymentsRow struct {
-	Source      string
-	Code        string
-	DeployOrder int32
-	DeployedAt  time.Time
-	PackageName string
+	Source       string
+	Code         string
+	DeployOrder  int32
+	DeployedAt   time.Time
+	PackageName  string
+	ArtifactKind string
 }
 
 func (q *Queries) LoadDeployments(ctx context.Context) ([]LoadDeploymentsRow, error) {
@@ -162,6 +165,7 @@ func (q *Queries) LoadDeployments(ctx context.Context) ([]LoadDeploymentsRow, er
 			&i.DeployOrder,
 			&i.DeployedAt,
 			&i.PackageName,
+			&i.ArtifactKind,
 		); err != nil {
 			return nil, err
 		}
@@ -559,21 +563,23 @@ func (q *Queries) RecordAuditEvent(ctx context.Context, arg RecordAuditEventPara
 
 const saveDeployment = `-- name: SaveDeployment :exec
 
-INSERT INTO deployments (source, code, deploy_order, deployed_at, package_name)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO deployments (source, code, deploy_order, deployed_at, package_name, artifact_kind)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (source) DO UPDATE SET
     code = EXCLUDED.code,
     deploy_order = EXCLUDED.deploy_order,
     deployed_at = EXCLUDED.deployed_at,
-    package_name = EXCLUDED.package_name
+    package_name = EXCLUDED.package_name,
+    artifact_kind = EXCLUDED.artifact_kind
 `
 
 type SaveDeploymentParams struct {
-	Source      string
-	Code        string
-	DeployOrder int32
-	DeployedAt  time.Time
-	PackageName string
+	Source       string
+	Code         string
+	DeployOrder  int32
+	DeployedAt   time.Time
+	PackageName  string
+	ArtifactKind string
 }
 
 // ── Deployments ──
@@ -584,6 +590,7 @@ func (q *Queries) SaveDeployment(ctx context.Context, arg SaveDeploymentParams) 
 		arg.DeployOrder,
 		arg.DeployedAt,
 		arg.PackageName,
+		arg.ArtifactKind,
 	)
 	return err
 }

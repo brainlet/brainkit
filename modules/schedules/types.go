@@ -27,4 +27,6 @@ type Config struct {
 	// survive restart. When provided: schedules are persisted and restored on
 	// module Mount, and ClaimScheduleFire is used for multi-replica dedup.
 	Store Store
+
+	ownsStore bool
 }

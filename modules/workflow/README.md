@@ -15,7 +15,7 @@ import (
 
 brainkit.New(brainkit.Config{
     Store: store,
-    Modules: []brainkit.Module{
+    Modules: []module.Module{
         workflow.New(),
     },
 })
@@ -38,3 +38,23 @@ Deployed `.ts` packages declare workflows via `kit.register("workflow", ...)`.
 The stable control surface is the `workflow.*` command set above; there is
 no public `workflow.advance` command. See `examples/workflows`,
 `examples/hitl-workflow`, and `test/suite/workflows/` for end-to-end shapes.
+
+## Capabilities
+
+- Requires: `jsruntime`, `brainkit.core.call_js`.
+- Uses when present: `brainkit.core.kit_store` to trigger active-run recovery
+  on mount and `brainkit.core.report_error` to report non-fatal recovery
+  failures.
+- Provides: none.
+
+## Runtime resources
+
+Owns workflow command handlers and active workflow-run recovery. JS-registered
+workflow definitions live in the mounted JS runtime; persisted run state lives
+in the configured Kit store.
+
+## Hot unmount
+
+Unmounting unregisters `workflow.*` commands and drops the JS call capability.
+Persisted workflow runs remain in the Kit store; JS runtime unmount owns JS
+workflow-definition teardown.

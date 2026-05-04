@@ -182,7 +182,7 @@ kit, err := brainkit.New(brainkit.Config{
     Transport:       brainkit.Memory(),
     FSRoot:          "/tmp/obs",
     TraceSampleRate: 1.0,
-    Modules: []brainkit.Module{
+    Modules: []module.Module{
         audit.NewModule(audit.Config{Store: auditStore}),
         tracing.New(tracing.Config{Store: traceStore}),
     },
@@ -204,23 +204,27 @@ both before any module that should be observed.
 
 ## Probes
 
-`modules/probes` exposes liveness / readiness probes on the HTTP
-gateway or over the bus. Wire when the Kit fronts public traffic:
+`modules/probes` owns background provider / vector store / storage probing.
+Wire it when a Kit fronts public traffic and health should include live
+provider status:
 
 ```go
-import probesmod "github.com/brainkit/brainkit/modules/probes"
+import probesmod "github.com/brainlet/brainkit/modules/probes"
 
-probesmod.NewModule(probesmod.Config{})
+probesmod.New(probesmod.Config{})
 ```
 
 The `kit.health` bus command is module-owned by `modules/health`; its
 typed helpers live in that package (`health.CallKitHealth`, etc.).
 The probes module adds scheduled background probing of every provider /
-vector store / storage backend.
+vector store / storage backend. Core exposes explicit `ProbeAll` /
+`ProbeAllContext`, but it does not schedule sweeps by itself. Probe sweeps run
+through the context-aware `module.ProbeRunner` capability, so hot-unmount
+cancels the module-owned loop and waits for any active sweep to return.
 
 ## What's not shipped
 
-- No HTTP `/metrics` endpoint. Watermill-level counts are internal.
+- No HTTP `/metrics` endpoint. Bus-level counts are internal.
 - No OpenTelemetry exporter (the tracing store is the sole sink).
 - No UI. The data is in the stores; point a viewer at SQLite for
   local inspection.

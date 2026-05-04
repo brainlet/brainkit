@@ -11,6 +11,7 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/audit/auditmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -104,7 +105,7 @@ func testStoreBackendSQLiteAuditViaConfig(t *testing.T, _ *suite.TestEnv) {
 	})
 	defer unsub()
 
-	sdk.Publish(k, ctx, auditmsg.AuditQueryMsg{Category: "deploy"}, sdk.WithReplyTo(replyTo))
+	protocol.Publish(k, ctx, auditmsg.AuditQueryMsg{Category: "deploy"}, protocol.WithReplyTo(replyTo))
 
 	select {
 	case resp := <-ch:

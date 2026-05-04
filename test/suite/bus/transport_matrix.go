@@ -12,6 +12,7 @@ import (
 	"github.com/brainlet/brainkit/modules/registry/registrymsg"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -177,7 +178,7 @@ func testTransportMatrixAsyncCorrelation(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	corrID, err := sdk.Publish(rt, ctx, toolmsg.ToolListMsg{})
+	corrID, err := protocol.Publish(rt, ctx, toolmsg.ToolListMsg{})
 	require.NoError(t, err)
 	assert.NotEmpty(t, corrID)
 }

@@ -2,7 +2,7 @@
 // one TTS clip flows into three sinks concurrently — desktop
 // speakers (audio/local), a WAV file on disk (audio.Func),
 // and a bus topic another subscriber listens on (audio.Func +
-// sdk.Publish). The agent only calls `new Audio(stream).play()`
+// Kit.PublishRaw). The agent only calls `new Audio(stream).play()`
 // once; the Sink primitive handles the fan-out.
 //
 // Demonstrates:
@@ -28,6 +28,8 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"time"
+
+	bkmodule "github.com/brainlet/brainkit/module"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/audio"
@@ -104,7 +106,7 @@ func run() error {
 		Transport: brainkit.Memory(),
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
 		Audio:     audio.Composite(speakers, fileSink, busSink),
-		Modules:   []brainkit.Module{packages.New()},
+		Modules:   []bkmodule.Module{packages.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

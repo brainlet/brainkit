@@ -3,6 +3,7 @@ package health
 import (
 	"context"
 	"encoding/json"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"sync"
 	"testing"
 	"time"
@@ -65,7 +66,7 @@ func testShutdownDrainTimeoutAdv(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Modules: []brainkit.Module{packages.New()},
+		Modules: []bkmodule.Module{packages.New()},
 	})
 	require.NoError(t, err)
 

@@ -19,13 +19,15 @@ Produces `./examples/plugin-author/plugin-author`.
 ```go
 import (
     "github.com/brainlet/brainkit"
+    bkmodule "github.com/brainlet/brainkit/module"
     pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+    "github.com/brainlet/brainkit/transports"
 )
 
 kit, _ := brainkit.New(brainkit.Config{
     Namespace: "demo",
-    Transport: brainkit.EmbeddedNATS(),
-    Modules: []brainkit.Module{
+    Transport: transports.EmbeddedNATS(),
+    Modules: []bkmodule.Module{
         pluginsmod.NewModule(pluginsmod.Config{
             Plugins: []pluginsmod.PluginConfig{{
                 Name:   "demo",

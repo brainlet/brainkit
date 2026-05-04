@@ -14,6 +14,10 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("js_bridge_has", func(t *testing.T) { testJSBridgeHas(t, env) })
 		t.Run("js_bridge_list", func(t *testing.T) { testJSBridgeList(t, env) })
 		t.Run("js_bridge_resolve", func(t *testing.T) { testJSBridgeResolve(t, env) })
+		t.Run("js_dynamic_provider_register_model", func(t *testing.T) { testJSDynamicProviderRegisterUsableByModel(t, env) })
+		t.Run("js_dynamic_provider_register_validation", func(t *testing.T) { testJSDynamicProviderRegisterPropagatesValidation(t, env) })
+		t.Run("secret_rotate_refreshes_js_provider_cache", func(t *testing.T) { testSecretRotateRefreshesJSProviderCache(t, env) })
+		t.Run("bus_provider_add_invalidates_js_provider_cache", func(t *testing.T) { testBusProviderAddInvalidatesJSProviderCache(t, env) })
 		t.Run("with_deployed_ts", func(t *testing.T) { testWithDeployedTS(t, env) })
 
 		// storage_runtime.go — runtime storage register/unregister (adversarial)

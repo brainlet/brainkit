@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
@@ -32,7 +35,7 @@ func BenchmarkDeploy_1KB(b *testing.B) {
 		testutil.DeployErr(k, source, code)
 		// Teardown via bus — fire and forget for bench
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		sdk.Publish(k, ctx, packagemsg.PackageTeardownMsg{Name: benchTeardownName(source)})
+		protocol.Publish(k, ctx, packagemsg.PackageTeardownMsg{Name: benchTeardownName(source)})
 		cancel()
 	}
 }
@@ -46,7 +49,7 @@ func BenchmarkDeploy_10KB(b *testing.B) {
 		source := fmt.Sprintf("bench10k-%d.ts", i)
 		testutil.DeployErr(k, source, code)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		sdk.Publish(k, ctx, packagemsg.PackageTeardownMsg{Name: benchTeardownName(source)})
+		protocol.Publish(k, ctx, packagemsg.PackageTeardownMsg{Name: benchTeardownName(source)})
 		cancel()
 	}
 }
@@ -79,7 +82,7 @@ func BenchmarkBusRoundtrip(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		pr, _ := sdk.SendToService(k, ctx, "bench-handler.ts", "bench", map[string]bool{"x": true})
+		pr, _ := protocol.SendToService(k, ctx, "bench-handler.ts", "bench", map[string]bool{"x": true})
 		ch := make(chan struct{}, 1)
 		unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(_ sdk.Message) { ch <- struct{}{} })
 		<-ch
@@ -93,7 +96,7 @@ func BenchmarkToolCall(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		pr, _ := sdk.Publish(k, ctx, toolmsg.ToolCallMsg{
+		pr, _ := protocol.Publish(k, ctx, toolmsg.ToolCallMsg{
 			Name:  "echo",
 			Input: json.RawMessage(`{"message":"bench"}`),
 		})
@@ -115,7 +118,7 @@ func BenchmarkPumpThroughput(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		pr, _ := sdk.SendToService(k, ctx, "pump-bench.ts", "pump", map[string]bool{"x": true})
+		pr, _ := protocol.SendToService(k, ctx, "pump-bench.ts", "pump", map[string]bool{"x": true})
 		ch := make(chan struct{}, 1)
 		unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(_ sdk.Message) { ch <- struct{}{} })
 		<-ch
@@ -155,7 +158,7 @@ func benchKit(b *testing.B) *brainkit.Kit {
 		Namespace: "bench",
 		CallerID:  "bench",
 		FSRoot:    tmpDir,
-		Modules:   []brainkit.Module{toolsmod.New()},
+		Modules:   []bkmodule.Module{toolsmod.New()},
 	})
 	if err != nil {
 		b.Fatalf("benchKit: %v", err)

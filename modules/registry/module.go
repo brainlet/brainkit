@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
 	provreg "github.com/brainlet/brainkit/modulehost/providerhost/providerreg"
 	"github.com/brainlet/brainkit/modules/registry/registrymsg"
@@ -19,12 +18,7 @@ import (
 // runtime should accept those admin commands over the bus.
 type Module struct {
 	providers *provreg.ProviderRegistry
-	storages  storageManager
-}
-
-type storageManager interface {
-	AddStorage(name string, cfg types.StorageConfig) error
-	RemoveStorage(name string) error
+	mutations bkmodule.RegistryMutationManager
 }
 
 // New creates the registry module.
@@ -42,16 +36,16 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 	if err != nil {
 		return fmt.Errorf("registry: %w", err)
 	}
-	storages, err := bkmodule.RequireCapability[storageManager](host, bkmodule.CapabilityStorageManager)
+	mutations, err := bkmodule.RequireCapability[bkmodule.RegistryMutationManager](host, bkmodule.CapabilityRegistryMutation)
 	if err != nil {
 		return fmt.Errorf("registry: %w", err)
 	}
 
 	m.providers = providers
-	m.storages = storages
+	m.mutations = mutations
 	host.Scope().Defer(func(context.Context) error {
 		m.providers = nil
-		m.storages = nil
+		m.mutations = nil
 		return nil
 	})
 
@@ -77,7 +71,7 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 // the module scope, so unmounting unregisters them.
 func (m *Module) Close() error {
 	m.providers = nil
-	m.storages = nil
+	m.mutations = nil
 	return nil
 }
 
@@ -96,7 +90,7 @@ func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	return New(), nil
 }
 
-// Describe surfaces module metadata for `brainkit modules list`.
+// Describe surfaces module metadata for module manifests.
 func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "registry",
@@ -115,7 +109,7 @@ func (Factory) Describe() bkmodule.Descriptor {
 		},
 		Capabilities: []bkmodule.CapabilityDescriptor{
 			bkmodule.RequiredCapabilityOf[*provreg.ProviderRegistry](bkmodule.CapabilityProviderRegistry),
-			bkmodule.RequiredCapabilityOf[storageManager](bkmodule.CapabilityStorageManager),
+			bkmodule.RequiredCapabilityOf[bkmodule.RegistryMutationManager](bkmodule.CapabilityRegistryMutation),
 		},
 	}
 }
@@ -174,163 +168,69 @@ func (m *Module) Resolve(_ context.Context, req registrymsg.RegistryResolveMsg) 
 }
 
 // AddProvider handles providers.add.
-func (m *Module) AddProvider(_ context.Context, req registrymsg.ProviderAddMsg) (*registrymsg.ProviderAddResp, error) {
+func (m *Module) AddProvider(ctx context.Context, req registrymsg.ProviderAddMsg) (*registrymsg.ProviderAddResp, error) {
 	if req.Name == "" {
 		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
-	config, err := deserializeProviderConfig(req.Type, req.Config)
-	if err != nil {
-		return nil, err
-	}
-	if err := m.providers.RegisterAIProvider(req.Name, provreg.AIProviderRegistration{
-		Type:   provreg.AIProviderType(req.Type),
-		Config: config,
-	}); err != nil {
+	if err := m.mutations.AddRegistryProvider(ctx, req.Name, req.Type, req.Config); err != nil {
 		return nil, err
 	}
 	return &registrymsg.ProviderAddResp{Added: true}, nil
 }
 
 // RemoveProvider handles providers.remove.
-func (m *Module) RemoveProvider(_ context.Context, req registrymsg.ProviderRemoveMsg) (*registrymsg.ProviderRemoveResp, error) {
+func (m *Module) RemoveProvider(ctx context.Context, req registrymsg.ProviderRemoveMsg) (*registrymsg.ProviderRemoveResp, error) {
 	if req.Name == "" {
 		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
-	m.providers.UnregisterAIProvider(req.Name)
+	if err := m.mutations.RemoveRegistryProvider(ctx, req.Name); err != nil {
+		return nil, err
+	}
 	return &registrymsg.ProviderRemoveResp{Removed: true}, nil
 }
 
 // AddStorage handles storages.add.
-func (m *Module) AddStorage(_ context.Context, req registrymsg.StorageAddMsg) (*registrymsg.StorageAddResp, error) {
+func (m *Module) AddStorage(ctx context.Context, req registrymsg.StorageAddMsg) (*registrymsg.StorageAddResp, error) {
 	if req.Name == "" {
 		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
-	cfg, err := deserializeStorageConfig(req.Type, req.Config)
-	if err != nil {
-		return nil, err
-	}
-	if err := m.storages.AddStorage(req.Name, cfg); err != nil {
+	if err := m.mutations.AddRegistryStorage(ctx, req.Name, req.Type, req.Config); err != nil {
 		return nil, err
 	}
 	return &registrymsg.StorageAddResp{Added: true}, nil
 }
 
 // RemoveStorage handles storages.remove.
-func (m *Module) RemoveStorage(_ context.Context, req registrymsg.StorageRemoveMsg) (*registrymsg.StorageRemoveResp, error) {
+func (m *Module) RemoveStorage(ctx context.Context, req registrymsg.StorageRemoveMsg) (*registrymsg.StorageRemoveResp, error) {
 	if req.Name == "" {
 		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
-	if err := m.storages.RemoveStorage(req.Name); err != nil {
+	if err := m.mutations.RemoveRegistryStorage(ctx, req.Name); err != nil {
 		return nil, err
 	}
 	return &registrymsg.StorageRemoveResp{Removed: true}, nil
 }
 
-// AddVector handles vectors.add. The existing command registers the requested
-// type verbatim; richer runtime vector bridge management is a separate module
-// boundary from this bus extraction.
-func (m *Module) AddVector(_ context.Context, req registrymsg.VectorAddMsg) (*registrymsg.VectorAddResp, error) {
+// AddVector handles vectors.add.
+func (m *Module) AddVector(ctx context.Context, req registrymsg.VectorAddMsg) (*registrymsg.VectorAddResp, error) {
 	if req.Name == "" {
 		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
-	if err := m.providers.RegisterVectorStore(req.Name, provreg.VectorStoreRegistration{
-		Type: provreg.VectorStoreType(req.Type),
-	}); err != nil {
+	if err := m.mutations.AddRegistryVector(ctx, req.Name, req.Type, req.Config); err != nil {
 		return nil, err
 	}
 	return &registrymsg.VectorAddResp{Added: true}, nil
 }
 
 // RemoveVector handles vectors.remove.
-func (m *Module) RemoveVector(_ context.Context, req registrymsg.VectorRemoveMsg) (*registrymsg.VectorRemoveResp, error) {
+func (m *Module) RemoveVector(ctx context.Context, req registrymsg.VectorRemoveMsg) (*registrymsg.VectorRemoveResp, error) {
 	if req.Name == "" {
 		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
-	m.providers.UnregisterVectorStore(req.Name)
+	if err := m.mutations.RemoveRegistryVector(ctx, req.Name); err != nil {
+		return nil, err
+	}
 	return &registrymsg.VectorRemoveResp{Removed: true}, nil
-}
-
-func deserializeProviderConfig(typ string, raw json.RawMessage) (any, error) {
-	if len(raw) == 0 || string(raw) == "null" {
-		return nil, nil
-	}
-	switch typ {
-	case "openai":
-		var c types.OpenAIProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "anthropic":
-		var c types.AnthropicProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "google":
-		var c types.GoogleProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "mistral":
-		var c types.MistralProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "cohere":
-		var c types.CohereProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "groq":
-		var c types.GroqProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "perplexity":
-		var c types.PerplexityProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "deepseek":
-		var c types.DeepSeekProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "fireworks":
-		var c types.FireworksProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "togetherai":
-		var c types.TogetherAIProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "xai":
-		var c types.XAIProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "azure":
-		var c types.AzureProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "bedrock":
-		var c types.BedrockProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "vertex":
-		var c types.VertexProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "huggingface":
-		var c types.HuggingFaceProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	case "cerebras":
-		var c types.CerebrasProviderConfig
-		return c, json.Unmarshal(raw, &c)
-	default:
-		return nil, fmt.Errorf("unknown provider type: %s", typ)
-	}
-}
-
-func deserializeStorageConfig(typ string, raw json.RawMessage) (types.StorageConfig, error) {
-	var base struct {
-		Path             string `json:"path"`
-		ConnectionString string `json:"connectionString"`
-		URI              string `json:"uri"`
-		DBName           string `json:"dbName"`
-		URL              string `json:"url"`
-		Token            string `json:"token"`
-	}
-	if len(raw) > 0 && string(raw) != "null" {
-		if err := json.Unmarshal(raw, &base); err != nil {
-			return types.StorageConfig{}, fmt.Errorf("invalid storage config: %w", err)
-		}
-	}
-	return types.StorageConfig{
-		Type:             typ,
-		Path:             base.Path,
-		ConnectionString: base.ConnectionString,
-		URI:              base.URI,
-		DBName:           base.DBName,
-		URL:              base.URL,
-		Token:            base.Token,
-	}, nil
 }
 
 func redactCredentials(config any) any {

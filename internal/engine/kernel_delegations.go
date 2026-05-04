@@ -25,7 +25,7 @@ func (k *Kernel) Namespace() string { return k.namespace }
 func (k *Kernel) CallerID() string { return k.callerID }
 
 // Remote returns the transport-level client. Used by (*Kit).PresenceTransport
-// to expose cluster-wide publish/subscribe to brainkit.Modules (e.g. discovery)
+// to expose cluster-wide publish/subscribe to Brainkit modules (e.g. discovery)
 // without leaking the full transport surface.
 func (k *Kernel) Remote() *transport.RemoteClient {
 	if k.transportHost == nil {
@@ -34,11 +34,23 @@ func (k *Kernel) Remote() *transport.RemoteClient {
 	return k.transportHost.Remote()
 }
 
-// SetScheduleHandler attaches the scheduler. The schedules module calls this
-// during its Init; bridges_scheduling.go and the schedule.* bus commands
-// dispatch through this handler. Passing nil (e.g. on module Close) detaches
-// it and future bridge calls throw NOT_CONFIGURED.
-func (k *Kernel) SetScheduleHandler(h types.ScheduleHandler) { k.scheduleHandler = h }
+// LeaseScheduleHandler attaches the scheduler until the returned lease is
+// closed. Closing an older lease never clears a newer scheduler.
+func (k *Kernel) LeaseScheduleHandler(_ context.Context, h types.ScheduleHandler) (bkmodule.Handle, error) {
+	if h == nil {
+		return nil, fmt.Errorf("schedule handler lease requires a handler")
+	}
+	k.mu.Lock()
+	token := k.scheduleHandlerLease.acquire(k.scheduleHandler, h)
+	k.scheduleHandler = k.scheduleHandlerLease.current()
+	k.mu.Unlock()
+	return bkmodule.HandleFunc(func(context.Context) error {
+		k.mu.Lock()
+		defer k.mu.Unlock()
+		k.scheduleHandler = k.scheduleHandlerLease.release(token)
+		return nil
+	}), nil
+}
 
 // HasCommand reports whether the given topic is a registered bus command
 // (and therefore reserved for request/response routing). Schedules reject
@@ -80,13 +92,37 @@ func (k *Kernel) MountCommand(ctx context.Context, spec bkmodule.CommandSpec) (b
 	}), nil
 }
 
-// SetAuditStore attaches (or detaches) the Recorder's underlying store.
-// The audit module calls this during mount; without a store the Recorder
-// is a no-op.
-func (k *Kernel) SetAuditStore(s auditpkg.Store) { k.audit.SetStore(s) }
+// LeaseAuditStore attaches an audit store until the returned lease is closed.
+func (k *Kernel) LeaseAuditStore(_ context.Context, store auditpkg.Store) (bkmodule.Handle, error) {
+	if store == nil {
+		return nil, fmt.Errorf("audit store lease requires a store")
+	}
+	k.mu.Lock()
+	token := k.auditStoreLease.acquire(k.audit.Store(), store)
+	k.audit.SetStore(k.auditStoreLease.current())
+	k.mu.Unlock()
+	return bkmodule.HandleFunc(func(context.Context) error {
+		k.mu.Lock()
+		defer k.mu.Unlock()
+		k.audit.SetStore(k.auditStoreLease.release(token))
+		return nil
+	}), nil
+}
 
-// SetAuditVerbosity flips the Recorder between normal and verbose tiers.
-func (k *Kernel) SetAuditVerbosity(v auditpkg.Verbosity) { k.audit.SetVerbosity(v) }
+// LeaseAuditVerbosity flips recorder verbosity until the returned lease is
+// closed, then restores the previous tier when still current.
+func (k *Kernel) LeaseAuditVerbosity(_ context.Context, verbosity auditpkg.Verbosity) (bkmodule.Handle, error) {
+	k.mu.Lock()
+	token := k.auditVerbosityLease.acquire(k.audit.Verbosity(), verbosity)
+	k.audit.SetVerbosity(k.auditVerbosityLease.current())
+	k.mu.Unlock()
+	return bkmodule.HandleFunc(func(context.Context) error {
+		k.mu.Lock()
+		defer k.mu.Unlock()
+		k.audit.SetVerbosity(k.auditVerbosityLease.release(token))
+		return nil
+	}), nil
+}
 
 // Audit returns the central Recorder for modules that need to record
 // events directly (e.g. the plugins module's WS server recording
@@ -120,23 +156,57 @@ func (k *Kernel) TransportKind() string {
 	return k.transportHost.TransportKind()
 }
 
-// SetPluginChecker installs the module-side PluginChecker used by
-// package-deploy's `Requires.plugins` gate. Pass nil to detach.
-func (k *Kernel) SetPluginChecker(pc bkmodule.PluginChecker) { k.pluginChecker = pc }
+// LeasePluginChecker installs the module-side PluginChecker used by
+// package-deploy's `Requires.plugins` gate until the returned lease closes.
+func (k *Kernel) LeasePluginChecker(_ context.Context, checker bkmodule.PluginChecker) (bkmodule.Handle, error) {
+	if checker == nil {
+		return nil, fmt.Errorf("plugin checker lease requires a checker")
+	}
+	k.mu.Lock()
+	token := k.pluginCheckerLease.acquire(k.pluginChecker, checker)
+	k.pluginChecker = k.pluginCheckerLease.current()
+	k.mu.Unlock()
+	return bkmodule.HandleFunc(func(context.Context) error {
+		k.mu.Lock()
+		defer k.mu.Unlock()
+		k.pluginChecker = k.pluginCheckerLease.release(token)
+		return nil
+	}), nil
+}
 
 // PluginChecker returns the active plugin-presence gate for modules that
 // validate plugin dependencies. Nil means no plugins module is mounted.
-func (k *Kernel) PluginChecker() bkmodule.PluginChecker { return k.pluginChecker }
+func (k *Kernel) PluginChecker() bkmodule.PluginChecker {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.pluginChecker
+}
 
-// SetPluginRestarter installs the module-side PluginRestarter used by the
-// secrets module for rotation-driven plugin restart. Pass nil to detach.
-func (k *Kernel) SetPluginRestarter(r PluginRestarter) {
-	k.pluginRestarter = r
+// LeasePluginRestarter installs the module-side PluginRestarter used by the
+// secrets module for rotation-driven plugin restart until the lease closes.
+func (k *Kernel) LeasePluginRestarter(_ context.Context, restarter PluginRestarter) (bkmodule.Handle, error) {
+	if restarter == nil {
+		return nil, fmt.Errorf("plugin restarter lease requires a restarter")
+	}
+	k.mu.Lock()
+	token := k.pluginRestarterLease.acquire(k.pluginRestarter, restarter)
+	k.pluginRestarter = k.pluginRestarterLease.current()
+	k.mu.Unlock()
+	return bkmodule.HandleFunc(func(context.Context) error {
+		k.mu.Lock()
+		defer k.mu.Unlock()
+		k.pluginRestarter = k.pluginRestarterLease.release(token)
+		return nil
+	}), nil
 }
 
 // PluginRestarter returns the active plugin restarter, if the plugins module
 // is mounted. Nil means there is no plugin module to restart.
-func (k *Kernel) PluginRestarter() PluginRestarter { return k.pluginRestarter }
+func (k *Kernel) PluginRestarter() PluginRestarter {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.pluginRestarter
+}
 
 // Logger returns the structured logger.
 func (k *Kernel) Logger() *slog.Logger { return k.logger }
@@ -224,7 +294,9 @@ func (k *Kernel) evalDomain(ctx context.Context, req any, filename, code string)
 	return json.RawMessage(resultJSON), nil
 }
 
-// EvalTS runs .ts-style code with brainkit infrastructure imports destructured.
+// EvalTS runs direct .ts-style snippets with brainkit infrastructure imports
+// destructured. Package/file-graph bundling is intentionally owned by
+// modules/packages before deploy handoff.
 func (k *Kernel) EvalTS(ctx context.Context, filename, code string) (string, error) {
 	if k.jsRuntime == nil {
 		return "", &sdkerrors.NotConfiguredError{Feature: "js runtime"}
@@ -246,10 +318,21 @@ func (k *Kernel) ReportError(err error, ctx types.ErrorContext) {
 	types.InvokeErrorHandler(k.config.ErrorHandler, err, ctx)
 }
 
-// SetTraceStore attaches a trace store to the Kernel's tracer. Used by
-// modules (e.g. tracing) to install durable storage at mount time.
-func (k *Kernel) SetTraceStore(store types.TraceStore) {
-	k.tracer.SetStore(store)
+// LeaseTraceStore attaches a trace store until the returned lease is closed.
+func (k *Kernel) LeaseTraceStore(_ context.Context, store types.TraceStore) (bkmodule.Handle, error) {
+	if store == nil {
+		return nil, fmt.Errorf("trace store lease requires a store")
+	}
+	k.mu.Lock()
+	token := k.traceStoreLease.acquire(k.tracer.Store(), store)
+	k.tracer.SetStore(k.traceStoreLease.current())
+	k.mu.Unlock()
+	return bkmodule.HandleFunc(func(context.Context) error {
+		k.mu.Lock()
+		defer k.mu.Unlock()
+		k.tracer.SetStore(k.traceStoreLease.release(token))
+		return nil
+	}), nil
 }
 
 // currentDeploymentSource returns the deployment source currently executing on the JS thread.

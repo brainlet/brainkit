@@ -16,6 +16,7 @@ import (
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
@@ -96,7 +97,7 @@ func testPluginInProcessAsyncSubscribe(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 	defer unsub()
-	_, err = sdk.Publish(rt, ctx, toolmsg.ToolListMsg{}, sdk.WithReplyTo(replyTo))
+	_, err = protocol.Publish(rt, ctx, toolmsg.ToolListMsg{}, protocol.WithReplyTo(replyTo))
 	require.NoError(t, err)
 
 	select {

@@ -9,7 +9,7 @@ import (
 //   - bridges_request.go  — __go_brainkit_request, __go_brainkit_request_async
 //   - bridges_control.go  — __go_brainkit_control (tools/agents/registry register/unregister)
 //   - bridges_bus.go      — bus_send, bus_publish, bus_emit, bus_reply, subscribe, unsubscribe
-//   - bridges_registry.go — __go_registry_resolve, __go_registry_has, __go_registry_list
+//   - bridges_registry.go — registry resolve/runtime-resolve, has, list
 //   - bridges_approval.go — __go_brainkit_await_approval
 //   - bridges_scheduling.go — bus_schedule, bus_unschedule
 //   - bridges_secrets.go  — __go_brainkit_secret_get

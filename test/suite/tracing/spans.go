@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	tracingpkg "github.com/brainlet/brainkit/internal/tracing"
@@ -40,7 +43,7 @@ func tracingEnv(t *testing.T) (*suite.TestEnv, *tracingpkg.MemoryTraceStore) {
 		FSRoot:     tmpDir,
 		Store:      kitStore,
 		TraceStore: store,
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			toolsmod.New(),
 			packages.New(),
 			tracingmod.New(tracingmod.Config{Store: store}),
@@ -88,7 +91,7 @@ func testHandlerCreatesSpan(t *testing.T, _ *suite.TestEnv) {
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	sendPR, _ := sdk.SendToService(env.Kit, ctx, "traced.ts", "ping", map[string]bool{"x": true})
+	sendPR, _ := protocol.SendToService(env.Kit, ctx, "traced.ts", "ping", map[string]bool{"x": true})
 	replyCh := make(chan struct{}, 1)
 	replyCancel, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(_ sdk.Message) { replyCh <- struct{}{} })
 	defer replyCancel()
@@ -115,7 +118,7 @@ func testQueryViaBus(t *testing.T, _ *suite.TestEnv) {
 	span := tracingpkg.NewTracer(store, 1.0).StartSpan("test.op", ctx)
 	span.End(nil)
 
-	pub, _ := sdk.Publish(env.Kit, ctx, tracingmsg.TraceListMsg{Limit: 10})
+	pub, _ := protocol.Publish(env.Kit, ctx, tracingmsg.TraceListMsg{Limit: 10})
 	listCh := make(chan tracingmsg.TraceListResp, 1)
 	cancel, _ := sdk.SubscribeTo[tracingmsg.TraceListResp](env.Kit, ctx, pub.ReplyTo, func(resp tracingmsg.TraceListResp, _ sdk.Message) {
 		listCh <- resp
@@ -136,7 +139,7 @@ func testNoStoreNoOp(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Minimal(t)
 	ctx := context.Background()
 
-	pub, _ := sdk.Publish(env.Kit, ctx, toolmsg.ToolListMsg{})
+	pub, _ := protocol.Publish(env.Kit, ctx, toolmsg.ToolListMsg{})
 	ch := make(chan toolmsg.ToolListResp, 1)
 	cancel, _ := sdk.SubscribeTo[toolmsg.ToolListResp](env.Kit, ctx, pub.ReplyTo, func(resp toolmsg.ToolListResp, _ sdk.Message) {
 		ch <- resp
@@ -155,7 +158,7 @@ func testToolCallCreatesSpan(t *testing.T, _ *suite.TestEnv) {
 	env, store := tracingEnv(t)
 	ctx := context.Background()
 
-	pr, _ := sdk.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "traced"}})
+	pr, _ := protocol.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "traced"}})
 	ch := make(chan []byte, 1)
 	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
@@ -199,7 +202,7 @@ func testQueryBySource(t *testing.T, _ *suite.TestEnv) {
 		bus.on("ping", function(msg) { msg.reply({ok:true}); });
 	`)
 
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	pr, _ := protocol.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic: "ts.source-a.ping", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
@@ -212,7 +215,7 @@ func testQueryBySource(t *testing.T, _ *suite.TestEnv) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	pr2, _ := sdk.Publish(env.Kit, ctx, tracingmsg.TraceListMsg{Limit: 100})
+	pr2, _ := protocol.Publish(env.Kit, ctx, tracingmsg.TraceListMsg{Limit: 100})
 	ch2 := make(chan []byte, 1)
 	unsub2, _ := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 	defer unsub2()
@@ -237,7 +240,7 @@ func testSampleRate(t *testing.T, _ *suite.TestEnv) {
 		FSRoot:          tmpDir,
 		TraceStore:      store,
 		TraceSampleRate: 0.0, // sample nothing
-		Modules:         []brainkit.Module{toolsmod.New()},
+		Modules:         []bkmodule.Module{toolsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -251,7 +254,7 @@ func testSampleRate(t *testing.T, _ *suite.TestEnv) {
 	})))
 
 	ctx := context.Background()
-	pr, _ := sdk.Publish(k, ctx, toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "no-trace"}})
+	pr, _ := protocol.Publish(k, ctx, toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "no-trace"}})
 	ch := make(chan []byte, 1)
 	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
@@ -314,7 +317,7 @@ func testEmptyStore(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	assert.Empty(t, traces)
 
-	pr, _ := sdk.Publish(env.Kit, ctx, tracingmsg.TraceGetMsg{TraceID: "nonexistent-trace-id"})
+	pr, _ := protocol.Publish(env.Kit, ctx, tracingmsg.TraceGetMsg{TraceID: "nonexistent-trace-id"})
 	ch := make(chan []byte, 1)
 	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()

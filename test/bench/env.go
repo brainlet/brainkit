@@ -5,6 +5,7 @@ package bench
 
 import (
 	"context"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"testing"
 
 	"github.com/brainlet/brainkit"
@@ -29,7 +30,7 @@ func NewEnv(b *testing.B) *BenchEnv {
 		Namespace: "bench",
 		CallerID:  "bench",
 		FSRoot:    tmpDir,
-		Modules:   []brainkit.Module{toolsmod.New()},
+		Modules:   []bkmodule.Module{toolsmod.New()},
 	})
 	if err != nil {
 		b.Fatalf("bench.NewEnv: New: %v", err)

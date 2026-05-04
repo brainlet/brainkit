@@ -28,6 +28,7 @@
     embeddingModel: globalThis.__kit_resolveEmbeddingModel,
     provider: globalThis.__kit_resolveProvider,
     __clearProviderCache: globalThis.__kit_clearProviderCache,
+    __clearRegistryCache: globalThis.__kit_clearRegistryCache,
     storage: globalThis.__kit_resolveStorage,
     vectorStore: globalThis.__kit_resolveVectorStore,
     registry: registry,

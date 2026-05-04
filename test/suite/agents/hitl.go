@@ -10,6 +10,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -124,7 +125,7 @@ func installApprover(t *testing.T, env *suite.TestEnv, ctx context.Context, appr
 // reply payload.
 func triggerHitl(t *testing.T, env *suite.TestEnv, ctx context.Context, service string) map[string]any {
 	t.Helper()
-	replyTo := sdk.ResolveServiceTopic(service, "run") + ".reply." + uuid.NewString()
+	replyTo := protocol.ResolveServiceTopic(service, "run") + ".reply." + uuid.NewString()
 	replyCh := make(chan sdk.Message, 1)
 	unsub, err := env.Kit.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
 		if msg.Metadata["done"] == "true" {
@@ -137,7 +138,7 @@ func triggerHitl(t *testing.T, env *suite.TestEnv, ctx context.Context, service 
 	require.NoError(t, err)
 	defer unsub()
 
-	_, err = sdk.SendToService(env.Kit, ctx, service, "run", json.RawMessage(`{}`), sdk.WithReplyTo(replyTo))
+	_, err = protocol.SendToService(env.Kit, ctx, service, "run", json.RawMessage(`{}`), protocol.WithReplyTo(replyTo))
 	require.NoError(t, err)
 
 	select {

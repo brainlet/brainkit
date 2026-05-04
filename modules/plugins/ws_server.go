@@ -3,11 +3,13 @@ package plugins
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/tools"
@@ -22,20 +24,36 @@ import (
 // pluginWSServer hosts a WebSocket endpoint for plugin connections.
 // Started by the Module when plugins are configured.
 type pluginWSServer struct {
-	mod      *Module
-	listener net.Listener
-	server   *http.Server
-	mu       sync.Mutex
-	conns    map[string]*pluginWSConn // name → connection
+	mod             *Module
+	listener        net.Listener
+	server          *http.Server
+	mu              sync.Mutex
+	conns           map[string]*pluginWSConn // name → connection
+	sockets         map[*websocket.Conn]struct{}
+	closing         bool
+	serveDone       chan struct{}
+	serveErr        error
+	connWG          sync.WaitGroup
+	pingWG          sync.WaitGroup
+	connWait        sync.Once
+	connDone        chan struct{}
+	pingWait        sync.Once
+	pingDone        chan struct{}
+	activeHandlers  atomic.Int64
+	activePingLoops atomic.Int64
+	closingSubs     []pluginSubscriptionHandle
 }
 
 type pluginWSConn struct {
-	conn     *websocket.Conn
-	name     string
-	manifest pluginws.Manifest
-	pending  map[string]chan pluginws.ToolResult // id → result channel
-	unsubs   []func()                            // bus subscription cancellers
-	mu       sync.Mutex
+	conn      *websocket.Conn
+	name      string
+	manifest  pluginws.Manifest
+	pending   map[string]chan pluginws.ToolResult // id → result channel
+	subs      []pluginSubscriptionHandle          // bus subscription handles
+	tools     []string                            // registered tool names owned by this connection
+	mu        sync.Mutex
+	closeOnce sync.Once
+	closed    bool
 
 	// Health tracking
 	healthy    bool
@@ -45,10 +63,19 @@ type pluginWSConn struct {
 	cancelPing context.CancelFunc
 }
 
+type pluginSubscriptionHandle interface {
+	Stop()
+	CloseContext(context.Context) error
+}
+
 func newPluginWSServer(mod *Module) (*pluginWSServer, error) {
 	s := &pluginWSServer{
-		mod:   mod,
-		conns: make(map[string]*pluginWSConn),
+		mod:       mod,
+		conns:     make(map[string]*pluginWSConn),
+		sockets:   make(map[*websocket.Conn]struct{}),
+		serveDone: make(chan struct{}),
+		connDone:  make(chan struct{}),
+		pingDone:  make(chan struct{}),
 	}
 
 	mux := http.NewServeMux()
@@ -61,13 +88,30 @@ func newPluginWSServer(mod *Module) (*pluginWSServer, error) {
 	s.listener = listener
 
 	s.server = &http.Server{Handler: mux}
-	go s.server.Serve(listener)
+	server := s.server
+	go func() {
+		if err := server.Serve(listener); err != nil && !isExpectedPluginWSServerClose(err) {
+			s.mu.Lock()
+			s.serveErr = err
+			s.mu.Unlock()
+		}
+		close(s.serveDone)
+	}()
 
 	return s, nil
 }
 
 func (s *pluginWSServer) Addr() string {
-	return s.listener.Addr().String()
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	listener := s.listener
+	s.mu.Unlock()
+	if listener == nil {
+		return ""
+	}
+	return listener.Addr().String()
 }
 
 func (s *pluginWSServer) URL() string {
@@ -75,8 +119,72 @@ func (s *pluginWSServer) URL() string {
 }
 
 func (s *pluginWSServer) Close() {
-	s.server.Close()
-	s.listener.Close()
+	_ = s.CloseContext(context.Background())
+}
+
+func (s *pluginWSServer) CloseContext(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+	}
+	s.mu.Lock()
+	s.closing = true
+	conns := make([]*pluginWSConn, 0, len(s.conns))
+	for _, pc := range s.conns {
+		conns = append(conns, pc)
+	}
+	sockets := make(map[*websocket.Conn]struct{}, len(s.sockets)+len(conns))
+	for conn := range s.sockets {
+		sockets[conn] = struct{}{}
+	}
+	server := s.server
+	listener := s.listener
+	serveDone := s.serveDone
+	subscriptions := append([]pluginSubscriptionHandle(nil), s.closingSubs...)
+	s.closingSubs = nil
+	s.conns = map[string]*pluginWSConn{}
+	s.sockets = map[*websocket.Conn]struct{}{}
+	s.server = nil
+	s.listener = nil
+	s.mu.Unlock()
+	for _, pc := range conns {
+		if pc == nil {
+			continue
+		}
+		subscriptions = append(subscriptions, pc.cleanup(s.mod, "plugin server closing")...)
+		if pc.conn != nil {
+			sockets[pc.conn] = struct{}{}
+		}
+	}
+	for conn := range sockets {
+		_ = conn.CloseNow()
+	}
+	var err error
+	if server != nil {
+		err = errors.Join(err, pluginWSServerCloseError(server.Close()))
+	}
+	if listener != nil {
+		err = errors.Join(err, pluginWSServerCloseError(listener.Close()))
+	}
+	err = errors.Join(err, waitPluginWSDone(ctx, serveDone, "plugin websocket serve"))
+	err = errors.Join(err, s.waitConnHandlers(ctx))
+	err = errors.Join(err, s.waitPingLoops(ctx))
+	err = errors.Join(err, waitPluginWSSubscriptions(ctx, subscriptions))
+	s.mu.Lock()
+	serveErr := s.serveErr
+	if err != nil && len(subscriptions) > 0 {
+		s.closingSubs = append(s.closingSubs, subscriptions...)
+	}
+	s.mu.Unlock()
+	err = errors.Join(err, serveErr)
+	return err
 }
 
 func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +193,11 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 		slog.Error("plugin ws: accept failed", slog.String("error", err.Error()))
 		return
 	}
+	if !s.trackAcceptedConnection(conn) {
+		_ = conn.CloseNow()
+		return
+	}
+	defer s.untrackAcceptedConnection(conn)
 	conn.SetReadLimit(10 * 1024 * 1024)
 
 	ctx := r.Context()
@@ -118,7 +231,7 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 		toolDef := toolDef
 		fullName := tools.ComposeName(manifest.Owner, manifest.Name, manifest.Version, toolDef.Name)
 
-		s.mod.kit.Tools().Register(tools.RegisteredTool{
+		if err := s.mod.registerPluginTool(manifest.Name, tools.RegisteredTool{
 			Name:        fullName,
 			ShortName:   toolDef.Name,
 			Owner:       manifest.Owner,
@@ -132,12 +245,27 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 					return pc.callTool(callCtx, toolDef.Name, input, callerID)
 				},
 			},
-		})
+		}); err != nil {
+			pc.cleanup(s.mod, "manifest rejected")
+			ackData, _ := json.Marshal(pluginws.ManifestAck{Registered: false, Error: err.Error()})
+			_ = wsjson.Write(ctx, conn, pluginws.Message{
+				Type: pluginws.TypeManifestAck,
+				Data: ackData,
+			})
+			_ = conn.Close(websocket.StatusPolicyViolation, "manifest rejected")
+			return
+		}
+		pc.tools = append(pc.tools, fullName)
 	}
 
 	s.mu.Lock()
+	previous := s.conns[manifest.Name]
 	s.conns[manifest.Name] = pc
 	s.mu.Unlock()
+	if previous != nil {
+		previous.cleanup(s.mod, "plugin connection replaced")
+		_ = previous.conn.CloseNow()
+	}
 
 	// Send manifest ack
 	ackData, _ := json.Marshal(pluginws.ManifestAck{Registered: true})
@@ -164,11 +292,22 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 	}
 
 	// Start WS ping heartbeat to detect dead plugins
+	pingCtx, cancelPing := context.WithCancel(ctx)
+	pc.mu.Lock()
+	if pc.closed {
+		pc.mu.Unlock()
+		cancelPing()
+		return
+	}
 	pc.healthy = true
 	pc.lastPong = time.Now()
-	pingCtx, cancelPing := context.WithCancel(ctx)
 	pc.cancelPing = cancelPing
+	s.pingWG.Add(1)
+	s.activePingLoops.Add(1)
+	pc.mu.Unlock()
 	go func() {
+		defer s.activePingLoops.Add(-1)
+		defer s.pingWG.Done()
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -177,8 +316,13 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 				return
 			case <-ticker.C:
 				if err := conn.Ping(pingCtx); err != nil {
-					if pc.healthy {
+					pc.mu.Lock()
+					wasHealthy := pc.healthy
+					if wasHealthy {
 						pc.healthy = false
+					}
+					pc.mu.Unlock()
+					if wasHealthy {
 						s.mod.kit.Audit().PluginHealthChanged(pc.name, "unhealthy")
 						slog.Warn("plugin ws: heartbeat failed",
 							slog.String("plugin", pc.name),
@@ -186,10 +330,13 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 					}
 				} else {
 					pc.mu.Lock()
+					wasHealthy := pc.healthy
 					pc.lastPong = time.Now()
-					pc.mu.Unlock()
-					if !pc.healthy {
+					if !wasHealthy {
 						pc.healthy = true
+					}
+					pc.mu.Unlock()
+					if !wasHealthy {
 						s.mod.kit.Audit().PluginHealthChanged(pc.name, "healthy")
 						slog.Info("plugin ws: heartbeat recovered", slog.String("plugin", pc.name))
 					}
@@ -258,28 +405,174 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// Cleanup on disconnect — cancel heartbeat + all bus subscriptions
-	if pc.cancelPing != nil {
-		pc.cancelPing()
-	}
-	pc.mu.Lock()
-	for _, unsub := range pc.unsubs {
-		unsub()
-	}
-	pc.mu.Unlock()
+	pc.cleanup(s.mod, "plugin disconnected")
 
 	s.mu.Lock()
-	delete(s.conns, manifest.Name)
+	if s.conns[manifest.Name] == pc {
+		delete(s.conns, manifest.Name)
+	}
 	s.mu.Unlock()
 
 	slog.Info("plugin ws: disconnected", slog.String("plugin", manifest.Name))
+}
+
+func (s *pluginWSServer) trackAcceptedConnection(conn *websocket.Conn) bool {
+	if s == nil || conn == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closing {
+		return false
+	}
+	if s.sockets == nil {
+		s.sockets = map[*websocket.Conn]struct{}{}
+	}
+	s.connWG.Add(1)
+	s.activeHandlers.Add(1)
+	s.sockets[conn] = struct{}{}
+	return true
+}
+
+func (s *pluginWSServer) untrackAcceptedConnection(conn *websocket.Conn) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	delete(s.sockets, conn)
+	s.mu.Unlock()
+	s.activeHandlers.Add(-1)
+	s.connWG.Done()
+}
+
+func (s *pluginWSServer) waitConnHandlers(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s.mu.Lock()
+	done := s.connDone
+	if done == nil {
+		done = make(chan struct{})
+		s.connDone = done
+	}
+	s.connWait.Do(func() {
+		go func() {
+			s.connWG.Wait()
+			close(done)
+		}()
+	})
+	s.mu.Unlock()
+	return waitPluginWSDone(ctx, done, "plugin websocket handlers")
+}
+
+func (s *pluginWSServer) waitPingLoops(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s.mu.Lock()
+	done := s.pingDone
+	if done == nil {
+		done = make(chan struct{})
+		s.pingDone = done
+	}
+	s.pingWait.Do(func() {
+		go func() {
+			s.pingWG.Wait()
+			close(done)
+		}()
+	})
+	s.mu.Unlock()
+	return waitPluginWSDone(ctx, done, "plugin websocket pings")
+}
+
+func waitPluginWSDone(ctx context.Context, done <-chan struct{}, name string) error {
+	if done == nil {
+		return nil
+	}
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("%s: %w", name, ctx.Err())
+	}
+}
+
+func waitPluginWSSubscriptions(ctx context.Context, subs []pluginSubscriptionHandle) error {
+	var err error
+	for _, sub := range subs {
+		if sub == nil {
+			continue
+		}
+		if closeErr := sub.CloseContext(ctx); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("plugin websocket subscription: %w", closeErr))
+		}
+	}
+	return err
+}
+
+func pluginWSServerCloseError(err error) error {
+	if err == nil || isExpectedPluginWSServerClose(err) {
+		return nil
+	}
+	return err
+}
+
+func isExpectedPluginWSServerClose(err error) bool {
+	return errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed)
+}
+
+func (pc *pluginWSConn) cleanup(mod *Module, reason string) []pluginSubscriptionHandle {
+	var subs []pluginSubscriptionHandle
+	pc.closeOnce.Do(func() {
+		pc.mu.Lock()
+		pc.closed = true
+		if pc.cancelPing != nil {
+			pc.cancelPing()
+			pc.cancelPing = nil
+		}
+		subs = append([]pluginSubscriptionHandle(nil), pc.subs...)
+		pc.subs = nil
+		tools := append([]string(nil), pc.tools...)
+		pc.tools = nil
+		for id, ch := range pc.pending {
+			select {
+			case ch <- pluginws.ToolResult{Error: reason}:
+			default:
+			}
+			delete(pc.pending, id)
+		}
+		pluginName := pc.name
+		pc.mu.Unlock()
+
+		for _, sub := range subs {
+			sub.Stop()
+		}
+		if mod != nil {
+			mod.unregisterPluginToolNames(pluginName, tools)
+		}
+	})
+	return subs
+}
+
+func (pc *pluginWSConn) trackSubscription(sub pluginSubscriptionHandle) {
+	if sub == nil {
+		return
+	}
+	pc.mu.Lock()
+	if pc.closed {
+		pc.mu.Unlock()
+		sub.Stop()
+		return
+	}
+	pc.subs = append(pc.subs, sub)
+	pc.mu.Unlock()
 }
 
 // subscribeTopic creates a bus subscription and forwards events to the plugin over WS.
 // Uses fan-out subscriber so every plugin instance receives all events (not competing
 // with command handlers in the queue group).
 func (s *pluginWSServer) subscribeTopic(pc *pluginWSConn, topic string) error {
-	unsub, err := s.mod.kit.Remote().SubscribeRawFanOut(context.Background(), topic, func(msg sdk.Message) {
+	sub, err := s.mod.kit.Remote().SubscribeRawFanOutHandle(context.Background(), topic, func(msg sdk.Message) {
 		evtData, _ := json.Marshal(pluginws.EventMsg{
 			Topic:    msg.Topic,
 			Payload:  msg.Payload,
@@ -300,9 +593,7 @@ func (s *pluginWSServer) subscribeTopic(pc *pluginWSConn, topic string) error {
 			slog.String("error", err.Error()))
 		return err
 	}
-	pc.mu.Lock()
-	pc.unsubs = append(pc.unsubs, unsub)
-	pc.mu.Unlock()
+	pc.trackSubscription(sub)
 	slog.Info("plugin ws: subscribed",
 		slog.String("plugin", pc.name),
 		slog.String("topic", topic))

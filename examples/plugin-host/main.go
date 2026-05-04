@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"os/exec"
@@ -64,7 +65,7 @@ func run() error {
 		Namespace: "plugin-host-demo",
 		Transport: transports.EmbeddedNATS(),
 		FSRoot:    binDir,
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			pluginsmod.NewModule(pluginsmod.Config{
 				Plugins: []pluginsmod.PluginConfig{{
 					Name:         "demo",

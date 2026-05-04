@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	evalmod "github.com/brainlet/brainkit/modules/eval"
 	"github.com/brainlet/brainkit/modules/eval/evalmsg"
@@ -26,7 +29,7 @@ func testNoModuleThrowsNotConfigured(t *testing.T, _ *suite.TestEnv) {
 		Namespace: "test",
 		CallerID:  "test",
 		FSRoot:    t.TempDir(),
-		Modules:   []brainkit.Module{evalmod.New()},
+		Modules:   []bkmodule.Module{evalmod.New()},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Close() })
@@ -37,7 +40,7 @@ func testNoModuleThrowsNotConfigured(t *testing.T, _ *suite.TestEnv) {
 	// Use kit.eval in "ts" mode to invoke bus.schedule in the runtime — the
 	// response envelope carries the bridge-thrown error when no handler is
 	// attached.
-	pr, err := sdk.Publish(k, ctx, evalmsg.KitEvalMsg{
+	pr, err := protocol.Publish(k, ctx, evalmsg.KitEvalMsg{
 		Source: "no-sched-module.ts",
 		Mode:   "ts",
 		Code:   `bus.schedule("every 100ms", "tick", {});`,

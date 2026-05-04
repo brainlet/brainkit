@@ -18,12 +18,20 @@ import (
 	"github.com/google/uuid"
 )
 
-func callerCfg(targetNamespace string) sdk.CallerConfig {
-	return sdk.CallerConfig{TargetNamespace: targetNamespace}
+func callerCfg(targetNamespace, source string) sdk.CallerConfig {
+	cfg := sdk.CallerConfig{TargetNamespace: targetNamespace}
+	if source := strings.TrimSpace(source); source != "" {
+		cfg.CallerID = source
+		cfg.Metadata = map[string]string{
+			"brainkit.caller.kind":   "deployment",
+			"brainkit.caller.source": source,
+		}
+	}
+	return cfg
 }
 
-func busCallerCfg(targetNamespace string, streamHandler func(sdk.Message) error, bufferSize int, bufferPolicy sdk.BufferPolicy) sdk.CallerConfig {
-	cfg := callerCfg(targetNamespace)
+func busCallerCfg(targetNamespace, source string, streamHandler func(sdk.Message) error, bufferSize int, bufferPolicy sdk.BufferPolicy) sdk.CallerConfig {
+	cfg := callerCfg(targetNamespace, source)
 	cfg.StreamHandler = streamHandler
 	cfg.BufferSize = bufferSize
 	cfg.BufferPolicy = bufferPolicy
@@ -338,7 +346,7 @@ func (r *Runtime) registerBusBridges(qctx *quickjs.Context) {
 					callCtx, cancel := context.WithTimeout(goCtx, time.Duration(timeoutMs)*time.Millisecond)
 					defer cancel()
 					span := r.core.Tracer().StartSpan("bus.call:"+topic, callCtx)
-					cfg := callerCfg(targetNS)
+					cfg := callerCfg(targetNS, r.CurrentSource())
 					replyPayload, err := c.Call(callCtx, topic, payload, cfg)
 					span.End(err)
 					if err != nil {
@@ -404,7 +412,7 @@ func (r *Runtime) registerBusBridges(qctx *quickjs.Context) {
 					callCtx, cancel := context.WithTimeout(goCtx, time.Duration(timeoutMs)*time.Millisecond)
 					defer cancel()
 					span := r.core.Tracer().StartSpan("bus.callStream:"+topic, callCtx)
-					cfg := busCallerCfg(targetNS, func(msg sdk.Message) error {
+					cfg := busCallerCfg(targetNS, r.CurrentSource(), func(msg sdk.Message) error {
 						return r.invokeBusStreamHandler(callCtx, qctx, topic, streamID, msg)
 					}, int(bufferSize), bufferPolicy)
 					replyPayload, err := c.Call(callCtx, topic, payload, cfg)

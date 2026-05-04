@@ -3,17 +3,20 @@ package harness
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	bkmodule "github.com/brainlet/brainkit/module"
-	_ "github.com/brainlet/brainkit/modules/jsruntime"
+	harnesscap "github.com/brainlet/brainkit/modulecap/harness"
 )
 
-// Module is the brainkit.Module wrapper around the harness Instance.
+// Module is the bkmodule.Module wrapper around the harness Instance.
 // Marked WIP — the Harness surface is in flux while multi-consumer
 // validation catches up; only the Instance interface declared in
 // instance.go is frozen.
 type Module struct {
 	cfg      Config
+	mu       sync.RWMutex
 	instance *Harness
 }
 
@@ -31,41 +34,73 @@ func NewModule(cfg Config) *Module { return &Module{cfg: cfg} }
 func (m *Module) ID() string              { return "harness" }
 func (m *Module) Status() bkmodule.Status { return bkmodule.StatusWIP }
 
-func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
-	harnessRuntime, err := bkmodule.RequireCapability[func() any](host, bkmodule.CapabilityHarnessRuntime)
+func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
+	harnessRuntime, err := bkmodule.RequireCapability[harnesscap.Runtime](host, bkmodule.CapabilityHarnessRuntime)
 	if err != nil {
 		return fmt.Errorf("harness: %w", err)
 	}
-	if err := m.start(harnessRuntime()); err != nil {
+	if err := m.start(harnessRuntime); err != nil {
 		return err
 	}
-	host.Scope().Defer(func(context.Context) error { return m.Close() })
+	m.mu.RLock()
+	instanceAttached := m.instance != nil
+	m.mu.RUnlock()
+	if instanceAttached {
+		host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindRuntime, "harness.instance", "Experimental harness instance."))
+	}
+	host.Scope().Defer(m.CloseContext)
+	lifecycleDebug, _ := bkmodule.Capability[bkmodule.LifecycleDebugRegistry](host, bkmodule.CapabilityLifecycleDebugRegistry)
+	if lifecycleDebug != nil {
+		handle, err := lifecycleDebug.RegisterLifecycleDebug(ctx, "harness", func() any {
+			return m.DebugSnapshot()
+		})
+		if err != nil {
+			return err
+		}
+		host.Scope().Defer(handle.Close)
+	}
 	return nil
 }
 
-func (m *Module) start(raw any) error {
-	if raw == nil {
+func (m *Module) start(rt Runtime) error {
+	if rt == nil {
 		return nil // Harness cannot run without a JS runtime.
-	}
-	rt, ok := raw.(Runtime)
-	if !ok {
-		return fmt.Errorf("harness: HarnessRuntime() returned %T which does not satisfy harness.Runtime", raw)
 	}
 	h, err := Init(rt, m.cfg.Harness)
 	if err != nil {
 		return err
 	}
+	m.mu.Lock()
 	m.instance = h
+	m.mu.Unlock()
 	return nil
 }
 
 // Close shuts down the inner Harness.
 func (m *Module) Close() error {
-	if m.instance == nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return m.CloseContext(ctx)
+}
+
+// CloseContext shuts down the inner Harness under caller-owned lifecycle
+// cancellation. If shutdown times out, the instance stays attached so a later
+// close can retry the wait.
+func (m *Module) CloseContext(ctx context.Context) error {
+	m.mu.RLock()
+	instance := m.instance
+	m.mu.RUnlock()
+	if instance == nil {
 		return nil
 	}
-	err := m.instance.Close()
-	m.instance = nil
+	err := instance.CloseContext(ctx)
+	if err == nil {
+		m.mu.Lock()
+		if m.instance == instance {
+			m.instance = nil
+		}
+		m.mu.Unlock()
+	}
 	return err
 }
 
@@ -73,10 +108,13 @@ func (m *Module) Close() error {
 // Returns nil when Init hasn't produced a Harness yet (e.g. when the
 // Kit is built without a JS runtime).
 func (m *Module) Instance() Instance {
-	if m.instance == nil {
+	m.mu.RLock()
+	instance := m.instance
+	m.mu.RUnlock()
+	if instance == nil {
 		return nil
 	}
-	return (*instanceAdapter)(m.instance)
+	return (*instanceAdapter)(instance)
 }
 
 // YAML is the config shape decoded by the registry factory. The
@@ -109,7 +147,7 @@ func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	}}), nil
 }
 
-// Describe surfaces module metadata for `brainkit modules list`.
+// Describe surfaces module metadata for module manifests.
 func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "harness",
@@ -119,7 +157,11 @@ func (Factory) Describe() bkmodule.Descriptor {
 			"jsruntime",
 		},
 		Capabilities: []bkmodule.CapabilityDescriptor{
-			bkmodule.RequiredCapabilityOf[func() any](bkmodule.CapabilityHarnessRuntime),
+			bkmodule.RequiredCapabilityOf[harnesscap.Runtime](bkmodule.CapabilityHarnessRuntime),
+			bkmodule.OptionalCapabilityOf[bkmodule.LifecycleDebugRegistry](bkmodule.CapabilityLifecycleDebugRegistry),
+		},
+		Resources: []bkmodule.ResourceDescriptor{
+			bkmodule.Resource(bkmodule.ResourceKindRuntime, "harness.instance", "Experimental harness instance."),
 		},
 	}
 }

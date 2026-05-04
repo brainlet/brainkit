@@ -14,9 +14,9 @@ Top-level file with self-contained benchmarks that create their own kernel via `
 | BenchmarkDeploy_10KB | Deploy + teardown cycle for a 10KB .ts handler (500 padding lines) |
 | BenchmarkEvalTS_Trivial | EvalTS round-trip for `return "ok"` |
 | BenchmarkEvalTS_JSONParse | EvalTS round-trip for JSON.parse + stringify of 1KB payload |
-| BenchmarkBusRoundtrip | Full bus round-trip: SendToService -> subscribe -> receive reply |
+| BenchmarkBusRoundtrip | Full bus round-trip: protocol.SendToService -> subscribe -> receive reply |
 | BenchmarkToolCall | Tool call round-trip: Publish ToolCallMsg -> subscribe ToolCallResp |
-| BenchmarkPumpThroughput | Message pump throughput: SendToService -> subscribe -> receive |
+| BenchmarkPumpThroughput | Message pump throughput: protocol.SendToService -> subscribe -> receive |
 | BenchmarkRestartRecovery/deployments=10 | Kernel restart recovery time with 10 persisted deployments |
 | BenchmarkRestartRecovery/deployments=50 | Kernel restart recovery time with 50 persisted deployments |
 
@@ -26,9 +26,9 @@ Domain benchmarks for bus operations. Entry: `BenchmarkBus` in `bus_bench_test.g
 
 | Sub-benchmark | What it measures |
 |--------------|-----------------|
-| roundtrip | SendToService -> subscribe -> receive reply latency |
+| roundtrip | protocol.SendToService -> subscribe -> receive reply latency |
 | tool_call | Publish ToolCallMsg -> subscribe ToolCallResp latency |
-| pump_throughput | SendToService -> subscribe -> receive (same as roundtrip, named for throughput focus) |
+| pump_throughput | protocol.SendToService -> subscribe -> receive (same as roundtrip, named for throughput focus) |
 
 ## deploy/
 

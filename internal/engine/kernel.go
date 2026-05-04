@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -53,6 +54,11 @@ type Kernel struct {
 	// Graceful shutdown
 	shutdownCtx    context.Context
 	shutdownCancel context.CancelFunc
+	background     sync.WaitGroup
+	backgroundWait sync.Once
+	backgroundDone chan struct{}
+	closeMu        sync.Mutex
+	closeComplete  bool
 	activeHandlers atomic.Int64
 	draining       atomic.Bool
 
@@ -62,16 +68,24 @@ type Kernel struct {
 	// Scheduling handler — set by modules/schedules.Module at mount time.
 	// The QuickJS bridges (bus.schedule / bus.unschedule) and the schedule.*
 	// bus commands dispatch through this. Nil when the module isn't active.
-	scheduleHandler types.ScheduleHandler
+	scheduleHandler      types.ScheduleHandler
+	scheduleHandlerLease hookLeaseSlot[types.ScheduleHandler]
 
 	// Plugin checker — set by modules/plugins.Module at mount time for the
 	// package-deploy `Requires.plugins` gate. Nil when the module isn't
 	// active; modules/packages substitutes a deny-all stub.
-	pluginChecker bkmodule.PluginChecker
+	pluginChecker      bkmodule.PluginChecker
+	pluginCheckerLease hookLeaseSlot[bkmodule.PluginChecker]
 
 	// Plugin restarter — set by modules/plugins.Module for the secrets module's
 	// rotation-driven plugin restart. Nil when the module isn't active.
-	pluginRestarter PluginRestarter
+	pluginRestarter      PluginRestarter
+	pluginRestarterLease hookLeaseSlot[PluginRestarter]
+
+	auditStoreLease     hookLeaseSlot[auditpkg.Store]
+	auditVerbosityLease hookLeaseSlot[auditpkg.Verbosity]
+	traceStoreLease     hookLeaseSlot[types.TraceStore]
+	toolEvaluatorLease  hookLeaseSlot[JSEvaluator]
 
 	// Health
 	startedAt time.Time
@@ -175,12 +189,13 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	}
 
 	kernel := &Kernel{
-		Tools:        sharedTools,
-		config:       cfg,
-		logger:       logger,
-		namespace:    cfg.Namespace,
-		callerID:     cfg.CallerID,
-		agentsDomain: agenthost.NewDomain(),
+		Tools:          sharedTools,
+		config:         cfg,
+		logger:         logger,
+		namespace:      cfg.Namespace,
+		callerID:       cfg.CallerID,
+		agentsDomain:   agenthost.NewDomain(),
+		backgroundDone: make(chan struct{}),
 	}
 	kernel.shutdownCtx, kernel.shutdownCancel = context.WithCancel(context.Background())
 
@@ -198,6 +213,14 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	if err := kernel.initProviders(cfg, nil); err != nil {
 		return fail(err)
 	}
+	cleanups = append(cleanups, func() {
+		if kernel.providerHost != nil {
+			_ = kernel.providerHost.Close()
+		}
+		if kernel.storageHost != nil {
+			_ = kernel.storageHost.CloseAll()
+		}
+	})
 
 	// Initialize secret store
 	kernel.secretStore = resolveSecretStore(cfg, logger)
@@ -218,12 +241,10 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	kernel.catalog = buildCommandCatalog()
 	kernel.events = buildEventCatalog(kernel.catalog)
 
-	// Initial probe — probes module owns periodic probing.
-	go kernel.ProbeAll()
-
 	if err := kernel.initTransport(cfg); err != nil {
 		return fail(err)
 	}
+
 	// If DeferRouterStart: caller (Node) registers all bindings and starts the router
 
 	kernel.runtimeHost = runtimehost.New(kernel, logger, kernel.transportHost.SubscribeRawFanOut)

@@ -10,12 +10,25 @@
 
 ## What this gives you
 
-- `NewModule(Config)` — a `brainkit.Module` that launches a Harness
+- `NewModule(Config)` — a `module.Module` that launches a Harness
   when the Kit boots.
 - `(*Module).Instance() Instance` — the frozen consumer surface.
 - `Instance` — the minimum set every release supports:
   `SendMessage`, `Abort`, `Steer`, `FollowUp`, `Subscribe`,
   `CurrentThread`, `CurrentMode`, `Close`.
+
+## Capabilities
+
+- Requires: `jsruntime`, `brainkit.core.harness_runtime`.
+- Optional: `brainkit.core.lifecycle_debug_registry`.
+- Provides: none.
+
+## Runtime resources
+
+Owns `harness.instance` when the JS runtime returns a concrete harness runtime.
+When lifecycle debug is available, the module reports whether the harness
+instance is attached, whether close is still waiting on heartbeat workers, and
+how many heartbeat timers/workers remain.
 
 ## Frozen events
 
@@ -40,3 +53,12 @@ Everything else: configuration structs, internal event types,
 `HarnessEvent`, `DisplayState`, mode / model management methods,
 subagent subsystem, observational memory, shell output events.
 Expect these to change as multi-consumer use shakes the shape out.
+
+## Hot unmount
+
+Unmounting closes the harness instance, stops subscriptions and heartbeat
+timers owned by the instance, waits for active heartbeat handlers under the
+module close context, and drops the frozen `Instance` adapter only after close
+succeeds. If a heartbeat handler ignores shutdown until the close context
+expires, the instance stays attached so a later unmount/close retry can finish
+the wait.

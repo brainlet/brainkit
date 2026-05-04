@@ -47,13 +47,16 @@ type CancelNotice struct {
 
 // Caller is the shared-inbox reply router for a runtime.
 type Caller struct {
-	rt      Runtime
-	inbox   string
-	pending sync.Map // correlationID -> *pendingCall
-	unsub   func()
-	logger  *slog.Logger
-	closed  atomic.Bool
-	metrics Metrics
+	rt                 Runtime
+	inbox              string
+	pending            sync.Map // correlationID -> *pendingCall
+	unsub              func()
+	logger             *slog.Logger
+	closed             atomic.Bool
+	metrics            Metrics
+	closeMu            sync.Mutex
+	streamDrainWG      sync.WaitGroup
+	activeStreamDrains atomic.Int64
 }
 
 // Metrics exposes counters for observability. Read via Snapshot.
@@ -84,6 +87,14 @@ type MetricsSnapshot struct {
 	FailedFast      int64
 }
 
+// CallerDebugSnapshot reports caller-owned request/reply lifecycle counters.
+type CallerDebugSnapshot struct {
+	Closed             bool            `json:"closed"`
+	PendingCalls       int             `json:"pendingCalls"`
+	ActiveStreamDrains int64           `json:"activeStreamDrains"`
+	Metrics            MetricsSnapshot `json:"metrics"`
+}
+
 type pendingCall struct {
 	correlationID string
 	topic         string
@@ -110,6 +121,7 @@ type result struct {
 // CallerConfig configures a single raw Caller.Call invocation.
 type CallerConfig struct {
 	TargetNamespace string
+	CallerID        string
 	Metadata        map[string]string
 	StreamHandler   func(Message) error
 	BufferSize      int
@@ -177,24 +189,62 @@ func (c *Caller) Snapshot() MetricsSnapshot {
 	}
 }
 
+// DebugSnapshot returns a point-in-time view of caller-owned lifecycle state.
+func (c *Caller) DebugSnapshot() CallerDebugSnapshot {
+	if c == nil {
+		return CallerDebugSnapshot{Closed: true}
+	}
+	pending := 0
+	c.pending.Range(func(_, _ any) bool {
+		pending++
+		return true
+	})
+	return CallerDebugSnapshot{
+		Closed:             c.closed.Load(),
+		PendingCalls:       pending,
+		ActiveStreamDrains: c.activeStreamDrains.Load(),
+		Metrics:            c.Snapshot(),
+	}
+}
+
 // Close unsubscribes the inbox and finalizes all in-flight calls.
 func (c *Caller) Close() error {
-	if !c.closed.CompareAndSwap(false, true) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return c.CloseContext(ctx)
+}
+
+// CloseContext unsubscribes the inbox, finalizes all in-flight calls, and
+// waits for streaming drain callbacks under caller-owned cancellation.
+func (c *Caller) CloseContext(ctx context.Context) error {
+	if c == nil {
 		return nil
 	}
-	if c.unsub != nil {
-		c.unsub()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	c.closeMu.Lock()
+	if c.closed.CompareAndSwap(false, true) {
+		if c.unsub != nil {
+			c.unsub()
+		}
 	}
 	c.pending.Range(func(_, v any) bool {
 		v.(*pendingCall).finalize(result{err: ErrCallerClosed})
 		return true
 	})
-	return nil
+	c.closeMu.Unlock()
+	return waitCallerGroup(ctx, &c.streamDrainWG)
 }
 
 // Call sends payload to topic and waits for the terminal reply.
 func (c *Caller) Call(ctx context.Context, topic string, payload json.RawMessage, cfg CallerConfig) (json.RawMessage, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	c.closeMu.Lock()
 	if c.closed.Load() {
+		c.closeMu.Unlock()
 		return nil, ErrCallerClosed
 	}
 
@@ -215,23 +265,36 @@ func (c *Caller) Call(ctx context.Context, topic string, payload json.RawMessage
 		p.stream = make(chan Message, size)
 		p.streamH = cfg.StreamHandler
 		p.drainDone = make(chan struct{})
-		go p.drain()
+		c.streamDrainWG.Add(1)
+		c.activeStreamDrains.Add(1)
+		go p.drain(&c.streamDrainWG, &c.activeStreamDrains)
 	}
 
 	c.pending.Store(cid, p)
 	c.metrics.Inflight.Add(1)
+	c.closeMu.Unlock()
 	defer func() {
 		c.pending.Delete(cid)
 		c.metrics.Inflight.Add(-1)
 	}()
 
 	pubCtx := ctxkeys.WithPublishMeta(ctx, cid, c.inbox)
+	if cfg.CallerID != "" {
+		pubCtx = ctxkeys.WithCallerID(pubCtx, cfg.CallerID)
+	}
+	if len(cfg.Metadata) > 0 {
+		pubCtx = ctxkeys.WithMetadata(pubCtx, cfg.Metadata)
+	}
 	start := time.Now()
 
 	var err error
 	if cfg.TargetNamespace != "" {
 		xrt, ok := c.rt.(CrossNamespaceRuntime)
 		if !ok {
+			p.finalize(result{err: fmt.Errorf("caller: cross-namespace call requires CrossNamespaceRuntime")})
+			if p.drainDone != nil {
+				<-p.drainDone
+			}
 			return nil, fmt.Errorf("caller: cross-namespace call requires CrossNamespaceRuntime")
 		}
 		_, err = xrt.PublishRawTo(pubCtx, cfg.TargetNamespace, topic, payload)
@@ -239,12 +302,16 @@ func (c *Caller) Call(ctx context.Context, topic string, payload json.RawMessage
 		_, err = c.rt.PublishRaw(pubCtx, topic, payload)
 	}
 	if err != nil {
+		p.finalize(result{err: err})
+		if p.drainDone != nil {
+			<-p.drainDone
+		}
 		return nil, err
 	}
 
 	select {
 	case r := <-p.done:
-		if p.drainDone != nil {
+		if r.err == nil && p.drainDone != nil {
 			<-p.drainDone
 		}
 		if r.err != nil {
@@ -277,9 +344,11 @@ func (c *Caller) Call(ctx context.Context, topic string, payload json.RawMessage
 		}
 		if ctx.Err() == context.DeadlineExceeded {
 			c.metrics.TimedOut.Add(1)
+			p.finalize(result{err: ctx.Err()})
 			return nil, &CallTimeoutError{Topic: topic, Elapsed: elapsed}
 		}
 		c.metrics.Cancelled.Add(1)
+		p.finalize(result{err: ctx.Err()})
 		return nil, &CallCancelledError{Topic: topic, Cause: ctx.Err()}
 	}
 }
@@ -425,8 +494,16 @@ func (p *pendingCall) enqueue(msg Message) {
 	}
 }
 
-func (p *pendingCall) drain() {
-	defer close(p.drainDone)
+func (p *pendingCall) drain(wg *sync.WaitGroup, active *atomic.Int64) {
+	defer func() {
+		if active != nil {
+			active.Add(-1)
+		}
+		if wg != nil {
+			wg.Done()
+		}
+		close(p.drainDone)
+	}()
 	for msg := range p.stream {
 		if err := p.streamH(msg); err != nil {
 			p.finalize(result{err: err})
@@ -474,4 +551,21 @@ func (p *pendingCall) finalizeLocked(r result) {
 		}
 		p.done <- r
 	})
+}
+
+func waitCallerGroup(ctx context.Context, wg *sync.WaitGroup) error {
+	if wg == nil {
+		return nil
+	}
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

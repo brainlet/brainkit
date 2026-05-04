@@ -8,6 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,7 +25,7 @@ func testDrainsBeforeClose(t *testing.T, _ *suite.TestEnv) {
 	time.Sleep(100 * time.Millisecond)
 
 	replyCh := make(chan struct{}, 1)
-	sendPR, _ := sdk.SendToService(env.Kit, ctx, "slow.ts", "slow", map[string]bool{"x": true})
+	sendPR, _ := protocol.SendToService(env.Kit, ctx, "slow.ts", "slow", map[string]bool{"x": true})
 	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) { replyCh <- struct{}{} })
 	defer replyUnsub()
 
@@ -53,7 +54,7 @@ func testDrainTimeoutForcesClose(t *testing.T, _ *suite.TestEnv) {
 	});`)
 	time.Sleep(100 * time.Millisecond)
 
-	sdk.SendToService(env.Kit, ctx, "stuck.ts", "stuck", map[string]bool{"x": true})
+	protocol.SendToService(env.Kit, ctx, "stuck.ts", "stuck", map[string]bool{"x": true})
 	time.Sleep(50 * time.Millisecond)
 
 	start := time.Now()
@@ -85,7 +86,7 @@ func testMessagesDroppedDuringDrain(t *testing.T, _ *suite.TestEnv) {
 
 	testutil.SetDraining(t, env.Kit, true)
 
-	sendPR, _ := sdk.SendToService(env.Kit, ctx, "dropper.ts", "ping", map[string]bool{"x": true})
+	sendPR, _ := protocol.SendToService(env.Kit, ctx, "dropper.ts", "ping", map[string]bool{"x": true})
 	var replied atomic.Bool
 	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) { replied.Store(true) })
 	defer replyUnsub()

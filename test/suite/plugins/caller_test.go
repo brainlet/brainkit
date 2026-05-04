@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -107,7 +108,7 @@ replace (
 		Namespace: "test-caller-plugin",
 		Transport: transports.EmbeddedNATS(),
 		FSRoot:    tmpDir,
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			toolsmod.New(),
 			pluginsmod.NewModule(pluginsmod.Config{
 				Plugins: []pluginsmod.PluginConfig{{

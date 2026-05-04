@@ -1,6 +1,7 @@
 package harness_test
 
 import (
+	bkmodule "github.com/brainlet/brainkit/module"
 	"testing"
 
 	"github.com/brainlet/brainkit"
@@ -22,7 +23,7 @@ func TestModuleLifecycle(t *testing.T) {
 		Namespace: "test-harness",
 		CallerID:  "test",
 		FSRoot:    t.TempDir(),
-		Modules:   []brainkit.Module{m},
+		Modules:   []bkmodule.Module{m},
 	})
 	// A zero-value HarnessConfig fails validation; the module mount
 	// surfaces that error from the Kit constructor.
@@ -32,5 +33,5 @@ func TestModuleLifecycle(t *testing.T) {
 	}
 	defer kit.Close()
 
-	require.Equal(t, brainkit.ModuleStatusWIP, m.Status())
+	require.Equal(t, bkmodule.StatusWIP, m.Status())
 }

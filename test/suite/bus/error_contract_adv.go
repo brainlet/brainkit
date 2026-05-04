@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -159,7 +160,7 @@ func testErrorContractErrorHandlerPersistenceError(t *testing.T, _ *suite.TestEn
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store,
-		Modules: []brainkit.Module{packages.New()},
+		Modules: []bkmodule.Module{packages.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
@@ -212,7 +213,7 @@ func testErrorContractErrorHandlerDeployError(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store,
-		Modules: []brainkit.Module{packages.New()},
+		Modules: []bkmodule.Module{packages.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
@@ -239,7 +240,7 @@ func testErrorContractErrorHandlerDeployError(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packages.New()},
+		Modules: []bkmodule.Module{packages.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)

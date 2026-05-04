@@ -1,7 +1,7 @@
 # Getting Started
 
 brainkit is a Go runtime library that embeds QuickJS (JS/TS) and
-Watermill pub/sub into a single platform for AI agent teams. This
+a typed pub/sub bus into a single platform for AI agent teams. This
 guide walks from zero to calling a deployed TypeScript service from
 Go, then to running the same thing as a standalone server.
 
@@ -35,6 +35,8 @@ import (
     "time"
 
     "github.com/brainlet/brainkit"
+    bkmodule "github.com/brainlet/brainkit/module"
+    "github.com/brainlet/brainkit/modules/packages"
     "github.com/brainlet/brainkit/sdk"
 )
 
@@ -43,6 +45,7 @@ func main() {
         Namespace: "hello-embedded",
         Transport: brainkit.Memory(),
         FSRoot:    ".",
+        Modules:   []bkmodule.Module{packages.New()},
     })
     if err != nil {
         log.Fatalf("new kit: %v", err)
@@ -94,9 +97,9 @@ What each piece does:
   a deployable package. A deployed `.ts` service bound to
   `ts.<name>.<topic>` — here `ts.greeter.hello`.
 - `brainkit.Call[Req, Resp]` is the typed generic call helper. It
-  publishes, waits for the reply on a private `replyTo` topic, and
-  returns the decoded payload. Use `WithCallTimeout` to bound the
-  wait.
+  publishes through the shared caller path, waits for the terminal
+  reply, and returns the decoded payload. Use `WithCallTimeout` to
+  bound the wait.
 
 See [`examples/hello-embedded/`](../../examples/hello-embedded/).
 
@@ -237,13 +240,15 @@ import (
     "syscall"
 
     "github.com/brainlet/brainkit/server"
+    "github.com/brainlet/brainkit/server/configfile"
+    _ "github.com/brainlet/brainkit/server/standard"
 )
 
 func main() {
     cfgPath := flag.String("config", "brainkit.yaml", "path to server config")
     flag.Parse()
 
-    cfg, err := server.LoadConfig(*cfgPath)
+    cfg, err := configfile.Load(*cfgPath)
     if err != nil {
         log.Fatalf("load config: %v", err)
     }

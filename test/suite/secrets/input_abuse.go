@@ -8,6 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,7 +28,7 @@ func testInputAbuseLargeValue(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	big := strings.Repeat("x", 100000) // 100KB secret
 	ctx := context.Background()
-	pub, err := sdk.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "big-secret-sec-adv", Value: big})
+	pub, err := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "big-secret-sec-adv", Value: big})
 	require.NoError(t, err)
 
 	ch := make(chan secretmsg.SecretsSetResp, 1)
@@ -62,7 +63,7 @@ func testInputAbuseBulkOperations(t *testing.T, _ *suite.TestEnv) {
 
 	for i := 0; i < 20; i++ {
 		name := strings.Join([]string{"bulk-sec-adv", strings.Repeat("x", i%5)}, "-")
-		pub, err := sdk.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{
+		pub, err := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{
 			Name: name, Value: strings.Repeat("v", i+1),
 		})
 		require.NoError(t, err)
@@ -77,7 +78,7 @@ func testInputAbuseBulkOperations(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// List should return without error or hang
-	pub, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsListMsg{})
+	pub, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsListMsg{})
 	listCh := make(chan secretmsg.SecretsListResp, 1)
 	unsub, _ := sdk.SubscribeTo[secretmsg.SecretsListResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsListResp, _ sdk.Message) { listCh <- resp })
 	defer unsub()

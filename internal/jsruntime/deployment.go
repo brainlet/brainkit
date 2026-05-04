@@ -3,9 +3,11 @@ package jsruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -35,10 +37,10 @@ type DeploymentManager struct {
 	errorHandler    func(error, types.ErrorContext)
 	logger          *slog.Logger
 	resources       *resourcehost.Registry
-	toolCleanup     func(id string) // called on tool unregister
-	agentCleanup    func(id string) // called on agent unregister
-	subCleanup      func(id string) // called on subscription cancel
-	scheduleCleanup func(id string) // called on schedule cancel
+	toolCleanup     func(id string)       // called on tool unregister
+	agentCleanup    func(id string)       // called on agent unregister
+	subCleanup      func(id string)       // called on subscription cancel
+	scheduleCleanup func(id string) error // called on schedule cancel
 
 	// currentSource is the .ts file currently being evaluated. Read
 	// from arbitrary goroutines (tracing spans, audit source
@@ -58,7 +60,7 @@ type DeploymentManagerConfig struct {
 	ToolCleanup     func(id string)
 	AgentCleanup    func(id string)
 	SubCleanup      func(id string)
-	ScheduleCleanup func(id string)
+	ScheduleCleanup func(id string) error
 }
 
 func NewDeploymentManager(cfg DeploymentManagerConfig) *DeploymentManager {
@@ -130,7 +132,7 @@ func (m *DeploymentManager) Deploy(ctx context.Context, source, code string, opt
 	m.setCurrentSource(source)
 	defer m.setCurrentSource("")
 
-	jsCode, err := m.transpileIfTS(source, code)
+	jsCode, err := m.prepareDeployCode(source, code, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -149,33 +151,92 @@ func (m *DeploymentManager) Teardown(ctx context.Context, source string) (int, e
 	m.lifecycleMu.Lock()
 	defer m.lifecycleMu.Unlock()
 
-	return m.teardownLocked(ctx, source)
+	return m.teardownLocked(ctx, source, true)
 }
 
-func (m *DeploymentManager) teardownLocked(ctx context.Context, source string) (int, error) {
+func (m *DeploymentManager) TeardownAll(ctx context.Context) error {
+	return m.teardownAll(ctx, true)
+}
+
+func (m *DeploymentManager) UnmountAll(ctx context.Context) error {
+	return m.teardownAll(ctx, false)
+}
+
+func (m *DeploymentManager) teardownAll(ctx context.Context, deletePersisted bool) error {
+	m.lifecycleMu.Lock()
+	defer m.lifecycleMu.Unlock()
+
+	m.mu.Lock()
+	sources := make([]string, 0, len(m.deployments))
+	for source := range m.deployments {
+		sources = append(sources, source)
+	}
+	m.mu.Unlock()
+	sort.Strings(sources)
+
+	var err error
+	for _, source := range sources {
+		_, teardownErr := m.teardownLocked(ctx, source, deletePersisted)
+		err = errors.Join(err, teardownErr)
+	}
+	resources, listErr := m.ListResources()
+	err = errors.Join(err, listErr)
+	for _, res := range resources {
+		err = errors.Join(err, m.RemoveResource(res.Type, res.ID))
+	}
+	return err
+}
+
+func (m *DeploymentManager) UnloadAll() {
+	m.lifecycleMu.Lock()
+	defer m.lifecycleMu.Unlock()
+
+	m.mu.Lock()
+	sources := make([]string, 0, len(m.deployments))
+	for source := range m.deployments {
+		sources = append(sources, source)
+	}
+	for _, source := range sources {
+		delete(m.deployments, source)
+	}
+	m.mu.Unlock()
+	sort.Strings(sources)
+
+	for _, source := range sources {
+		removed := m.resources.RemoveBySource(source)
+		_ = m.dispatchCleanups(removed)
+	}
+	for _, entry := range m.resources.List("") {
+		removed, ok := m.resources.Unregister(entry.Type, entry.ID)
+		if ok {
+			_ = m.dispatchCleanups([]resourcehost.Entry{removed})
+		}
+	}
+}
+
+func (m *DeploymentManager) teardownLocked(ctx context.Context, source string, deletePersisted bool) (int, error) {
 	span := m.tracer.StartSpan("kit.teardown:"+source, ctx)
 	span.SetSource(source)
 	defer span.End(nil)
 
 	removed, err := m.TeardownFile(source)
-	if err != nil {
-		return 0, err
-	}
+	teardownErr := err
 
 	if _, err := m.EvalTS(ctx, "__teardown_compartment.ts", fmt.Sprintf(
 		`delete globalThis.%s[%q]; return "ok";`, js.JSCompartments, source)); err != nil {
 		m.logger.Warn("teardown: failed to drop compartment", slog.String("source", source), slog.String("error", err.Error()))
+		teardownErr = errors.Join(teardownErr, fmt.Errorf("teardown compartment %q: %w", source, err))
 	}
 
 	m.mu.Lock()
 	delete(m.deployments, source)
 	m.mu.Unlock()
 
-	if m.store != nil {
+	if deletePersisted && m.store != nil {
 		m.store.DeleteDeployment(source)
 	}
 
-	return removed, nil
+	return removed, teardownErr
 }
 
 func (m *DeploymentManager) ListDeployments() []runtimecap.DeploymentInfo {
@@ -226,12 +287,12 @@ func (m *DeploymentManager) validateAndPrepareDeploy(ctx context.Context, source
 		}
 	}
 
-	_, _ = m.teardownLocked(ctx, source)
+	_, _ = m.teardownLocked(ctx, source, true)
 	return existing, nil
 }
 
-func (m *DeploymentManager) transpileIfTS(source, code string) (string, error) {
-	if !strings.HasSuffix(source, ".ts") {
+func (m *DeploymentManager) prepareDeployCode(source, code string, cfg types.DeployConfig) (string, error) {
+	if cfg.EffectiveArtifactKind() == types.DeployArtifactNormalizedJS || !strings.HasSuffix(source, ".ts") {
 		return code, nil
 	}
 	js, err := typescript.Transpile(code, typescript.TranspileOptions{FileName: source})
@@ -298,11 +359,12 @@ func (m *DeploymentManager) persistDeployment(ctx context.Context, source, origi
 	m.mu.Unlock()
 
 	if err := m.store.SaveDeployment(types.PersistedDeployment{
-		Source:      source,
-		Code:        originalCode,
-		Order:       order,
-		DeployedAt:  time.Now(),
-		PackageName: cfg.PackageName,
+		Source:       source,
+		Code:         originalCode,
+		Order:        order,
+		DeployedAt:   time.Now(),
+		PackageName:  cfg.PackageName,
+		ArtifactKind: cfg.EffectiveArtifactKind(),
 	}); err != nil {
 		m.persistenceError(ctx, "SaveDeployment", source, err)
 	}
@@ -372,13 +434,14 @@ func (m *DeploymentManager) TeardownFile(filename string) (int, error) {
 	}
 
 	// Dispatch Go-side cleanup by type
-	m.dispatchCleanups(removed)
+	var err error
+	err = errors.Join(err, m.dispatchCleanups(removed))
 
 	// Sweep stale JS-side state (__kit_refs entries + __bus_subs handlers).
 	// This is memory cleanup, not correctness — Go already cancelled the real subscriptions.
-	m.sweepJSRefs(removed)
+	err = errors.Join(err, m.sweepJSRefs(removed))
 
-	return len(removed), nil
+	return len(removed), err
 }
 
 func (m *DeploymentManager) RemoveResource(resourceType, id string) error {
@@ -386,14 +449,16 @@ func (m *DeploymentManager) RemoveResource(resourceType, id string) error {
 	if !ok {
 		return nil
 	}
-	m.dispatchCleanups([]resourcehost.Entry{entry})
-	m.sweepJSRefs([]resourcehost.Entry{entry})
-	return nil
+	return errors.Join(
+		m.dispatchCleanups([]resourcehost.Entry{entry}),
+		m.sweepJSRefs([]resourcehost.Entry{entry}),
+	)
 }
 
 // dispatchCleanups runs Go-native cleanup for each removed resource.
 // No JS eval — all cleanup targets are Go subsystems.
-func (m *DeploymentManager) dispatchCleanups(entries []resourcehost.Entry) {
+func (m *DeploymentManager) dispatchCleanups(entries []resourcehost.Entry) error {
+	var err error
 	for _, entry := range entries {
 		switch entry.Type {
 		case "tool":
@@ -410,18 +475,21 @@ func (m *DeploymentManager) dispatchCleanups(entries []resourcehost.Entry) {
 			}
 		case "schedule":
 			if m.scheduleCleanup != nil {
-				m.scheduleCleanup(entry.ID)
+				if cleanupErr := m.scheduleCleanup(entry.ID); cleanupErr != nil {
+					err = errors.Join(err, fmt.Errorf("schedule %q: %w", entry.ID, cleanupErr))
+				}
 			}
 			// workflow, memory, topic — no cleanup needed
 		}
 	}
+	return err
 }
 
 // sweepJSRefs removes stale entries from JS-side __kit_refs and __bus_subs maps.
 // Single batch eval — one JS call regardless of entry count.
-func (m *DeploymentManager) sweepJSRefs(entries []resourcehost.Entry) {
+func (m *DeploymentManager) sweepJSRefs(entries []resourcehost.Entry) error {
 	if len(entries) == 0 {
-		return
+		return nil
 	}
 	// Build list of keys to remove from JS
 	keys := []string{}
@@ -449,7 +517,9 @@ func (m *DeploymentManager) sweepJSRefs(entries []resourcehost.Entry) {
 	defer cancel()
 	if _, err := m.EvalTS(sweepCtx, "__sweep_refs.ts", code); err != nil {
 		m.logger.Warn("sweepJSRefs: JS eval failed", slog.String("error", err.Error()))
+		return fmt.Errorf("sweep JS refs: %w", err)
 	}
+	return nil
 }
 
 func entriesToResourceInfos(entries []resourcehost.Entry) []types.ResourceInfo {

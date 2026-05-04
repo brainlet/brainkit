@@ -30,7 +30,7 @@
 | testSurfaceGenerateTextReal | Deploys .ts that calls generateText with gpt-4o-mini, verifies the response text contains "4" and has token usage |
 | testSurfaceAgentGenerate | Deploys .ts that creates an Agent, calls generate, verifies the response contains "SURFACE_AGENT_OK" and the agent appears in AgentListMsg |
 | testSurfaceAgentWithTool | Deploys .ts that creates an Agent with a custom addTool, calls generate ("What is 17+25?"), verifies non-empty text and that steps array is populated |
-| testSurfaceBusServiceAIProxy | Deploys .ts as a bus service that calls generateText on incoming messages, Go sends a message via SendToService, verifies the AI response text and usage are returned through the bus reply |
+| testSurfaceBusServiceAIProxy | Deploys .ts as a bus service that calls generateText on incoming messages, Go sends a message via protocol.SendToService, verifies the AI response text and usage are returned through the bus reply |
 
 ### hitl.go — generateWithApproval bus-based tool approval (requires OPENAI_API_KEY)
 

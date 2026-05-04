@@ -24,6 +24,7 @@ import (
 	"embed"
 	"flag"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"io/fs"
 	"log"
 	"os"
@@ -81,7 +82,7 @@ func run(addr string) error {
 		// local sink is here so future .ts additions (status
 		// pings, alerts) have a zero-config path.
 		Audio:   local.New(),
-		Modules: []brainkit.Module{packages.New(), gw},
+		Modules: []bkmodule.Module{packages.New(), gw},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

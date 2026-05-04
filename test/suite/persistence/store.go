@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
@@ -44,7 +47,7 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 
 	// Verify service works
 	time.Sleep(100 * time.Millisecond)
-	sendPR, _ := sdk.SendToService(k1, ctx, "greeter-persist.ts", "greet", map[string]bool{"x": true})
+	sendPR, _ := protocol.SendToService(k1, ctx, "greeter-persist.ts", "greet", map[string]bool{"x": true})
 	replyCh := make(chan bool, 1)
 	replyUnsub, _ := k1.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) { replyCh <- true })
 	select {
@@ -73,7 +76,7 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 
 	// Service should be running
 	time.Sleep(200 * time.Millisecond)
-	sendPR2, _ := sdk.SendToService(k2, ctx, "greeter-persist.ts", "greet", map[string]bool{"x": true})
+	sendPR2, _ := protocol.SendToService(k2, ctx, "greeter-persist.ts", "greet", map[string]bool{"x": true})
 	replyCh2 := make(chan bool, 1)
 	replyUnsub2, _ := k2.SubscribeRaw(ctx, sendPR2.ReplyTo, func(msg sdk.Message) { replyCh2 <- true })
 	defer replyUnsub2()
@@ -194,7 +197,7 @@ func testFailedRedeployDoesNotBlock(t *testing.T, _ *suite.TestEnv) {
 
 	// The good service should still work
 	time.Sleep(200 * time.Millisecond)
-	sendPR, _ := sdk.SendToService(k2, ctx, "good-persist.ts", "ping", map[string]bool{"x": true})
+	sendPR, _ := protocol.SendToService(k2, ctx, "good-persist.ts", "ping", map[string]bool{"x": true})
 	replyCh := make(chan bool, 1)
 	replyUnsub, _ := k2.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) { replyCh <- true })
 	defer replyUnsub()
@@ -309,7 +312,7 @@ func testScheduleCatchUpOnRestart(t *testing.T, _ *suite.TestEnv) {
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store1,
-		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store1})},
+		Modules: []bkmodule.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store1})},
 	})
 	require.NoError(t, err)
 
@@ -330,7 +333,7 @@ func testScheduleCatchUpOnRestart(t *testing.T, _ *suite.TestEnv) {
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store2,
-		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
+		Modules: []bkmodule.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -350,7 +353,7 @@ func testRecurringScheduleRestartsCorrectly(t *testing.T, _ *suite.TestEnv) {
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store1,
-		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store1})},
+		Modules: []bkmodule.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store1})},
 	})
 	require.NoError(t, err)
 
@@ -368,7 +371,7 @@ func testRecurringScheduleRestartsCorrectly(t *testing.T, _ *suite.TestEnv) {
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store2,
-		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
+		Modules: []bkmodule.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
 	})
 	require.NoError(t, err)
 	defer k2.Close()

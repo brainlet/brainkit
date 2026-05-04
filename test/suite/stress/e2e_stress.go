@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
@@ -27,7 +30,7 @@ func testE2EMultipleKernels(t *testing.T, _ *suite.TestEnv) {
 			Namespace: fmt.Sprintf("multi-stress-%d", i),
 			CallerID:  fmt.Sprintf("multi-stress-%d", i),
 			FSRoot:    tmpDir,
-			Modules:   []brainkit.Module{toolsmod.New()},
+			Modules:   []bkmodule.Module{toolsmod.New()},
 		})
 		require.NoError(t, err)
 		t.Cleanup(func() { k.Close() })
@@ -66,7 +69,7 @@ func testE2EConcurrentOperations(t *testing.T, env *suite.TestEnv) {
 
 	for i := range n {
 		go func(val int) {
-			pubResult, err := sdk.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{
+			pubResult, err := protocol.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{
 				Name:  "add",
 				Input: map[string]any{"a": val, "b": val},
 			})

@@ -58,10 +58,8 @@ type Config struct {
 	// Most users leave this nil and set SecretKey instead.
 	SecretStore SecretStore
 
-	// Tracing enables distributed tracing with an auto-created MemoryTraceStore.
-	Tracing bool
-
-	// TraceStore overrides the auto-created trace store. Overrides the Tracing flag.
+	// TraceStore records spans for tracing. Nil leaves tracing as a no-op
+	// unless a mounted tracing module attaches a store.
 	TraceStore TraceStore
 
 	// TraceSampleRate controls trace sampling (0.0–1.0). Default: 1.0.
@@ -87,10 +85,11 @@ type Config struct {
 	// EvalTS/EvalModule, package deployment, workflow commands, harnesses, and
 	// JS-backed storage/vector probes. Zero-value Config keeps the core control
 	// plane light. JS-dependent modules such as eval, packages, testing,
-	// workflow, and harness request it automatically; binaries must import
-	// github.com/brainlet/brainkit/modules/jsruntime or
-	// github.com/brainlet/brainkit/presets/standard so that request can be
-	// satisfied.
+	// workflow, and harness declare a jsruntime dependency, but they do not
+	// import the concrete runtime. Binaries must import
+	// github.com/brainlet/brainkit/modules/jsruntime, mount jsruntime.New(), or
+	// use github.com/brainlet/brainkit/presets/standard so that dependency can
+	// be satisfied.
 	JSRuntime bool
 
 	// MaxStackSize for the QuickJS runtime in bytes. Default: 1MB.
@@ -151,8 +150,8 @@ func (c Config) toKernelConfig() types.KernelConfig {
 		}
 	}
 
-	// TraceStore: only if explicitly set. Tracing module (session 05) owns
-	// the real store; Tracer defaults to a nil store = no-op.
+	// TraceStore: only if explicitly set. The tracing module can attach or
+	// replace it later; a nil store makes the tracer a no-op.
 	if c.TraceStore != nil {
 		cfg.TraceStore = c.TraceStore
 	}
@@ -177,9 +176,6 @@ func (c Config) needsJSRuntime() bool {
 	if c.JSRuntime || c.Audio != nil || c.LogHandler != nil || c.MaxStackSize != 0 {
 		return true
 	}
-	if len(c.Storages) > 0 || len(c.Vectors) > 0 {
-		return true
-	}
 	for _, mod := range c.Modules {
 		if mod == nil {
 			continue
@@ -196,7 +192,11 @@ func moduleNeedsJSRuntime(mod bkmodule.Module) bool {
 }
 
 func moduleDependsOn(mod bkmodule.Module, dependency string) bool {
-	for _, dep := range moduleDependencies(mod) {
+	return descriptorDependsOn(bkmodule.DescribeModule(mod), dependency)
+}
+
+func descriptorDependsOn(desc bkmodule.Descriptor, dependency string) bool {
+	for _, dep := range desc.Requires {
 		if dep == dependency {
 			return true
 		}

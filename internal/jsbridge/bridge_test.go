@@ -2,7 +2,9 @@ package jsbridge
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -40,6 +42,140 @@ func TestBridgeBasic(t *testing.T) {
 	result := evalString(t, b, `1 + 2`)
 	if result != "3" {
 		t.Errorf("got %q, want %q", result, "3")
+	}
+}
+
+func TestBridgeCloseContextRetriesSingleCloseWaiter(t *testing.T) {
+	b := newTestBridge(t)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	b.Go(func(context.Context) {
+		close(started)
+		<-release
+	})
+	<-started
+
+	closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	err := b.CloseContext(closeCtx)
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("CloseContext error = %v, want %v", err, context.DeadlineExceeded)
+	}
+	snap := b.DebugSnapshot()
+	if !snap.Closing || snap.Closed || snap.ActiveGoroutines != 1 {
+		t.Fatalf("snapshot after timed-out close = %+v, want closing with one active goroutine", snap)
+	}
+
+	ran := make(chan struct{})
+	b.Go(func(context.Context) { close(ran) })
+	select {
+	case <-ran:
+		t.Fatal("Bridge.Go started work after close began")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	retryDeadlineCtx, retryDeadlineCancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	err = b.CloseContext(retryDeadlineCtx)
+	retryDeadlineCancel()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("second CloseContext error = %v, want %v", err, context.DeadlineExceeded)
+	}
+
+	close(release)
+	retryCtx, retryCancel := context.WithTimeout(context.Background(), time.Second)
+	defer retryCancel()
+	if err := b.CloseContext(retryCtx); err != nil {
+		t.Fatalf("retry CloseContext: %v", err)
+	}
+	snap = b.DebugSnapshot()
+	if snap.Closing || !snap.Closed || snap.ActiveGoroutines != 0 {
+		t.Fatalf("snapshot after successful retry = %+v, want closed with no active goroutines", snap)
+	}
+}
+
+func TestBridgeCloseContextCancelsExecProcess(t *testing.T) {
+	b := newTestBridge(t, Exec())
+	startedPath := filepath.Join(t.TempDir(), "exec-started")
+	command := fmt.Sprintf("sh -c 'echo started > %s; sleep 10'", startedPath)
+
+	done := make(chan error, 1)
+	go func() {
+		val, err := b.EvalAsync("exec-close.js", fmt.Sprintf(`(async () => {
+			await child_process.exec(%q);
+			return "done";
+		})()`, command))
+		if val != nil {
+			val.Free()
+		}
+		done <- err
+	}()
+
+	waitForFile(t, startedPath)
+	closeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := b.CloseContext(closeCtx); err != nil {
+		t.Fatalf("CloseContext: %v snapshot=%+v", err, b.DebugSnapshot())
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("EvalAsync did not return after bridge close canceled exec")
+	}
+}
+
+func TestBridgeCloseContextCancelsSpawnProcessAndTrackedWaiters(t *testing.T) {
+	b := newTestBridge(t, Exec())
+
+	val, err := b.EvalAsync("spawn-close.js", `(async () => {
+		const proc = child_process.spawn("sh", ["-c", "echo ready; sleep 10"]);
+		const line = await proc.readLine();
+		return line;
+	})()`)
+	if err != nil {
+		t.Fatalf("EvalAsync spawn: %v", err)
+	}
+	if got := val.String(); got != "ready" {
+		t.Fatalf("spawn readLine = %q, want ready", got)
+	}
+	val.Free()
+
+	waitForActiveBridgeGoroutines(t, b)
+	closeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := b.CloseContext(closeCtx); err != nil {
+		t.Fatalf("CloseContext: %v", err)
+	}
+	if snap := b.DebugSnapshot(); snap.ActiveGoroutines != 0 || !snap.Closed {
+		t.Fatalf("snapshot after spawn close = %+v, want closed with no active goroutines", snap)
+	}
+}
+
+func waitForFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", path)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func waitForActiveBridgeGoroutines(t *testing.T, b *Bridge) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		if snap := b.DebugSnapshot(); snap.ActiveGoroutines > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for active bridge goroutines")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -457,14 +593,18 @@ func TestStructuredClone(t *testing.T) {
 	`)
 	var parsed struct {
 		Original struct {
-			A int    `json:"a"`
-			B []int  `json:"b"`
-			C struct{ D string `json:"d"` } `json:"c"`
+			A int   `json:"a"`
+			B []int `json:"b"`
+			C struct {
+				D string `json:"d"`
+			} `json:"c"`
 		} `json:"original"`
 		Cloned struct {
-			A int    `json:"a"`
-			B []int  `json:"b"`
-			C struct{ D string `json:"d"` } `json:"c"`
+			A int   `json:"a"`
+			B []int `json:"b"`
+			C struct {
+				D string `json:"d"`
+			} `json:"c"`
 		} `json:"cloned"`
 	}
 	if err := json.Unmarshal([]byte(result), &parsed); err != nil {

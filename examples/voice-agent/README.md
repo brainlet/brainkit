@@ -102,7 +102,7 @@ on kits that don't play audio.
 
 ## See also
 
-- `internal/engine/runtime/kit_runtime.js` — endows
+- `internal/jsruntime/runtime/kit_runtime.js` — endows
   `OpenAIVoice`, `CompositeVoice`, and `Audio` for `.ts`
   deployments.
 - `internal/jsbridge/fetch.go` — multipart/form-data + binary

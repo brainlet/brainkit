@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -121,6 +122,7 @@ type HealthChecker interface {
 type Gateway struct {
 	rt           sdk.Runtime
 	caller       bkmodule.RequestCaller
+	callerMu     syncx.RWMutex
 	config       Config
 	logger       *slog.Logger
 	streamConfig StreamConfig
@@ -128,12 +130,23 @@ type Gateway struct {
 	srv          *http.Server
 	ln           net.Listener
 	active       atomic.Int64
-	busUnsubs    []func()
+	activeWG     sync.WaitGroup
+	lifecycleMu  syncx.Mutex
+	serveCtx     context.Context
+	serveCancel  context.CancelFunc
+	activeWait   sync.Once
+	activeDone   chan struct{}
+	sweepWait    sync.Once
+	sweepDone    chan struct{}
+	busMu        syncx.Mutex
+	busSubs      []bkmodule.Handle
+	closing      atomic.Bool
 
 	// Stream session management
 	sessionsMu  syncx.RWMutex
 	sessions    map[string]*streamSession
 	sweepCancel context.CancelFunc
+	sweepWG     sync.WaitGroup
 }
 
 // YAML is the config shape decoded by the registry factory.
@@ -164,7 +177,7 @@ func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	}), nil
 }
 
-// Describe surfaces module metadata for `brainkit modules list`.
+// Describe surfaces module metadata for module manifests.
 func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "gateway",
@@ -177,9 +190,10 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.SubscriptionMessageWithResponse[gatewaymsg.GatewayStatusMsg, gatewaymsg.GatewayStatusResp](),
 		},
 		Capabilities: []bkmodule.CapabilityDescriptor{
-			bkmodule.RequiredCapabilityOf[bkmodule.HealthProbes](bkmodule.CapabilityHealthProbes),
+			bkmodule.OptionalCapabilityOf[bkmodule.HealthProbes](bkmodule.CapabilityHealthProbes),
+			bkmodule.OptionalCapabilityOf[bkmodule.LifecycleDebugRegistry](bkmodule.CapabilityLifecycleDebugRegistry),
+			bkmodule.OptionalCapabilityOf[bkmodule.RuntimeControl](bkmodule.CapabilityRuntimeControl),
 			bkmodule.RequiredCapabilityOf[bkmodule.RequestCaller](bkmodule.CapabilityRequestCaller),
-			bkmodule.RequiredCapabilityOf[bkmodule.RuntimeControl](bkmodule.CapabilityRuntimeControl),
 		},
 		Resources: []bkmodule.ResourceDescriptor{
 			bkmodule.Resource(bkmodule.ResourceKindHTTP, "gateway.listener", "HTTP gateway listener."),
@@ -213,6 +227,8 @@ func New(cfg Config) *Gateway {
 		streamConfig: cfg.Stream.withDefaults(),
 		routes:       newRouteTable(),
 		sessions:     make(map[string]*streamSession),
+		activeDone:   make(chan struct{}),
+		sweepDone:    make(chan struct{}),
 	}
 }
 
@@ -221,10 +237,23 @@ func New(cfg Config) *Gateway {
 func (gw *Gateway) SetRuntime(rt sdk.Runtime) {
 	gw.rt = rt
 	if holder, ok := rt.(interface{ Caller() *sdk.Caller }); ok {
-		gw.caller = holder.Caller()
+		gw.setCaller(holder.Caller())
 	} else {
-		gw.caller = nil
+		gw.setCaller(nil)
 	}
+}
+
+func (gw *Gateway) setCaller(caller bkmodule.RequestCaller) {
+	gw.callerMu.Lock()
+	gw.caller = caller
+	gw.callerMu.Unlock()
+}
+
+func (gw *Gateway) requestCaller() bkmodule.RequestCaller {
+	gw.callerMu.RLock()
+	caller := gw.caller
+	gw.callerMu.RUnlock()
+	return caller
 }
 
 // Handle registers a request/response route.
@@ -307,17 +336,68 @@ func (gw *Gateway) ListRoutes() []RouteInfo {
 	return gw.routes.list()
 }
 
+// DebugSnapshot reports gateway-owned lifecycle counters for inspect/debug
+// surfaces.
+func (gw *Gateway) DebugSnapshot() DebugSnapshot {
+	if gw == nil {
+		return DebugSnapshot{}
+	}
+	routes := gw.routes.list()
+	streamSessions, terminalSessions, streamSubscriptions := gw.streamSessionDebugCounts()
+	gw.lifecycleMu.Lock()
+	ln := gw.ln
+	srv := gw.srv
+	address := gw.config.Listen
+	if ln != nil {
+		address = ln.Addr().String()
+	}
+	sessionSweepRunning := gw.sweepCancel != nil
+	gw.lifecycleMu.Unlock()
+	return DebugSnapshot{
+		Closing:             gw.closing.Load(),
+		ServerAttached:      srv != nil,
+		Listening:           ln != nil,
+		Address:             address,
+		RouteCount:          len(routes),
+		RouteSubscriptions:  gw.routeSubscriptionCount(),
+		ActiveConnections:   gw.active.Load(),
+		StreamSessions:      streamSessions,
+		TerminalSessions:    terminalSessions,
+		StreamSubscriptions: streamSubscriptions,
+		SessionSweepRunning: sessionSweepRunning,
+	}
+}
+
+// DebugSnapshot is the gateway component lifecycle view.
+type DebugSnapshot struct {
+	Closing             bool   `json:"closing"`
+	ServerAttached      bool   `json:"serverAttached"`
+	Listening           bool   `json:"listening"`
+	Address             string `json:"address"`
+	RouteCount          int    `json:"routeCount"`
+	RouteSubscriptions  int    `json:"routeSubscriptions"`
+	ActiveConnections   int64  `json:"activeConnections"`
+	StreamSessions      int    `json:"streamSessions"`
+	TerminalSessions    int    `json:"terminalStreamSessions"`
+	StreamSubscriptions int    `json:"streamSubscriptions"`
+	SessionSweepRunning bool   `json:"sessionSweepRunning"`
+}
+
 // Start begins listening for HTTP connections and subscribes to bus route commands.
 func (gw *Gateway) Start() error {
 	if gw.rt == nil {
 		return fmt.Errorf("gateway: runtime not set — call SetRuntime or add the module to brainkit.Config.Modules")
 	}
+	if err := gw.ensureStartable(); err != nil {
+		return err
+	}
+	gw.resetStopWaiters()
 	mux := http.NewServeMux()
 	if !gw.config.NoHealth {
 		registerHealthRoutes(mux, gw.rt)
 	}
 	if !gw.config.NoBusAPI {
-		registerBusAPIRoutes(mux, gw.caller)
+		registerBusAPIRoutes(mux, gw.requestCaller())
 	}
 	mux.HandleFunc("/", gw.dispatch)
 
@@ -335,64 +415,256 @@ func (gw *Gateway) Start() error {
 	if gw.config.RateLimit != nil {
 		handler = RateLimiter(*gw.config.RateLimit)(handler)
 	}
+	handler = gw.trackRequest(handler)
 
 	ln, err := net.Listen("tcp", gw.config.Listen)
 	if err != nil {
 		return fmt.Errorf("gateway: listen %s: %w", gw.config.Listen, err)
 	}
+	serveCtx, serveCancel := context.WithCancel(context.Background())
+	srv := &http.Server{Handler: handler}
+	gw.lifecycleMu.Lock()
 	gw.ln = ln
-	gw.srv = &http.Server{Handler: handler}
+	gw.srv = srv
+	gw.serveCtx = serveCtx
+	gw.serveCancel = serveCancel
+	gw.lifecycleMu.Unlock()
 
 	go func() {
-		if err := gw.srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			gw.logger.Error("serve error", slog.String("error", err.Error()))
 		}
 	}()
 
-	gw.subscribeBusCommands()
+	if err := gw.subscribeBusCommands(); err != nil {
+		_ = gw.Stop()
+		return err
+	}
 
 	// Start session sweep goroutine
 	sweepCtx, sweepCancel := context.WithCancel(context.Background())
+	gw.lifecycleMu.Lock()
 	gw.sweepCancel = sweepCancel
-	go gw.sweepSessions(sweepCtx)
+	gw.lifecycleMu.Unlock()
+	gw.sweepWG.Add(1)
+	go func() {
+		defer gw.sweepWG.Done()
+		gw.sweepSessions(sweepCtx)
+	}()
 
 	gw.logger.Info("gateway listening", slog.String("address", gw.Addr()), slog.Int("routes", len(gw.routes.routes)))
 	return nil
 }
 
-// Stop gracefully shuts down the HTTP server and unsubscribes bus commands.
-func (gw *Gateway) Stop() error {
-	// Stop session sweep
-	if gw.sweepCancel != nil {
-		gw.sweepCancel()
-	}
+func (gw *Gateway) trackRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := gw.requestContext(r.Context())
+		defer cancel()
+		r = r.WithContext(ctx)
 
-	// Cleanup all stream sessions
-	gw.sessionsMu.Lock()
-	for id, session := range gw.sessions {
-		session.terminate("server_shutdown")
-		delete(gw.sessions, id)
-	}
-	gw.sessionsMu.Unlock()
+		gw.activeWG.Add(1)
+		gw.active.Add(1)
+		defer func() {
+			gw.active.Add(-1)
+			gw.activeWG.Done()
+		}()
 
-	// Unsubscribe bus commands
-	for _, unsub := range gw.busUnsubs {
-		unsub()
-	}
-	gw.busUnsubs = nil
+		next.ServeHTTP(w, r)
+	})
+}
 
-	if gw.srv == nil {
+func (gw *Gateway) requestContext(parent context.Context) (context.Context, context.CancelFunc) {
+	gw.lifecycleMu.Lock()
+	serveCtx := gw.serveCtx
+	gw.lifecycleMu.Unlock()
+	if serveCtx == nil {
+		return parent, func() {}
+	}
+	ctx, cancel := context.WithCancel(parent)
+	stop := context.AfterFunc(serveCtx, cancel)
+	return ctx, func() {
+		stop()
+		cancel()
+	}
+}
+
+func (gw *Gateway) cancelServeContext() {
+	gw.lifecycleMu.Lock()
+	cancel := gw.serveCancel
+	gw.serveCtx = nil
+	gw.serveCancel = nil
+	gw.lifecycleMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (gw *Gateway) sessionSweepRunning() bool {
+	gw.lifecycleMu.Lock()
+	defer gw.lifecycleMu.Unlock()
+	return gw.sweepCancel != nil
+}
+
+func (gw *Gateway) ensureStartable() error {
+	gw.lifecycleMu.Lock()
+	started := gw.srv != nil || gw.ln != nil || gw.sweepCancel != nil
+	gw.lifecycleMu.Unlock()
+	if started {
+		return fmt.Errorf("gateway: already started")
+	}
+	streamSessions, _, streamSubscriptions := gw.streamSessionDebugCounts()
+	if gw.routeSubscriptionCount() > 0 || streamSessions > 0 || streamSubscriptions > 0 {
+		return fmt.Errorf("gateway: previous resources still active")
+	}
+	return nil
+}
+
+func ignoreServerClosed(err error) error {
+	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return gw.srv.Shutdown(ctx)
+	return err
+}
+
+func (gw *Gateway) markServerStopped(srv *http.Server, clearServer bool) {
+	gw.lifecycleMu.Lock()
+	defer gw.lifecycleMu.Unlock()
+	if gw.srv != srv {
+		return
+	}
+	gw.ln = nil
+	if clearServer {
+		gw.srv = nil
+	}
+}
+
+func (gw *Gateway) resetStopWaiters() {
+	gw.lifecycleMu.Lock()
+	gw.activeWait = sync.Once{}
+	gw.activeDone = make(chan struct{})
+	gw.sweepWait = sync.Once{}
+	gw.sweepDone = make(chan struct{})
+	gw.lifecycleMu.Unlock()
+}
+
+func (gw *Gateway) waitSweep(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	gw.lifecycleMu.Lock()
+	done := gw.sweepDone
+	if done == nil {
+		done = make(chan struct{})
+		gw.sweepDone = done
+	}
+	gw.sweepWait.Do(func() {
+		go func() {
+			gw.sweepWG.Wait()
+			close(done)
+		}()
+	})
+	gw.lifecycleMu.Unlock()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (gw *Gateway) waitActiveRequests(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	gw.lifecycleMu.Lock()
+	done := gw.activeDone
+	if done == nil {
+		done = make(chan struct{})
+		gw.activeDone = done
+	}
+	gw.activeWait.Do(func() {
+		go func() {
+			gw.activeWG.Wait()
+			close(done)
+		}()
+	})
+	gw.lifecycleMu.Unlock()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// Stop gracefully shuts down the HTTP server and unsubscribes bus commands.
+func (gw *Gateway) Stop() error {
+	return gw.StopContext(context.Background())
+}
+
+// StopContext gracefully shuts down the HTTP server under caller-owned
+// lifecycle cancellation. If ctx has no deadline, the gateway's default
+// stop timeout is used so standalone Stop and background unmounts remain
+// bounded.
+func (gw *Gateway) StopContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	gw.closing.Store(true)
+	defer gw.closing.Store(false)
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+	}
+	var firstErr error
+	collect := func(err error) {
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	gw.cancelServeContext()
+	// Stop session sweep
+	gw.lifecycleMu.Lock()
+	sweepCancel := gw.sweepCancel
+	gw.sweepCancel = nil
+	gw.lifecycleMu.Unlock()
+	if sweepCancel != nil {
+		sweepCancel()
+	}
+
+	collect(gw.closeAllStreamSessions(ctx, "server_shutdown"))
+	collect(gw.unsubscribeBusCommands(ctx))
+
+	gw.lifecycleMu.Lock()
+	srv := gw.srv
+	gw.lifecycleMu.Unlock()
+	if srv == nil {
+		collect(gw.waitSweep(ctx))
+		collect(gw.waitActiveRequests(ctx))
+		return firstErr
+	}
+
+	shutdownErr := ignoreServerClosed(srv.Shutdown(ctx))
+	if shutdownErr != nil && ctx.Err() != nil {
+		collect(ignoreServerClosed(srv.Close()))
+	}
+	collect(shutdownErr)
+	collect(gw.waitSweep(ctx))
+	if gw.active.Load() > 0 {
+		collect(gw.waitActiveRequests(ctx))
+	}
+	gw.markServerStopped(srv, gw.active.Load() == 0)
+	return firstErr
 }
 
 // Addr returns the actual listen address (including resolved port for :0).
 func (gw *Gateway) Addr() string {
-	if gw.ln != nil {
-		return gw.ln.Addr().String()
+	gw.lifecycleMu.Lock()
+	defer gw.lifecycleMu.Unlock()
+	ln := gw.ln
+	if ln != nil {
+		return ln.Addr().String()
 	}
 	return gw.config.Listen
 }
@@ -413,9 +685,6 @@ func (gw *Gateway) dispatch(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-
-	gw.active.Add(1)
-	defer gw.active.Add(-1)
 
 	// Root span for the request. Reads X-Trace-ID from header if present.
 	var span TracerSpan
@@ -598,7 +867,7 @@ func mapHTTPStatus(resp []byte, err error) int {
 }
 
 // sanitizeErrorPayload redacts sensitive information from error JSON payloads
-// before sending to HTTP clients. Handles both envelope and legacy shapes.
+// before sending to HTTP clients. Handles both envelope and raw payload shapes.
 func sanitizeErrorPayload(payload []byte) []byte {
 	if wire, err := sdk.DecodeEnvelope(payload); err == nil && !wire.Ok && wire.Error != nil {
 		wire.Error.Message = transport.SanitizeErrorMessage(wire.Error.Message)
@@ -639,20 +908,58 @@ func (gw *Gateway) sweepSessions(ctx context.Context) {
 
 func (gw *Gateway) cleanExpiredSessions() {
 	now := time.Now()
+	var expiredIDs []string
 	gw.sessionsMu.Lock()
-	defer gw.sessionsMu.Unlock()
 	for id, session := range gw.sessions {
 		session.mu.RLock()
-		expired := session.terminal && !session.terminalAt.IsZero() &&
+		isExpired := session.terminal && !session.terminalAt.IsZero() &&
 			now.Sub(session.terminalAt) > gw.streamConfig.GracePeriod
 		session.mu.RUnlock()
-		if expired {
-			if session.unsub != nil {
-				session.unsub()
-			}
-			delete(gw.sessions, id)
+		if isExpired {
+			expiredIDs = append(expiredIDs, id)
 		}
 	}
+	gw.sessionsMu.Unlock()
+	for _, id := range expiredIDs {
+		if err := gw.closeStreamSession(context.Background(), id, "expired"); err != nil {
+			gw.logger.Warn("close expired stream session", slog.String("session", id), slog.String("error", err.Error()))
+		}
+	}
+}
+
+func (gw *Gateway) closeAllStreamSessions(ctx context.Context, reason string) error {
+	gw.sessionsMu.RLock()
+	ids := make([]string, 0, len(gw.sessions))
+	for id := range gw.sessions {
+		ids = append(ids, id)
+	}
+	gw.sessionsMu.RUnlock()
+	var err error
+	for _, id := range ids {
+		err = errors.Join(err, gw.closeStreamSession(ctx, id, reason))
+	}
+	return err
+}
+
+func (gw *Gateway) closeStreamSession(ctx context.Context, id, reason string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	gw.sessionsMu.Lock()
+	defer gw.sessionsMu.Unlock()
+	session := gw.sessions[id]
+	if session == nil {
+		return nil
+	}
+	if session.unsub != nil {
+		if err := session.unsub.Close(ctx); err != nil {
+			return err
+		}
+		session.unsub = nil
+	}
+	session.terminate(reason)
+	delete(gw.sessions, id)
+	return nil
 }
 
 func (gw *Gateway) findSession(token string) *streamSession {
@@ -677,4 +984,24 @@ func (gw *Gateway) registerSession(session *streamSession) {
 	gw.sessionsMu.Lock()
 	gw.sessions[session.id] = session
 	gw.sessionsMu.Unlock()
+}
+
+func (gw *Gateway) streamSessionDebugCounts() (sessions, terminal, subscriptions int) {
+	gw.sessionsMu.RLock()
+	defer gw.sessionsMu.RUnlock()
+	sessions = len(gw.sessions)
+	for _, session := range gw.sessions {
+		if session == nil {
+			continue
+		}
+		if session.unsub != nil {
+			subscriptions++
+		}
+		session.mu.RLock()
+		if session.terminal {
+			terminal++
+		}
+		session.mu.RUnlock()
+	}
+	return sessions, terminal, subscriptions
 }

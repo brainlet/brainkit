@@ -16,7 +16,7 @@ import (
 //
 //   - docs/llm/*.md   — curated prose/reference pages for Go API,
 //     TypeScript runtime endowments, Mastra, and the AI SDK.
-//   - internal/engine/runtime/*.d.ts (excluding AssemblyScript,
+//   - internal/dts/runtime/*.d.ts (excluding AssemblyScript,
 //     which is dormant) — type-precise declarations of every
 //     global a deployed .ts can see.
 //
@@ -25,7 +25,7 @@ import (
 // on this corpus and produce code against real symbols instead of
 // guessed ones.
 //
-//go:embed docs/llm/*.md internal/engine/runtime/agent.d.ts internal/engine/runtime/ai.d.ts internal/engine/runtime/brainkit.d.ts internal/engine/runtime/globals.d.ts internal/engine/runtime/kit.d.ts
+//go:embed docs/llm/*.md internal/dts/runtime/agent.d.ts internal/dts/runtime/ai.d.ts internal/dts/runtime/brainkit.d.ts internal/dts/runtime/globals.d.ts internal/dts/runtime/kit.d.ts
 var referenceFS embed.FS
 
 // rawFiles catalogs every embedded file by the short name callers
@@ -40,11 +40,11 @@ var rawFiles = map[string]string{
 	"ai-sdk.md":     "docs/llm/ai-sdk.md",
 	"mastra.md":     "docs/llm/mastra.md",
 	// TypeScript declaration files.
-	"agent.d.ts":    "internal/engine/runtime/agent.d.ts",
-	"ai.d.ts":       "internal/engine/runtime/ai.d.ts",
-	"brainkit.d.ts": "internal/engine/runtime/brainkit.d.ts",
-	"globals.d.ts":  "internal/engine/runtime/globals.d.ts",
-	"kit.d.ts":      "internal/engine/runtime/kit.d.ts",
+	"agent.d.ts":    "internal/dts/runtime/agent.d.ts",
+	"ai.d.ts":       "internal/dts/runtime/ai.d.ts",
+	"brainkit.d.ts": "internal/dts/runtime/brainkit.d.ts",
+	"globals.d.ts":  "internal/dts/runtime/globals.d.ts",
+	"kit.d.ts":      "internal/dts/runtime/kit.d.ts",
 }
 
 // packs are curated bundles composed from rawFiles. Each pack is
@@ -103,7 +103,7 @@ var packs = map[string][]string{
 }
 
 // ReferenceKind is "pack" for curated bundles, "raw" for direct
-// files under docs/llm or internal/engine/runtime.
+// files under docs/llm or internal/dts/runtime.
 type ReferenceKind string
 
 const (

@@ -19,7 +19,7 @@ func (k *Kernel) Shutdown(ctx context.Context) error {
 	k.audit.HealthChanged("kit", "draining", true)
 	k.waitForDrain(ctx)
 	k.audit.HealthChanged("kit", "shutdown", false)
-	return k.close()
+	return k.close(ctx)
 }
 
 // Close shuts down with a short drain timeout (5s).
@@ -67,9 +67,15 @@ func resolveSecretStore(cfg types.KernelConfig, logger *slog.Logger) secrets.Sec
 }
 
 // close is the internal shutdown logic.
-func (k *Kernel) close() error {
+func (k *Kernel) close(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	k.closeMu.Lock()
+	defer k.closeMu.Unlock()
+
 	k.mu.Lock()
-	if k.closed {
+	if k.closeComplete {
 		k.mu.Unlock()
 		return nil
 	}
@@ -80,15 +86,6 @@ func (k *Kernel) close() error {
 		k.shutdownCancel()
 	}
 
-	// Stop all stream heartbeat goroutines
-	if k.streamTracker != nil {
-		k.streamTracker.CloseAll()
-	}
-
-	if k.jsRuntime != nil {
-		k.jsRuntime.Interrupt()
-	}
-
 	var firstErr error
 	collect := func(err error) {
 		if err != nil && firstErr == nil {
@@ -96,7 +93,21 @@ func (k *Kernel) close() error {
 		}
 	}
 
+	// Stop all stream heartbeat goroutines
+	if k.streamTracker != nil {
+		collect(k.streamTracker.CloseAll(ctx))
+	}
+
+	if k.jsRuntime != nil {
+		k.jsRuntime.Interrupt()
+	}
+
+	collect(k.waitBackground(ctx))
+
 	// Shut down router first (stops processing messages)
+	if k.runtimeHost != nil {
+		collect(k.runtimeHost.Close())
+	}
 	if k.transportHost != nil {
 		collect(k.transportHost.CloseRouter())
 	}
@@ -104,19 +115,22 @@ func (k *Kernel) close() error {
 	// Close the Caller — unsubscribes inbox, finalizes pending with
 	// ErrCallerClosed.
 	if k.transportHost != nil {
-		collect(k.transportHost.CloseCaller())
+		collect(k.transportHost.CloseCallerContext(ctx))
 	}
 
 	if rt := k.jsRuntime; rt != nil {
-		collect(rt.Close())
+		collect(rt.Shutdown(ctx))
 		k.DetachJSRuntime(rt)
 		k.SetRuntimeConfigJSRuntime(false)
+	}
+	if k.providerHost != nil {
+		collect(k.providerHost.CloseContext(ctx))
 	}
 	if k.config.Store != nil {
 		collect(k.config.Store.Close())
 	}
 	if k.storageHost != nil {
-		collect(k.storageHost.CloseAll())
+		collect(k.storageHost.CloseAllContext(ctx))
 	}
 
 	// Shut down transport last (only if we own it — Node owns its own)
@@ -124,5 +138,10 @@ func (k *Kernel) close() error {
 		collect(k.transportHost.CloseOwnedTransport())
 	}
 
+	if firstErr == nil {
+		k.mu.Lock()
+		k.closeComplete = true
+		k.mu.Unlock()
+	}
 	return firstErr
 }

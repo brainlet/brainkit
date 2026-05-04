@@ -29,7 +29,7 @@ reach any other Kit's namespace.
 // Kit A — target
 target, _ := brainkit.New(brainkit.Config{
     Namespace: "analytics-prod",
-    Transport: brainkit.NATS(natsURL),
+    Transport: transports.NATS(natsURL),
     FSRoot:    ".",
 })
 defer target.Close()
@@ -44,9 +44,9 @@ _, _ = packages.Deploy(ctx, target, packages.Inline("report-svc", "report.ts", `
 // Kit B — caller (same NATS)
 caller, _ := brainkit.New(brainkit.Config{
     Namespace: "orchestrator",
-    Transport: brainkit.NATS(natsURL),
+    Transport: transports.NATS(natsURL),
     FSRoot:    ".",
-    Modules: []brainkit.Module{
+    Modules: []module.Module{
         topology.NewModule(topology.Config{
             Peers: []topology.Peer{
                 {Name: "analytics", Namespace: "analytics-prod"},
@@ -124,8 +124,8 @@ d := discovery.NewModule(discovery.ModuleConfig{
     TTL:       30 * time.Second,
 })
 brainkit.New(brainkit.Config{
-    Transport: brainkit.NATS(url),
-    Modules: []brainkit.Module{
+    Transport: transports.NATS(url),
+    Modules: []module.Module{
         d,
         topology.NewModule(topology.Config{Discovery: d}),
     },
@@ -167,10 +167,6 @@ type CrossNamespaceRuntime interface {
     PublishRawTo(ctx, targetNamespace, topic string, payload json.RawMessage) (string, error)
     SubscribeRawTo(ctx, targetNamespace, topic string, handler func(sdk.Message)) (func(), error)
 }
-
-// And typed convenience:
-pr, err := sdk.PublishTo(kit, ctx, "analytics-prod",
-    sdk.CustomMsg{Topic: "ts.report-svc.quarterly", Payload: q4})
 ```
 
 These are the hooks modules use when they need to publish events into
@@ -199,10 +195,10 @@ between them:
 
 - **Memory** and **EmbeddedNATS** default configurations are per-Kit
   and cannot see each other. Two Kits booted with
-  `brainkit.EmbeddedNATS()` each spin up their own NATS server — they
+  `transports.EmbeddedNATS()` each spin up their own NATS server — they
   do not cross. `examples/multi-kit/main.go` intentionally shows only
   the resolution step under that constraint.
-- **NATS JetStream** (`brainkit.NATS(url)`) pointed at the same server
+- **NATS JetStream** (`transports.NATS(url)`) pointed at the same server
   works out of the box. `examples/cross-kit/main.go` boots a standalone
   `nats-server/v2` in-process and shares its URL.
 - **AMQP** and **Redis Streams** work the same way — both Kits need to

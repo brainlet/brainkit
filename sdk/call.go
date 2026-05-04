@@ -13,6 +13,13 @@ type CallerRuntime interface {
 	Caller() *Caller
 }
 
+// RequestCaller is the narrow request/reply surface used by module-scoped
+// callers. Implementations should route replies through a shared inbox instead
+// of creating one subscription per request.
+type RequestCaller interface {
+	Call(context.Context, string, json.RawMessage, CallerConfig) (json.RawMessage, error)
+}
+
 // CallOption configures a typed Call or CallStream invocation.
 type CallOption func(*callConfig)
 
@@ -59,27 +66,47 @@ func WithCallNoCancelSignal() CallOption {
 // Call sends a typed request to the target topic and waits for a typed response.
 func Call[Req BrainkitMessage, Resp any](rt CallerRuntime, ctx context.Context, req Req, opts ...CallOption) (Resp, error) {
 	var zero Resp
-	cfg := callConfig{}
-	for _, opt := range opts {
-		opt(&cfg)
-	}
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline && cfg.timeout <= 0 {
-		return zero, &NoDeadlineError{}
-	}
-	if cfg.timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, cfg.timeout)
-		defer cancel()
-	}
-	payload, err := json.Marshal(req)
+	cfg := buildCallConfig(opts)
+	ctx, cancel, err := callContext(ctx, cfg)
 	if err != nil {
-		return zero, fmt.Errorf("sdk.Call: marshal %T: %w", req, err)
+		return zero, err
+	}
+	if cancel != nil {
+		defer cancel()
 	}
 	c := rt.Caller()
 	if c == nil {
 		return zero, fmt.Errorf("sdk.Call: caller not initialized")
 	}
-	replyPayload, err := c.Call(ctx, req.BusTopic(), payload, CallerConfig{
+	return callWithCallerConfig[Req, Resp]("sdk.Call", c, ctx, req, cfg)
+}
+
+// CallWithCaller sends a typed request through a narrow RequestCaller. It is
+// the typed helper path for module code that receives CapabilityRequestCaller
+// instead of a full runtime.
+func CallWithCaller[Req BrainkitMessage, Resp any](caller RequestCaller, ctx context.Context, req Req, opts ...CallOption) (Resp, error) {
+	var zero Resp
+	cfg := buildCallConfig(opts)
+	ctx, cancel, err := callContext(ctx, cfg)
+	if err != nil {
+		return zero, err
+	}
+	if cancel != nil {
+		defer cancel()
+	}
+	return callWithCallerConfig[Req, Resp]("sdk.CallWithCaller", caller, ctx, req, cfg)
+}
+
+func callWithCallerConfig[Req BrainkitMessage, Resp any](label string, caller RequestCaller, ctx context.Context, req Req, cfg callConfig) (Resp, error) {
+	var zero Resp
+	if caller == nil {
+		return zero, fmt.Errorf("%s: caller not initialized", label)
+	}
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return zero, fmt.Errorf("%s: marshal %T: %w", label, req, err)
+	}
+	replyPayload, err := caller.Call(ctx, req.BusTopic(), payload, CallerConfig{
 		TargetNamespace: cfg.targetNS,
 		Metadata:        cfg.meta,
 		NoCancelSignal:  cfg.noCancelSignal,
@@ -111,25 +138,61 @@ func CallStream[Req BrainkitMessage, Chunk any, Resp any](
 	if onChunk == nil {
 		return zero, fmt.Errorf("sdk.CallStream: onChunk is required")
 	}
-	cfg := callConfig{}
-	for _, opt := range opts {
-		opt(&cfg)
-	}
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline && cfg.timeout <= 0 {
-		return zero, &NoDeadlineError{}
-	}
-	if cfg.timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, cfg.timeout)
-		defer cancel()
-	}
-	payload, err := json.Marshal(req)
+	cfg := buildCallConfig(opts)
+	ctx, cancel, err := callContext(ctx, cfg)
 	if err != nil {
-		return zero, fmt.Errorf("sdk.CallStream: marshal %T: %w", req, err)
+		return zero, err
+	}
+	if cancel != nil {
+		defer cancel()
 	}
 	c := rt.Caller()
 	if c == nil {
 		return zero, fmt.Errorf("sdk.CallStream: caller not initialized")
+	}
+	return callStreamWithCallerConfig[Req, Chunk, Resp]("sdk.CallStream", c, ctx, req, onChunk, cfg)
+}
+
+// CallStreamWithCaller sends a typed streaming request through a narrow
+// RequestCaller. It preserves the same ordered chunk handling and back-pressure
+// options as CallStream.
+func CallStreamWithCaller[Req BrainkitMessage, Chunk any, Resp any](
+	caller RequestCaller,
+	ctx context.Context,
+	req Req,
+	onChunk func(Chunk) error,
+	opts ...CallOption,
+) (Resp, error) {
+	var zero Resp
+	if onChunk == nil {
+		return zero, fmt.Errorf("sdk.CallStreamWithCaller: onChunk is required")
+	}
+	cfg := buildCallConfig(opts)
+	ctx, cancel, err := callContext(ctx, cfg)
+	if err != nil {
+		return zero, err
+	}
+	if cancel != nil {
+		defer cancel()
+	}
+	return callStreamWithCallerConfig[Req, Chunk, Resp]("sdk.CallStreamWithCaller", caller, ctx, req, onChunk, cfg)
+}
+
+func callStreamWithCallerConfig[Req BrainkitMessage, Chunk any, Resp any](
+	label string,
+	caller RequestCaller,
+	ctx context.Context,
+	req Req,
+	onChunk func(Chunk) error,
+	cfg callConfig,
+) (Resp, error) {
+	var zero Resp
+	if caller == nil {
+		return zero, fmt.Errorf("%s: caller not initialized", label)
+	}
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return zero, fmt.Errorf("%s: marshal %T: %w", label, req, err)
 	}
 	topic := req.BusTopic()
 	streamH := func(msg Message) error {
@@ -143,7 +206,7 @@ func CallStream[Req BrainkitMessage, Chunk any, Resp any](
 		}
 		return onChunk(chunk)
 	}
-	replyPayload, err := c.Call(ctx, topic, payload, CallerConfig{
+	replyPayload, err := caller.Call(ctx, topic, payload, CallerConfig{
 		TargetNamespace: cfg.targetNS,
 		Metadata:        cfg.meta,
 		StreamHandler:   streamH,
@@ -163,4 +226,23 @@ func CallStream[Req BrainkitMessage, Chunk any, Resp any](
 		return zero, &CallDecodeError{Topic: topic, Payload: replyPayload, Cause: err}
 	}
 	return resp, nil
+}
+
+func buildCallConfig(opts []CallOption) callConfig {
+	cfg := callConfig{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return cfg
+}
+
+func callContext(ctx context.Context, cfg callConfig) (context.Context, context.CancelFunc, error) {
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline && cfg.timeout <= 0 {
+		return nil, nil, &NoDeadlineError{}
+	}
+	if cfg.timeout <= 0 {
+		return ctx, nil, nil
+	}
+	next, cancel := context.WithTimeout(ctx, cfg.timeout)
+	return next, cancel, nil
 }

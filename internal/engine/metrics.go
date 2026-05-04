@@ -28,6 +28,20 @@ func (k *Kernel) Metrics() types.KernelMetrics {
 		snap := k.transportHost.Metrics().Snapshot()
 		m.Bus = &snap
 	}
+	if k.transportHost != nil {
+		snap := k.transportHost.DebugSnapshot()
+		transport := &types.TransportMetrics{
+			Kind:                  k.transportHost.TransportKind(),
+			ActiveSubscriptions:   snap.ActiveSubscriptions,
+			RouterHandlers:        snap.Router.Handlers,
+			RouterStartedHandlers: snap.Router.StartedHandlers,
+			RouterStoppedHandlers: snap.Router.StoppedHandlers,
+		}
+		if k.streamTracker != nil {
+			transport.ActiveStreamHeartbeats = k.streamTracker.Active()
+		}
+		m.Transport = transport
+	}
 
 	// Plugin metrics are now sourced from modules/plugins (which holds the
 	// WS server state). metrics.get returns no plugin details when the module

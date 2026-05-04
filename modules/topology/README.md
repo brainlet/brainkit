@@ -38,3 +38,18 @@ topology.NewModule(topology.Config{Discovery: d})
 `brainkit.WithCallTo(name)` consults this module through
 `Kit.Module("topology")`. Without the module wired, name passes
 through as the literal namespace.
+
+## Capabilities
+
+- Requires when `UseDiscovery` is true: `discovery.provider`.
+- Provides: none.
+
+## Runtime resources
+
+None. Static peers live in module memory; bus discovery resources are owned by
+`modules/discovery`.
+
+## Hot unmount
+
+Unmounting unregisters `peers.*` commands and drops the discovery provider
+reference.

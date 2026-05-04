@@ -50,14 +50,14 @@ func (s *SQLiteKitStore) DB() *sql.DB  { return s.db }
 
 func (s *SQLiteKitStore) SaveDeployment(d types.PersistedDeployment) error {
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at, package_name) VALUES (?, ?, ?, ?, ?)`,
-		d.Source, d.Code, d.Order, d.DeployedAt.Format(time.RFC3339), d.PackageName,
+		`INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at, package_name, artifact_kind) VALUES (?, ?, ?, ?, ?, ?)`,
+		d.Source, d.Code, d.Order, d.DeployedAt.Format(time.RFC3339), d.PackageName, string(d.EffectiveArtifactKind()),
 	)
 	return err
 }
 
 func (s *SQLiteKitStore) LoadDeployments() ([]types.PersistedDeployment, error) {
-	rows, err := s.db.Query("SELECT source, code, deploy_order, deployed_at, package_name FROM deployments ORDER BY deploy_order")
+	rows, err := s.db.Query("SELECT source, code, deploy_order, deployed_at, package_name, artifact_kind FROM deployments ORDER BY deploy_order")
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (s *SQLiteKitStore) LoadDeployments() ([]types.PersistedDeployment, error) 
 	for rows.Next() {
 		var d types.PersistedDeployment
 		var ts string
-		if err := rows.Scan(&d.Source, &d.Code, &d.Order, &ts, &d.PackageName); err != nil {
+		if err := rows.Scan(&d.Source, &d.Code, &d.Order, &ts, &d.PackageName, &d.ArtifactKind); err != nil {
 			return nil, err
 		}
 		d.DeployedAt, _ = time.Parse(time.RFC3339, ts)
@@ -81,8 +81,8 @@ func (s *SQLiteKitStore) LoadDeployments() ([]types.PersistedDeployment, error) 
 func (s *SQLiteKitStore) LoadDeployment(source string) (types.PersistedDeployment, error) {
 	var d types.PersistedDeployment
 	var ts string
-	err := s.db.QueryRow("SELECT source, code, deploy_order, deployed_at, package_name FROM deployments WHERE source = ?", source).
-		Scan(&d.Source, &d.Code, &d.Order, &ts, &d.PackageName)
+	err := s.db.QueryRow("SELECT source, code, deploy_order, deployed_at, package_name, artifact_kind FROM deployments WHERE source = ?", source).
+		Scan(&d.Source, &d.Code, &d.Order, &ts, &d.PackageName, &d.ArtifactKind)
 	if err != nil {
 		return d, err
 	}

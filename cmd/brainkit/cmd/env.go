@@ -8,7 +8,7 @@ import (
 
 // loadDotEnv reads key=value pairs from `./.env` (if it exists) and
 // sets each entry in the process environment via `os.Setenv` —
-// matching the convention `server.LoadConfig`'s `expandEnv` expects
+// matching the convention `server/configfile`'s `expandEnv` expects
 // when the yaml references `$OPENAI_API_KEY` / `${VAR}`.
 //
 // Silent no-op when `.env` is absent. Existing env vars always win

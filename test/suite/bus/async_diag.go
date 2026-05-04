@@ -9,6 +9,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +24,7 @@ func deployAndSendDiag(t *testing.T, env *suite.TestEnv, source, code string, ti
 
 	testutil.Deploy(t, env.Kit, source, code)
 	data, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
-		Topic:   sdk.ResolveServiceTopic(source, "test"),
+		Topic:   protocol.ResolveServiceTopic(source, "test"),
 		Payload: json.RawMessage(`{}`),
 	})
 	require.NoError(t, err)

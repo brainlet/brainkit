@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
@@ -76,12 +79,12 @@ func testSecretsSurviveRestart(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store1, SecretKey: "test-master-key-1234567890",
-		Modules: []brainkit.Module{secretsmod.New()},
+		Modules: []bkmodule.Module{secretsmod.New()},
 	})
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	pr, _ := sdk.Publish(k1, ctx, secretmsg.SecretsSetMsg{Name: "persist-secret-matrix", Value: "secret-value-123"})
+	pr, _ := protocol.Publish(k1, ctx, secretmsg.SecretsSetMsg{Name: "persist-secret-matrix", Value: "secret-value-123"})
 	ch := make(chan []byte, 1)
 	unsub, _ := k1.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	select {
@@ -98,12 +101,12 @@ func testSecretsSurviveRestart(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2, SecretKey: "test-master-key-1234567890",
-		Modules: []brainkit.Module{secretsmod.New()},
+		Modules: []bkmodule.Module{secretsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k2.Close()
 
-	pr2, _ := sdk.Publish(k2, ctx, secretmsg.SecretsGetMsg{Name: "persist-secret-matrix"})
+	pr2, _ := protocol.Publish(k2, ctx, secretmsg.SecretsGetMsg{Name: "persist-secret-matrix"})
 	ch2 := make(chan []byte, 1)
 	unsub2, _ := k2.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 	defer unsub2()
@@ -175,7 +178,7 @@ func testMultipleSchedulesSurvive(t *testing.T, _ *suite.TestEnv) {
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
-		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store1})},
+		Modules: []bkmodule.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store1})},
 	})
 	require.NoError(t, err)
 
@@ -189,7 +192,7 @@ func testMultipleSchedulesSurvive(t *testing.T, _ *suite.TestEnv) {
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
-		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
+		Modules: []bkmodule.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -231,7 +234,7 @@ func testDeployWithBusHandlerSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(k2, ctx, sdk.CustomMsg{
+	pr, _ := protocol.Publish(k2, ctx, sdk.CustomMsg{
 		Topic:   "ts.handler-matrix.ping",
 		Payload: json.RawMessage(`{}`),
 	})

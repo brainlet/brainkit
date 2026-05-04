@@ -7,10 +7,11 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/google/uuid"
 )
 
-func publishAndWaitMessage(t *testing.T, rt sdk.Runtime, msg sdk.BrainkitMessage, timeout time.Duration) (sdk.PublishResult, sdk.Message, bool) {
+func publishAndWaitMessage(t *testing.T, rt sdk.Runtime, msg sdk.BrainkitMessage, timeout time.Duration) (protocol.PublishResult, sdk.Message, bool) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -25,14 +26,14 @@ func publishAndWaitMessage(t *testing.T, rt sdk.Runtime, msg sdk.BrainkitMessage
 	})
 	if err != nil {
 		t.Logf("subscribe %s: %v", replyTo, err)
-		return sdk.PublishResult{}, sdk.Message{}, false
+		return protocol.PublishResult{}, sdk.Message{}, false
 	}
 	defer unsub()
 
-	pr, err := sdk.Publish(rt, ctx, msg, sdk.WithReplyTo(replyTo))
+	pr, err := protocol.Publish(rt, ctx, msg, protocol.WithReplyTo(replyTo))
 	if err != nil {
 		t.Logf("publish %s: %v", msg.BusTopic(), err)
-		return sdk.PublishResult{}, sdk.Message{}, false
+		return protocol.PublishResult{}, sdk.Message{}, false
 	}
 
 	select {

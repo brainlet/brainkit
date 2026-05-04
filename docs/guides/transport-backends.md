@@ -1,17 +1,21 @@
 # Transport Backends
 
 A Kit has exactly one transport. Pick it with one of the
-`brainkit.Memory()` / `brainkit.EmbeddedNATS()` /
-`brainkit.NATS(url)` / `brainkit.AMQP(url)` / `brainkit.Redis(url)`
-constructors.
+`brainkit.Memory()` / `transports.EmbeddedNATS()` /
+`transports.NATS(url)` / `transports.AMQP(url)` /
+`transports.Redis(url)` constructors.
+
+The root `brainkit` package keeps only the in-process memory transport linked.
+Import `github.com/brainlet/brainkit/transports` when a process uses embedded
+NATS, external NATS, AMQP, or Redis.
 
 | Backend | Constructor | Internal kind | Topic sanitizer |
 |---|---|---|---|
-| GoChannel | `brainkit.Memory()` | `"memory"` | none |
-| Embedded NATS | `brainkit.EmbeddedNATS()` (default) | `"embedded"` | dots → dashes |
-| External NATS JetStream | `brainkit.NATS(url)` | `"nats"` | dots → dashes |
-| AMQP (RabbitMQ) | `brainkit.AMQP(url)` | `"amqp"` | slashes → dashes |
-| Redis Streams | `brainkit.Redis(url)` | `"redis"` | none |
+| GoChannel | `brainkit.Memory()` (default) | `"memory"` | none |
+| Embedded NATS | `transports.EmbeddedNATS()` | `"embedded"` | dots → dashes |
+| External NATS JetStream | `transports.NATS(url)` | `"nats"` | dots → dashes |
+| AMQP (RabbitMQ) | `transports.AMQP(url)` | `"amqp"` | slashes → dashes |
+| Redis Streams | `transports.Redis(url)` | `"redis"` | none |
 
 Zero value for `Config.Transport` resolves to `brainkit.Memory()`.
 
@@ -38,7 +42,7 @@ supervisor refuses `"memory"`), no NATS JetStream durability.
 ```go
 brainkit.New(brainkit.Config{
     Namespace: "my-app",
-    Transport: brainkit.EmbeddedNATS(),
+    Transport: transports.EmbeddedNATS(),
     FSRoot:    "/var/lib/my-app",
 })
 ```
@@ -52,23 +56,23 @@ matches external NATS.
 JetStream stream data is persisted under
 `<FSRoot>/nats-data/`. Empty `FSRoot` keeps state ephemeral.
 
-Use `brainkit.WithNATSName(name)` to override the durable consumer
+Use `transports.WithNATSName(name)` to override the durable consumer
 prefix:
 
 ```go
-brainkit.EmbeddedNATS(brainkit.WithNATSName("my-app-consumers"))
+transports.EmbeddedNATS(transports.WithNATSName("my-app-consumers"))
 ```
 
-This is the default — the zero value of `TransportConfig`
-promotes to `EmbeddedNATS()` inside `brainkit.New`.
+This is opt-in. The zero value of `TransportConfig` resolves to
+`brainkit.Memory()` so importing brainkit alone stays light.
 
 ## External NATS JetStream
 
 ```go
 brainkit.New(brainkit.Config{
     Namespace: "my-app",
-    Transport: brainkit.NATS("nats://nats.example.com:4222",
-        brainkit.WithNATSName("my-app")),
+    Transport: transports.NATS("nats://nats.example.com:4222",
+        transports.WithNATSName("my-app")),
     FSRoot:    "/var/lib/my-app",
 })
 ```
@@ -86,7 +90,7 @@ you get `*sdk.TimeoutError{Operation: "router start (NATS JetStream provisioning
 ```go
 brainkit.New(brainkit.Config{
     Namespace: "my-app",
-    Transport: brainkit.AMQP("amqp://guest:guest@rabbit.example.com:5672/"),
+    Transport: transports.AMQP("amqp://guest:guest@rabbit.example.com:5672/"),
     FSRoot:    "/var/lib/my-app",
 })
 ```
@@ -98,12 +102,12 @@ Useful when your infrastructure already runs RabbitMQ.
 ```go
 brainkit.New(brainkit.Config{
     Namespace: "my-app",
-    Transport: brainkit.Redis("redis://redis.example.com:6379/0"),
+    Transport: transports.Redis("redis://redis.example.com:6379/0"),
     FSRoot:    "/var/lib/my-app",
 })
 ```
 
-Watermill's Redis Streams driver. Useful when the rest of the
+The Redis Streams-backed transport adapter. Useful when the rest of the
 stack already runs Redis.
 
 ## Topic sanitizers
@@ -126,11 +130,11 @@ transparent.
 | Scenario | Pick |
 |---|---|
 | Unit tests | `brainkit.Memory()` |
-| Library embed, single process | `brainkit.EmbeddedNATS()` — default |
-| Plugins in a single process | `brainkit.EmbeddedNATS()` |
-| Multiple Kits across machines | `brainkit.NATS(url)` |
-| Existing RabbitMQ | `brainkit.AMQP(url)` |
-| Existing Redis | `brainkit.Redis(url)` |
+| Library embed, single process | `brainkit.Memory()` unless plugins/cross-process transport are needed |
+| Plugins in a single process | `transports.EmbeddedNATS()` |
+| Multiple Kits across machines | `transports.NATS(url)` |
+| Existing RabbitMQ | `transports.AMQP(url)` |
+| Existing Redis | `transports.Redis(url)` |
 
 Embedded NATS and external NATS are the only transports validated
 against the plugin supervisor and cross-Kit flows. The others

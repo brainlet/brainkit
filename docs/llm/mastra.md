@@ -1,6 +1,6 @@
 # Mastra (`"agent"` module) — API Reference (brainkit runtime)
 
-Source of truth: `internal/engine/runtime/agent.d.ts`. The `"agent"` module inside `.ts` deployments re-exports Mastra — no wrapping. Mastra types use AI SDK v4 token names in `AgentResult.usage` (`promptTokens` / `completionTokens`); AI SDK v5 functions use v5 names (`inputTokens` / `outputTokens`). Do not cross-pollinate.
+Source of truth: `internal/dts/runtime/agent.d.ts`. The `"agent"` module inside `.ts` deployments re-exports Mastra — no wrapping. Mastra types use AI SDK v4 token names in `AgentResult.usage` (`promptTokens` / `completionTokens`); AI SDK v5 functions use v5 names (`inputTokens` / `outputTokens`). Do not cross-pollinate.
 
 ```typescript
 import {

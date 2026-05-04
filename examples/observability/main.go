@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"path/filepath"
@@ -63,7 +64,7 @@ func run() error {
 		Transport:       brainkit.Memory(),
 		FSRoot:          tmp,
 		TraceSampleRate: 1.0,
-		Modules: []brainkit.Module{packages.New(),
+		Modules: []bkmodule.Module{packages.New(),
 			audit.NewModule(audit.Config{Store: auditStore}),
 			tracing.New(tracing.Config{Store: traceStore}),
 		},

@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"encoding/json"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"path/filepath"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ func testScheduleSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store1,
-		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store1})},
+		Modules: []bkmodule.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store1})},
 	})
 	require.NoError(t, err)
 
@@ -36,7 +37,7 @@ func testScheduleSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store2,
-		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
+		Modules: []bkmodule.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -68,7 +69,7 @@ func testMissedRecurringCatchUp(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store2,
-		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
+		Modules: []bkmodule.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -102,7 +103,7 @@ func testExpiredOneTimeFires(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store2,
-		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
+		Modules: []bkmodule.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
 	})
 	require.NoError(t, err)
 	defer k.Close()

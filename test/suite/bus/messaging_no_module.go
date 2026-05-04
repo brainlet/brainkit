@@ -9,6 +9,7 @@ import (
 	"github.com/brainlet/brainkit"
 	messagingmod "github.com/brainlet/brainkit/modules/messaging"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/google/uuid"
 )
@@ -39,10 +40,10 @@ func testMessagingNoModuleCommandsAbsent(t *testing.T, _ *suite.TestEnv) {
 	}
 	defer unsub()
 
-	_, err = sdk.Publish(k, ctx, messagingmod.KitSendMsg{
+	_, err = protocol.Publish(k, ctx, messagingmod.KitSendMsg{
 		Topic:   "missing.service",
 		Payload: json.RawMessage(`{}`),
-	}, sdk.WithReplyTo(replyTo))
+	}, protocol.WithReplyTo(replyTo))
 	if err != nil {
 		t.Fatalf("publish kit.send: %v", err)
 	}

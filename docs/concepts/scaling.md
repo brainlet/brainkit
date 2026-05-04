@@ -56,15 +56,15 @@ Two message shapes produce two distribution patterns:
 | Event     | `subject.past`     | Fan-out (all)        | Broadcast state changes   |
 
 - **Commands** such as `package.deploy`, `tools.call`, `workflow.start`
-  are published with a `replyTo`. The transport hands them to exactly
-  one consumer in the queue group. Replies go back on the caller's
-  inbox.
+  use request/reply metadata under the hood. The transport hands them
+  to exactly one consumer in the queue group. Replies go back on the
+  caller's shared inbox.
 - **Events** such as `kit.deployed`, `plugin.started`,
   `bus.handler.failed`, `secrets.stored`, `plugin.registered` are
   broadcast. Every Kit on the same namespace receives the event.
 
-`sdk.Publish` requests a reply topic; `sdk.Emit` does not. The router
-picks the right distribution based on that.
+`Call` requests a reply path through the shared caller inbox; `sdk.Emit`
+does not. The router picks the right distribution based on that.
 
 ## Deployment Propagation
 
@@ -186,7 +186,7 @@ Scaling plugins means scaling the host Kit — each host owns an
 independent set of plugin subprocesses.
 
 A plugin binary links `github.com/brainlet/brainkit/sdk/plugin` only;
-no Watermill, no QuickJS, no library internals. See
+no in-process bus runtime, no QuickJS runtime, no library internals. See
 `examples/plugin-author/main.go` for the minimum viable plugin.
 
 ## Bottlenecks to Watch

@@ -2,7 +2,7 @@
 
 Read `TEST_MAP.md` before editing any test in this directory.
 
-Tests use env.Kernel which has pre-registered "echo" and "add" tools from suite.Full. The E2E pipeline test deploys .ts that registers a tool at runtime. Deploy source names include `-adv` suffix. Tests use SDK typed message publishing (sdk.Publish + sdk.SubscribeTo).
+Tests use env.Kernel which has pre-registered "echo" and "add" tools from suite.Full. The E2E pipeline test deploys .ts that registers a tool at runtime. Deploy source names include `-adv` suffix. Tests use SDK typed message publishing (protocol.Publish + sdk.SubscribeTo).
 
 ## Adding a test
 

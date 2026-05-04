@@ -1,7 +1,7 @@
 # Registry Test Map
 
 **Purpose:** Verifies the provider registry (AI providers, vector stores, storages), JS bridge registry access, packages client search/fetch, runtime storage lifecycle, and input abuse resilience.
-**Tests:** 25 functions across 4 files
+**Tests:** 34 functions across registry suite files
 **Entry point:** `registry_test.go` → `Run(t, env)`
 **Campaigns:** transport (amqp, redis, postgres, nats, sqlite), fullstack (amqp_postgres_vector, redis_mongodb)
 
@@ -16,6 +16,10 @@
 | testJSBridgeHas | Calls registry.has("provider", "openai") and registry.has("provider", "anthropic") from EvalTS, verifies true/false |
 | testJSBridgeList | Creates kernel with 2 AI providers, calls registry.list("provider") from EvalTS, verifies count=2 and both names present |
 | testJSBridgeResolve | Calls provider("openai") from EvalTS to resolve a provider instance, verifies resolved=true |
+| testJSDynamicProviderRegisterUsableByModel | Registers a custom OpenAI-compatible provider from JS, verifies public resolve redacts credentials while model()/provider() receive the unredacted runtime config |
+| testJSDynamicProviderRegisterPropagatesValidation | Calls JS registry.register("provider", "", ...) and verifies Go registration validation crosses the JS bridge |
+| testSecretRotateRefreshesJSProviderCache | Primes the JS provider cache, rotates `OPENAI_API_KEY`, verifies provider cache is rebuilt from the unredacted registry config while public resolve remains redacted |
+| testBusProviderAddInvalidatesJSProviderCache | Primes the JS provider cache, replaces the provider through the typed bus command, verifies the runtime cache is rebuilt from the new unredacted config |
 | testWithDeployedTS | Deploys .ts code that creates a tool using registry.has/registry.list, calls the tool, verifies it sees the registered OpenAI provider |
 
 ### packages_client.go — Registry client search/fetch tests

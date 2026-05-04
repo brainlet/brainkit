@@ -3,7 +3,7 @@ package sdk
 import "encoding/json"
 
 // BrainkitMessage is the interface all typed messages implement.
-// The BusTopic() return value is the Watermill routing key.
+// The BusTopic() return value is the logical Brainkit bus topic.
 //
 // The spec describes this as a union constraint (AiGenerateMsg | AiStreamMsg | ...).
 // Go does not support union constraints with methods across 100+ unrelated structs.

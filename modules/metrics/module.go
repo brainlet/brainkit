@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
 )
 
 // Module exposes metrics.get. Construct via New and include in
 // brainkit.Config.Modules when the runtime should expose bus metrics.
 type Module struct {
-	snapshot func() any
+	snapshot func() types.KernelMetrics
 }
 
 // New creates the metrics module.
@@ -26,7 +27,7 @@ func (m *Module) Status() bkmodule.Status { return bkmodule.StatusStable }
 
 // Mount registers metrics.get.
 func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
-	snapshot, err := bkmodule.RequireCapability[func() any](host, bkmodule.CapabilityMetricsSnapshot)
+	snapshot, err := bkmodule.RequireCapability[func() types.KernelMetrics](host, bkmodule.CapabilityMetricsSnapshot)
 	if err != nil {
 		return fmt.Errorf("metrics: %w", err)
 	}
@@ -62,7 +63,7 @@ func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	return New(), nil
 }
 
-// Describe surfaces module metadata for `brainkit modules list`.
+// Describe surfaces module metadata for module manifests.
 func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "metrics",
@@ -72,7 +73,7 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.CommandMessage[MetricsGetMsg, MetricsGetResp](),
 		},
 		Capabilities: []bkmodule.CapabilityDescriptor{
-			bkmodule.RequiredCapabilityOf[func() any](bkmodule.CapabilityMetricsSnapshot),
+			bkmodule.RequiredCapabilityOf[func() types.KernelMetrics](bkmodule.CapabilityMetricsSnapshot),
 		},
 	}
 }

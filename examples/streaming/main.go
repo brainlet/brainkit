@@ -23,6 +23,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"net"
 	"os"
@@ -59,7 +60,7 @@ func run() error {
 		Namespace: "streaming-demo",
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
-		Modules:   []brainkit.Module{packages.New(), gw},
+		Modules:   []bkmodule.Module{packages.New(), gw},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

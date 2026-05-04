@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/types"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
@@ -20,6 +21,11 @@ func (k *Kernel) PublishRaw(ctx context.Context, topic string, payload json.RawM
 // SubscribeRaw subscribes to a topic. Subscription is active before this returns.
 func (k *Kernel) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.Message)) (func(), error) {
 	return k.transportHost.SubscribeRaw(ctx, topic, handler)
+}
+
+// SubscribeRawHandle subscribes to a topic with context-aware close semantics.
+func (k *Kernel) SubscribeRawHandle(ctx context.Context, topic string, handler func(sdk.Message)) (bkmodule.Handle, error) {
+	return k.transportHost.SubscribeRawHandle(ctx, topic, handler)
 }
 
 // --- sdk.CrossNamespaceRuntime implementation ---
@@ -73,15 +79,6 @@ func (k *Kernel) CallJS(ctx context.Context, fn string, args any) (json.RawMessa
 		return nil, &sdkerrors.NotConfiguredError{Feature: "js runtime"}
 	}
 	return k.jsRuntime.CallJS(ctx, fn, args)
-}
-
-// callJSSync invokes a named function synchronously via bridge.Eval (not EvalTS).
-// Used for non-async operations that run on the JS thread directly (e.g., provider cache refresh).
-func (k *Kernel) callJSSync(fn string, args any) {
-	if k.jsRuntime == nil {
-		return
-	}
-	k.jsRuntime.CallJSSync(fn, args)
 }
 
 // ReplyRaw publishes directly to a resolved replyTo topic without namespace prefixing.

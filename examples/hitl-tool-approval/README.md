@@ -80,8 +80,8 @@ OPENAI_API_KEY=sk-... go run ./examples/hitl-tool-approval
 ```
 
 Under the hood the helper lives in
-`internal/engine/runtime/approval.js` + `generateWithApproval`
-endowment at `internal/engine/runtime/kit_runtime.js`. It turns
+`internal/jsruntime/runtime/approval.js` + `generateWithApproval`
+endowment at `internal/jsruntime/runtime/kit_runtime.js`. It turns
 the raw
 `agent.generate(..., {requireToolApproval: true})` + follow-up
 `approveToolCallGenerate({runId, toolCallId})` dance into a

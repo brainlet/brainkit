@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
 	"github.com/brainlet/brainkit/internal/syncx"
 
 	quickjs "github.com/buke/quickjs-go"
@@ -55,9 +56,10 @@ type Sandbox struct {
 	providers map[string]ProviderConfig
 	envVars   map[string]string
 
-	mu     syncx.Mutex
-	agents map[string]*Agent
-	closed bool
+	mu      syncx.Mutex
+	agents  map[string]*Agent
+	closing bool
+	closed  bool
 }
 
 // NewSandbox creates a sandbox with all polyfills and the Mastra bundle loaded.
@@ -77,35 +79,35 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 
 	b, err := jsbridge.New(bridgeCfg,
 		// Core runtime
-		jsbridge.Inspect(),        // __util_inspect, __util_format — must be before Console
+		jsbridge.Inspect(), // __util_inspect, __util_format — must be before Console
 		jsbridge.Console(),
-		jsbridge.Process(),        // process.env (Go-backed), process.version, nextTick, stdout
-		jsbridge.Encoding(),       // TextEncoder, TextDecoder, btoa, atob
-		jsbridge.Streams(),        // Web Streams (ReadableStream/WritableStream/TransformStream)
-		jsbridge.Crypto(),         // crypto.subtle + createHash, pbkdf2Sync merged onto globalThis.crypto
-		jsbridge.URL(),            // URL, URLSearchParams
-		jsbridge.Timers(),         // setTimeout, clearTimeout (Go-backed)
-		jsbridge.Scheduling(),     // setImmediate, clearImmediate, setInterval, clearInterval
-		jsbridge.Abort(),          // AbortController, AbortSignal, DOMException
-		jsbridge.Events(),         // EventEmitter (Node.js)
-		jsbridge.DOMEvents(),      // EventTarget, Event, CustomEvent (DOM)
+		jsbridge.Process(),    // process.env (Go-backed), process.version, nextTick, stdout
+		jsbridge.Encoding(),   // TextEncoder, TextDecoder, btoa, atob
+		jsbridge.Streams(),    // Web Streams (ReadableStream/WritableStream/TransformStream)
+		jsbridge.Crypto(),     // crypto.subtle + createHash, pbkdf2Sync merged onto globalThis.crypto
+		jsbridge.URL(),        // URL, URLSearchParams
+		jsbridge.Timers(),     // setTimeout, clearTimeout (Go-backed)
+		jsbridge.Scheduling(), // setImmediate, clearImmediate, setInterval, clearInterval
+		jsbridge.Abort(),      // AbortController, AbortSignal, DOMException
+		jsbridge.Events(),     // EventEmitter (Node.js)
+		jsbridge.DOMEvents(),  // EventTarget, Event, CustomEvent (DOM)
 		jsbridge.StructuredClone(),
-		jsbridge.Navigator(),      // navigator.userAgent, etc.
-		jsbridge.Performance(),    // performance.now(), timeOrigin
-		jsbridge.Intl(),           // Intl.DateTimeFormat (minimal)
-		jsbridge.ErrorCompat(),    // Error.captureStackTrace, global alias, Response.json
+		jsbridge.Navigator(),   // navigator.userAgent, etc.
+		jsbridge.Performance(), // performance.now(), timeOrigin
+		jsbridge.Intl(),        // Intl.DateTimeFormat (minimal)
+		jsbridge.ErrorCompat(), // Error.captureStackTrace, global alias, Response.json
 		// Node.js module APIs
-		jsbridge.NodeStreams(),     // Readable, Writable, Duplex, Transform — must be after Events
-		jsbridge.Buffer(),         // Buffer.from, alloc, concat — must be after Encoding
-		jsbridge.OS(),             // os.platform, arch, tmpdir, homedir
-		jsbridge.Net(),            // Socket extends Duplex — must be after NodeStreams + Buffer
-		jsbridge.DNS(),            // dns.lookup, dns.promises — must be after Net
-		jsbridge.Zlib(),           // zlib.inflate/deflate, gzip — must be after Buffer
-		jsbridge.WebAssembly(),    // WebAssembly.instantiate (wazero-backed)
-		jsbridge.FS(cfg.CWD),      // complete Node.js fs module (workspace-scoped)
-		jsbridge.Exec(cfg.CWD),    // child_process.exec, spawn — rebased under CWD/FSRoot
-		jsbridge.Fetch(fetchOpts...),  // fetch, Headers, Request, Response
-		jsbridge.WebSocketPoly(),      // client WebSocket — must come after Fetch (shares Bridge.Go)
+		jsbridge.NodeStreams(),       // Readable, Writable, Duplex, Transform — must be after Events
+		jsbridge.Buffer(),            // Buffer.from, alloc, concat — must be after Encoding
+		jsbridge.OS(),                // os.platform, arch, tmpdir, homedir
+		jsbridge.Net(),               // Socket extends Duplex — must be after NodeStreams + Buffer
+		jsbridge.DNS(),               // dns.lookup, dns.promises — must be after Net
+		jsbridge.Zlib(),              // zlib.inflate/deflate, gzip — must be after Buffer
+		jsbridge.WebAssembly(),       // WebAssembly.instantiate (wazero-backed)
+		jsbridge.FS(cfg.CWD),         // complete Node.js fs module (workspace-scoped)
+		jsbridge.Exec(cfg.CWD),       // child_process.exec, spawn — rebased under CWD/FSRoot
+		jsbridge.Fetch(fetchOpts...), // fetch, Headers, Request, Response
+		jsbridge.WebSocketPoly(),     // client WebSocket — must come after Fetch (shares Bridge.Go)
 		jsbridge.Audio(jsbridge.AudioWithSink(cfg.AudioSink)), // web-standard Audio class — silent without sink
 	)
 	if err != nil {
@@ -188,27 +190,52 @@ func (s *Sandbox) Bridge() *jsbridge.Bridge { return s.bridge }
 
 // Close destroys the sandbox, closing all agents and freeing the JS runtime.
 func (s *Sandbox) Close() {
+	_ = s.CloseContext(context.Background())
+}
+
+// CloseContext destroys the sandbox and waits for the Bridge to finish
+// context-aware teardown. Timed-out calls can be retried; the sandbox remains
+// closing until the bridge reports that QuickJS teardown completed.
+func (s *Sandbox) CloseContext(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
-		return
+		return nil
 	}
-	s.closed = true
-	// Copy agents to close outside the lock
-	agents := make([]*Agent, 0, len(s.agents))
-	for _, a := range s.agents {
-		agents = append(agents, a)
+	var agents []*Agent
+	if !s.closing {
+		s.closing = true
+		// Copy agents to close outside the lock.
+		agents = make([]*Agent, 0, len(s.agents))
+		for _, a := range s.agents {
+			agents = append(agents, a)
+		}
+		s.agents = nil
 	}
-	s.agents = nil
+	bridge := s.bridge
 	s.mu.Unlock()
 
 	for _, a := range agents {
 		a.close()
 	}
 
-	if s.bridge != nil {
-		s.bridge.Close()
+	if bridge != nil {
+		if err := bridge.CloseContext(ctx); err != nil {
+			return err
+		}
 	}
+	s.mu.Lock()
+	s.closed = true
+	s.closing = false
+	s.bridge = nil
+	s.mu.Unlock()
+	return nil
 }
 
 // registerAgent adds an agent to the sandbox's tracking map.

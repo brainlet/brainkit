@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/discovery"
 	"github.com/brainlet/brainkit/modules/topology"
@@ -19,13 +22,13 @@ import (
 // busDiscoveryModules pairs a bus-discovery module with a topology
 // module that reads from it. Every peer-ing test uses this pair so
 // tests actually exercise the topology bus surface end-to-end.
-func busDiscoveryModules(heartbeat, ttl time.Duration) []brainkit.Module {
+func busDiscoveryModules(heartbeat, ttl time.Duration) []bkmodule.Module {
 	d := discovery.NewModule(discovery.ModuleConfig{
 		Type:      "bus",
 		Heartbeat: heartbeat,
 		TTL:       ttl,
 	})
-	return []brainkit.Module{d, topology.NewModule(topology.Config{Discovery: d})}
+	return []bkmodule.Module{d, topology.NewModule(topology.Config{Discovery: d})}
 }
 
 // --- Discovery tests (from test/adversarial/discovery_test.go + test/infra/discovery_test.go) ---
@@ -135,7 +138,7 @@ func testDiscoveryBusPeers(t *testing.T, env *suite.TestEnv) {
 		listCh <- resp
 	})
 	defer unsub()
-	sdk.Publish(kit1, ctx, topology.PeersListMsg{}, sdk.WithReplyTo(replyTo))
+	protocol.Publish(kit1, ctx, topology.PeersListMsg{}, protocol.WithReplyTo(replyTo))
 
 	select {
 	case resp := <-listCh:
@@ -229,7 +232,7 @@ func testDiscoveryBusNamespaces(t *testing.T, env *suite.TestEnv) {
 		listCh <- resp
 	})
 	defer unsub()
-	sdk.Publish(observer, ctx, topology.PeersListMsg{}, sdk.WithReplyTo(replyTo))
+	protocol.Publish(observer, ctx, topology.PeersListMsg{}, protocol.WithReplyTo(replyTo))
 
 	select {
 	case resp := <-listCh:
@@ -253,7 +256,7 @@ func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
 		Namespace: "test-disc-cross",
 		CallerID:  "test-node",
 		Transport: transports.EmbeddedNATS(),
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			topology.NewModule(topology.Config{
 				Peers: []topology.Peer{
 					{Name: "peer-a", Namespace: "ns-a", Address: "localhost:4222"},
@@ -275,7 +278,7 @@ func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
 	})
 	defer unsub()
 
-	_, err = sdk.Publish(kit, ctx, topology.PeersListMsg{}, sdk.WithReplyTo(replyTo))
+	_, err = protocol.Publish(kit, ctx, topology.PeersListMsg{}, protocol.WithReplyTo(replyTo))
 	require.NoError(t, err)
 
 	select {

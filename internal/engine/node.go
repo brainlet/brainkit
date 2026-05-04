@@ -8,6 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/syncx"
 	"github.com/brainlet/brainkit/internal/types"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"
 )
@@ -75,7 +76,7 @@ func NewNode(cfg types.NodeConfig) (*Node, error) {
 }
 
 // StartRouter registers root command bindings (kernel + node-specific) on the
-// host and starts the Watermill router. Hot-mounted modules add their command
+// host and starts the message router. Hot-mounted modules add their command
 // handlers dynamically after the router is live.
 func (n *Node) StartRouter(ctx context.Context) error {
 	n.registerCommandBindings()
@@ -138,6 +139,11 @@ func (n *Node) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.
 	return n.Kernel.SubscribeRaw(ctx, topic, handler)
 }
 
+// SubscribeRawHandle subscribes to a raw topic with context-aware close semantics.
+func (n *Node) SubscribeRawHandle(ctx context.Context, topic string, handler func(sdk.Message)) (bkmodule.Handle, error) {
+	return n.Kernel.SubscribeRawHandle(ctx, topic, handler)
+}
+
 // --- sdk.CrossNamespaceRuntime implementation ---
 
 func (n *Node) PublishRawTo(ctx context.Context, targetNamespace, topic string, payload json.RawMessage) (string, error) {
@@ -172,7 +178,7 @@ func (n *Node) Shutdown(ctx context.Context) error {
 		}
 	}
 	if n.Kernel != nil {
-		collect(n.Kernel.close())
+		collect(n.Kernel.close(ctx))
 	}
 	if n.transportCloser != nil {
 		collect(n.transportCloser.Close())
@@ -192,6 +198,6 @@ func (n *Node) IsDraining() bool {
 	return n.Kernel.IsDraining()
 }
 
-// Plugin lifecycle moved to modules/plugins. The plugin restarter is
-// attached via (*Kit).SetPluginRestarter; the
-// package-deploy `Requires.plugins` gate reads kernel.pluginChecker.
+// Plugin lifecycle moved to modules/plugins. Plugin checker/restarter hooks
+// are attached by scoped module leases; the package-deploy `Requires.plugins`
+// gate reads kernel.pluginChecker.

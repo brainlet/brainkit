@@ -4,9 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"github.com/brainlet/brainkit/internal/syncx"
 
-	quickjs "github.com/buke/quickjs-go"
+	"github.com/brainlet/brainkit/internal/syncx"
 )
 
 // harnessSubscriber wraps a subscriber callback with an ID for unsubscription.
@@ -17,47 +16,14 @@ type harnessSubscriber struct {
 
 // registerEventBridge registers the __go_harness_event sync bridge function.
 // JS calls this for every Harness event: __go_harness_event(jsonString)
-func (h *Harness) registerEventBridge() {
-	qctx := h.rt.BridgeContext()
-	qctx.Globals().Set("__go_harness_event",
-		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
-			if len(args) < 1 {
-				return qctx.NewUndefined()
-			}
-			jsonStr := args[0].String()
-			h.handleEvent(jsonStr)
-			return qctx.NewUndefined()
-		}))
+func (h *Harness) registerEventBridge() error {
+	return h.rt.RegisterEventBridge(h.handleEvent)
 }
 
 // registerLockBridges registers thread lock bridge functions.
-func (h *Harness) registerLockBridges() {
-	qctx := h.rt.BridgeContext()
+func (h *Harness) registerLockBridges() error {
 	lock := h.threadLock
-
-	qctx.Globals().Set("__go_harness_lock_acquire",
-		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
-			if len(args) < 1 {
-				return qctx.ThrowError(fmt.Errorf("harness lock acquire: expected threadId"))
-			}
-			threadID := args[0].String()
-			if err := lock.Acquire(threadID); err != nil {
-				return qctx.NewString(err.Error())
-			}
-			return qctx.NewNull()
-		}))
-
-	qctx.Globals().Set("__go_harness_lock_release",
-		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
-			if len(args) < 1 {
-				return qctx.ThrowError(fmt.Errorf("harness lock release: expected threadId"))
-			}
-			threadID := args[0].String()
-			if err := lock.Release(threadID); err != nil {
-				return qctx.NewString(err.Error())
-			}
-			return qctx.NewNull()
-		}))
+	return h.rt.RegisterLockBridge(lock.Acquire, lock.Release)
 }
 
 // handleEvent processes a JSON event string from JS.
@@ -110,7 +76,7 @@ func (h *Harness) callJS(method string, argsJSON string) (string, error) {
 	} else {
 		code = fmt.Sprintf(`return JSON.stringify(await __brainkit_harness.%s(JSON.parse(%s)))`, method, quoteJSString(argsJSON))
 	}
-	return h.rt.EvalTS(h.rt.BridgeGoContext(), "harness-call.ts", code)
+	return h.rt.EvalTS(h.rt.RuntimeContext(), "harness-call.ts", code)
 }
 
 // callJSVoid calls a JS method and discards the result.
@@ -121,14 +87,14 @@ func (h *Harness) callJSVoid(method string, argsJSON string) error {
 
 // callJSDirect calls with a pre-built expression (no arg parsing).
 func (h *Harness) callJSDirect(code string) (string, error) {
-	return h.rt.EvalTS(h.rt.BridgeGoContext(), "harness-direct.ts", code)
+	return h.rt.EvalTS(h.rt.RuntimeContext(), "harness-direct.ts", code)
 }
 
 // callJSSimple calls a method that returns a primitive (string, bool, number).
 // Wraps result in JSON.stringify for safe Go parsing.
 func (h *Harness) callJSSimple(method string) (string, error) {
 	code := fmt.Sprintf(`return JSON.stringify(await __brainkit_harness.%s())`, method)
-	return h.rt.EvalTS(h.rt.BridgeGoContext(), "harness-simple.ts", code)
+	return h.rt.EvalTS(h.rt.RuntimeContext(), "harness-simple.ts", code)
 }
 
 // quoteJSString returns a JSON-encoded string (which is a valid JS string literal).

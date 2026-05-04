@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -67,7 +69,7 @@ func startTestServer(t *testing.T) (addr string) {
 		Namespace: "cli-test",
 		Transport: brainkit.Memory(),
 		FSRoot:    t.TempDir(),
-		Modules:   []brainkit.Module{healthmod.New(), packages.New(), gw},
+		Modules:   []bkmodule.Module{healthmod.New(), packages.New(), gw},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { kit.Close() })
@@ -99,6 +101,19 @@ func testVersionJSON(t *testing.T, _ *suite.TestEnv) {
 	out, err := runCLI(t, "--json", "version")
 	require.NoError(t, err)
 	assert.Contains(t, out, `"version"`)
+}
+
+func testRootCommandSurface(t *testing.T, _ *suite.TestEnv) {
+	root := cmd.NewRootCmd()
+	var names []string
+	for _, child := range root.Commands() {
+		if child.Hidden {
+			continue
+		}
+		names = append(names, child.Name())
+	}
+	sort.Strings(names)
+	assert.Equal(t, []string{"call", "deploy", "inspect", "new", "start", "version"}, names)
 }
 
 func testNewPackage(t *testing.T, _ *suite.TestEnv) {
@@ -154,7 +169,7 @@ func testNewServer(t *testing.T, _ *suite.TestEnv) {
 
 	mainGo, _ := os.ReadFile(filepath.Join(srvDir, "main.go"))
 	assert.Contains(t, string(mainGo), `"github.com/brainlet/brainkit/server"`)
-	assert.Contains(t, string(mainGo), "server.LoadConfig")
+	assert.Contains(t, string(mainGo), "configfile.Load")
 	assert.Contains(t, string(mainGo), "server.New")
 
 	yaml, _ := os.ReadFile(filepath.Join(srvDir, "brainkit.yaml"))

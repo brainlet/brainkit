@@ -9,13 +9,13 @@ This directory is the reference. The five files in `llm/` are dense, API-only pa
 ## Architecture at a glance
 
 - **Kit**: a single `*Kit` value created via `brainkit.New(brainkit.Config{...})`. Implements `sdk.Runtime` (publish / subscribe / reply / stream), `sdk.CrossNamespaceRuntime` (routed `To:` targeting), and `sdk.Replier` (correlated replies). Zero-value defaults — `Transport: brainkit.Memory()` if unset, embedded AMQP / NATS / Redis helpers are opt-in.
-- **Bus**: async pub/sub with typed `brainkit.Call[Req, Resp]` / `brainkit.CallStream[Req, Chunk, Resp]` helpers for Kit-specific behavior and generated package-owned `CallXxx(rt, ctx, msg, opts...)` wrappers for shipped message types. SDK-owned wrappers live in `sdk/typed_gen.go`; module-owned wrappers live with their module message package.
+- **Bus**: async pub/sub with typed `brainkit.Call[Req, Resp]` / `brainkit.CallStream[Req, Chunk, Resp]` helpers for Kit-specific behavior and generated package-owned `CallXxx(rt, ctx, msg, opts...)` wrappers for shipped message types. Module code can use matching `CallXxxWithCaller(caller, ctx, msg, opts...)` wrappers with the narrow request/reply capability. SDK-owned wrappers live in `sdk/typed_gen.go`; module-owned wrappers live with their module message package.
 - **SES compartments**: every deployed `.ts` file runs in its own hardened compartment with a tamed global surface (frozen `Date`, per-source module namespace `ts.<source>.<topic>`, no network / child-process access). Endowments are injected per-source: `bus`, `kit`, `model`, `embeddingModel`, `provider`, `storage`, `vectorStore`, `registry`, `tools`, `tool`, `fs` (Node.js shape), `mcp`, `output`, `secrets`, `generateWithApproval`, the full `"ai"` module and the full `"agent"` (Mastra) module.
-- **Transports**: `brainkit.Memory()` (default, zero-value), `brainkit.EmbeddedNATS()`, `brainkit.NATS(url)`, `brainkit.AMQP(url)`, `brainkit.Redis(url)` — each returns a `TransportConfig`. Topic sanitisers vary per backend; the Go surface is uniform.
+- **Transports**: `brainkit.Memory()` (default, zero-value) is linked by the root package. Import `github.com/brainlet/brainkit/transports` for `transports.EmbeddedNATS()`, `transports.NATS(url)`, `transports.AMQP(url)`, or `transports.Redis(url)`. Topic sanitisers vary per backend; the Go surface is uniform.
 - **Providers**: 12 built-in constructors (OpenAI, Anthropic, Google, Mistral, Groq, DeepSeek, XAI, Cohere, Perplexity, TogetherAI, Fireworks, Cerebras). `WithBaseURL(...)` / `WithHeaders(...)` options on every one.
 - **Storage & vectors**: 5 storage constructors (SQLite, Postgres, MongoDB, Upstash, InMemory) and 3 vector constructors (SQLite, PgVector, MongoDB). Registered as a named pool the runtime can look up by name.
-- **Modules**: 11 shippable modules composed via `Config.Modules`. Stable: `gateway`, `mcp`. Beta: `probes`, `topology`, `tracing`, `workflow`. WIP: `harness`. No declared `Status()`: `audit`, `discovery`, `plugins`, `schedules`.
-- **server**: thin HTTP wrapper (`server.New`, `server.QuickStart`) for bringing a Kit up behind an HTTP gateway. `server.LoadConfig` reads YAML with `$VAR` / `${VAR}` expansion. Not required — embed the Kit directly from Go in any long-running process.
+- **Modules**: 24 shipped module packages composed via `Config.Modules`. `presets/standard.CommandSet()` mounts the lightweight command/runtime set (`jsruntime`, `agents`, `reference`, `control`, `eval`, `health`, `messaging`, `metrics`, `registry`, `secrets`, `tools`, `packages`). Additional modules own resource-heavy or integration-specific surfaces such as `gateway`, `mcp`, `plugins`, `schedules`, `audit`, `tracing`, `probes`, `discovery`, `topology`, `workflow`, `testing`, and `harness`.
+- **server**: thin HTTP wrapper (`server.New`) for bringing a Kit up behind an HTTP gateway. `server/configfile` reads YAML with `$VAR` / `${VAR}` expansion; import `server/standard` for built-in YAML module names. `server/quickstart` holds the batteries-included preset. Not required — embed the Kit directly from Go in any long-running process.
 
 See `concepts/architecture.md` for the full diagram and `concepts/deployment-pipeline.md` for the transpile → strip-imports → SES-lockdown path.
 
@@ -29,7 +29,7 @@ All agents, tools, workflows and memories are created by **deploying a `.ts` fil
 // Create a Kit
 kit, _ := brainkit.New(brainkit.Config{
     Namespace: "myapp",
-    Transport: brainkit.EmbeddedNATS(),
+    Transport: transports.EmbeddedNATS(),
     FSRoot:    "/var/lib/myapp",
     Providers: []brainkit.ProviderConfig{brainkit.OpenAI(os.Getenv("OPENAI_API_KEY"))},
 })
@@ -98,8 +98,8 @@ Dense, API-only pages — each mirrors one source-of-truth and is kept in sync w
 
 | File | Covers |
 |------|--------|
-| [`llm/go-sdk.md`](llm/go-sdk.md) | `sdk.Runtime` / `CrossNamespaceRuntime` / `Replier` interfaces, bus primitives (`Publish` / `Emit` / `SubscribeTo` / `Reply` / `SendChunk` / `SendToService` / `ResolveServiceTopic`), envelopes (`EnvelopeOK` / `EnvelopeErr` / encode / decode / `IsEnvelope`), `brainkit.Call[Req,Resp]` / `CallStream[Req,Chunk,Resp]`, generated package-owned `CallXxx` wrappers, `CallOption` surface, typed SDK and module messages, errors, context keys. |
-| [`llm/go-config.md`](llm/go-config.md) | `brainkit.Config` (every field + default), `brainkit.New` / `brainkit.QuickStart`, the 12 `ProviderConfig` constructors with `WithBaseURL` / `WithHeaders`, the 5 `TransportConfig` helpers (+ `WithNATSName`), the 11-module catalog with status and module-specific helpers (`NewSQLiteTraceStore`, audit stores, tracing / discovery / topology / MCP / gateway configs), `StorageConfig` + `VectorConfig`, `KitStore` + records + `SQLiteStore` + `NewPostgresStore`, `SecretStore` + `$secret:NAME` interpolation, `TraceStore` + `Span` types, retry / error / health types, module-owned `plugins.PluginConfig` + `schedules.ScheduleConfig`, `server.Config` + `server.Server` + `QuickStart` + `LoadConfig` YAML shape. |
+| [`llm/go-sdk.md`](llm/go-sdk.md) | `sdk.Runtime` / `CrossNamespaceRuntime` / `Replier` interfaces, normal request/reply via `brainkit.Call[Req,Resp]` / `CallStream[Req,Chunk,Resp]` and generated package-owned `CallXxx` wrappers, event/subscription helpers (`Emit` / `SubscribeTo`), diagnostics-only `sdk/protocol` helpers (`Publish` / `PublishTo` / `SendToService` / `ResolveServiceTopic`), handler reply helpers (`Reply` / `SendChunk`), envelopes (`EnvelopeOK` / `EnvelopeErr` / encode / decode / `IsEnvelope`), `CallOption` surface, typed SDK and module messages, errors, context keys. |
+| [`llm/go-config.md`](llm/go-config.md) | `brainkit.Config` (every field + default), `brainkit.New` / `brainkit.QuickStart`, the 12 `ProviderConfig` constructors with `WithBaseURL` / `WithHeaders`, the 5 `TransportConfig` helpers (+ `WithNATSName`), the standard module catalog with status and module-specific helpers (`NewSQLiteTraceStore`, audit stores, tracing / discovery / topology / MCP / gateway configs), `StorageConfig` + `VectorConfig`, `KitStore` + records + `SQLiteStore` + `NewPostgresStore`, `SecretStore` + `$secret:NAME` interpolation, `TraceStore` contracts, retry / error / health types, module-owned `plugins.PluginConfig` + `schedules.ScheduleConfig`, `server.Config` + `server.Server` + `server/quickstart` + `server/configfile` YAML shape. |
 | [`llm/ts-runtime.md`](llm/ts-runtime.md) | SES compartment execution model, mailbox naming `ts.<source>.<topic>`, endowment map, `BrainkitError` + error codes (`VALIDATION_ERROR`, `NOT_FOUND`, `TIMEOUT`, `HANDLER_FAILED`, `TRANSPORT_ERROR`, `COMPARTMENT_ERROR`, `TOPIC_COLLISION`, `NOT_CONFIGURED`, `PLUGIN_*`), full `bus` API (`publish`/`emit`/`subscribe`/`on`/`sendTo`/`call`/`callTo`/`schedule`/`onCancel`/`withCancelController`), `BusMessage.reply`/`send`/`stream.text`/`progress`/`object`/`event`/`error`/`end` with `seq` semantics, `kit.register` valid types, `model` / `embeddingModel` / `provider` resolvers, `storage` / `vectorStore` named pools (LibSQL file-URL guards), `registry`, `tools` / `tool`, the Node.js-shaped `fs` endowment, `mcp`, `output`, `secrets.get`, `generateWithApproval`, tamed `Date` / `Math`, tagged `console`, deployment patterns, failure semantics. |
 | [`llm/ai-sdk.md`](llm/ai-sdk.md) | The `"ai"` module (AI SDK v5, no wrapping). `CallSettings` (`maxOutputTokens`, not `maxTokens`), `Usage` with v5 names (`inputTokens` / `outputTokens`) + deprecated v4 aliases, `generateText` + `GenerateTextParams` (with `stopWhen` and `@deprecated maxSteps`), `streamText` + `StreamPart` union, `generateObject`, `streamObject`, `embed`, `embedMany`, middleware (`defaultSettingsMiddleware`, `extractReasoningMiddleware`, `wrapLanguageModel`), `tool<T>`, `jsonSchema`, the Zod surface. |
 | [`llm/mastra.md`](llm/mastra.md) | The `"agent"` module (Mastra, no wrapping). `Agent` class + `AgentConfig` + `AgentCallOptions`, `AgentResult` with **v4 usage names** (`promptTokens` / `completionTokens`), `AgentStreamResult`, `createTool` + `ToolConfig`, `createWorkflow` + `createStep` + builder (`then` / `parallel` / `branch` / `foreach` / `dountil` / `sleep` / `commit`), `Memory` + `MemoryConfig` + `MemoryOptions` (semantic recall, working memory, observational memory), 5 storage classes (`InMemoryStore`, `LibSQLStore` — `opts.url` file-URL guard, `UpstashStore`, `PostgresStore`, `MongoDBStore`), 3 vector classes (`LibSQLVector` — `opts.connectionUrl` file-URL guard, `PgVector`, `MongoDBVector`), `ModelRouterEmbeddingModel`, `MDocument` / `GraphRAG` / `createVectorQueryTool` / `createDocumentChunkerTool` / `createGraphRAGTool` / `rerank` / `rerankWithScorer`, `Observability` + `DefaultExporter` + `SensitiveDataFilter`, `createScorer` builder + `runEvals`, `Workspace` + `LocalFilesystem` + `LocalSandbox`, `RequestContext`, HITL flow (tool `requireApproval`, workflow `ctx.suspend`, `generateWithApproval`). |
@@ -174,12 +174,14 @@ reply, _ := brainkit.Call[sdk.CustomMsg, json.RawMessage](kit, ctx, sdk.CustomMs
 Stand up an HTTP gateway in front of the same Kit with one call:
 
 ```go
-srv, _ := server.QuickStart("demo", "/var/lib/demo")
+import "github.com/brainlet/brainkit/server/quickstart"
+
+srv, _ := quickstart.New("demo", "/var/lib/demo")
 defer srv.Close()
 // HTTP gateway is live on :8080 via the embedded NATS transport.
 ```
 
-Load a Kit from YAML with env-var expansion (`$VAR` and `${VAR}` are substituted at load time by `server.LoadConfig`):
+Load a Kit from YAML with env-var expansion (`$VAR` and `${VAR}` are substituted at load time by `configfile.Load`):
 
 ```yaml
 # config.yaml
@@ -204,7 +206,10 @@ modules:
 ```
 
 ```go
-cfg, _ := server.LoadConfig("config.yaml")
+import "github.com/brainlet/brainkit/server/configfile"
+import _ "github.com/brainlet/brainkit/server/standard"
+
+cfg, _ := configfile.Load("config.yaml")
 srv, _ := server.New(cfg)
 defer srv.Close()
 ```

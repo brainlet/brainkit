@@ -32,9 +32,10 @@ const (
 	JSBridgeBusUnschedule = "__go_brainkit_bus_unschedule"
 
 	// Registry bridges — provider/storage/vector resolution
-	JSBridgeRegistryResolve = "__go_registry_resolve"
-	JSBridgeRegistryHas     = "__go_registry_has"
-	JSBridgeRegistryList    = "__go_registry_list"
+	JSBridgeRegistryResolve        = "__go_registry_resolve"
+	JSBridgeRegistryRuntimeResolve = "__go_registry_runtime_resolve"
+	JSBridgeRegistryHas            = "__go_registry_has"
+	JSBridgeRegistryList           = "__go_registry_list"
 
 	// Resource tracking bridge — Go-native resource registry
 	JSBridgeResourceRegister = "__go_resource_register"

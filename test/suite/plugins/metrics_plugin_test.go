@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	auditmod "github.com/brainlet/brainkit/modules/audit"
@@ -55,7 +58,7 @@ func TestMetricsPluginE2E(t *testing.T) {
 		Namespace: "test-metrics-plugin",
 		Transport: transports.EmbeddedNATS(),
 		FSRoot:    tmpDir,
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			toolsmod.New(),
 			healthmod.New(),
 			metricsmod.New(),
@@ -155,10 +158,10 @@ func callPluginTool(t *testing.T, kit *brainkit.Kit, ctx context.Context, toolNa
 	require.NoError(t, err)
 	defer unsub()
 
-	sdk.Publish(kit, ctx, toolmsg.ToolCallMsg{
+	protocol.Publish(kit, ctx, toolmsg.ToolCallMsg{
 		Name:  toolName,
 		Input: input,
-	}, sdk.WithReplyTo(replyTo))
+	}, protocol.WithReplyTo(replyTo))
 
 	select {
 	case msg := <-ch:

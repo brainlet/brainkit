@@ -24,7 +24,7 @@ declare module "brainkit" {
 
   // ── Bus Messaging ──────────────────────────────────────────
 
-  /** Publish to bus with replyTo. Callback function receives the reply. */
+  /** Low-level request publish for AssemblyScript shards. Callback receives the correlated response. */
   export function publish(topic: string, payload: string, callbackFuncName: string): void;
 
   /** Fire-and-forget bus publish. No replyTo, no callback. */

@@ -90,23 +90,27 @@ The deploy handler runs the package through six stages:
 
 When `PackageDeployMsg.Path` is set, the handler reads
 `manifest.json` (if any), resolves the entry, and runs esbuild inline
-(pure-Go port) to produce a single JS blob with dependencies inlined.
-When `PackageDeployMsg.Files` is set, the files are loaded verbatim —
-no bundler is run, because inline packages are assumed single-file.
+(pure-Go port) to produce one normalized JavaScript artifact with
+relative dependencies inlined. When `PackageDeployMsg.Files` is set,
+the package module runs the same bundling pipeline against the in-memory
+file graph.
 
-### 2. TypeScript transpile
+### 2. Artifact normalization
 
-If the entry ends in `.ts`, the source is fed through the vendored
-microsoft/typescript-go transpiler. Types, interfaces, generics, and
-`import type` lines are stripped; every runtime construct (imports,
-async/await, classes, top-level await) is preserved.
+The package module, not the JS runtime core, owns TypeScript and file
+graph preparation. Types, interfaces, generics, and `import type` lines
+are stripped by bundling. External imports such as `kit`, `ai`, and
+`agent` are removed from the artifact because those symbols are injected
+as Compartment endowments.
 
-### 3. ES import strip
+### 3. Runtime handoff
 
-Runtime `import` lines such as `import { Agent, createTool, z } from
-"agent"` are removed before evaluation. The symbols they refer to are
-injected as Compartment endowments instead — the deployed code sees
-them as globals.
+The runtime may keep a `.ts` logical source name for addressing and
+persistence, but package artifacts enter the runtime as normalized
+JavaScript. Direct eval/dev paths may still use `EvalTS`; package deploy
+does not rely on runtime-side TypeScript preparation. Persistence stores the
+artifact kind explicitly so package or tooling-produced JavaScript is restored
+without being prepared as raw TypeScript later.
 
 ### 4. Compartment + endowments
 

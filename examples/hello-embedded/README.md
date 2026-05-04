@@ -15,8 +15,8 @@ Expected output:
 
 Wire the same pattern into a real service by:
 
-- Swapping `brainkit.Memory()` for `brainkit.EmbeddedNATS()` or
-  `brainkit.NATS(url)` so other Kits on the same transport can call
+- Swapping `brainkit.Memory()` for `transports.EmbeddedNATS()` or
+  `transports.NATS(url)` so other Kits on the same transport can call
   your handlers.
 - Loading `.ts` packages from disk with
   `packages.FromDir("./agents/support")` instead of the

@@ -45,6 +45,7 @@ func (s *PostgresKitStore) SaveDeployment(d types.PersistedDeployment) error {
 	return s.queries.SaveDeployment(ctx(), pggen.SaveDeploymentParams{
 		Source: d.Source, Code: d.Code, DeployOrder: int32(d.Order),
 		DeployedAt: d.DeployedAt, PackageName: d.PackageName,
+		ArtifactKind: string(d.EffectiveArtifactKind()),
 	})
 }
 
@@ -58,6 +59,7 @@ func (s *PostgresKitStore) LoadDeployments() ([]types.PersistedDeployment, error
 		result[i] = types.PersistedDeployment{
 			Source: r.Source, Code: r.Code, Order: int(r.DeployOrder),
 			DeployedAt: r.DeployedAt, PackageName: r.PackageName,
+			ArtifactKind: types.DeployArtifactKind(r.ArtifactKind),
 		}
 	}
 	return result, nil
@@ -71,6 +73,7 @@ func (s *PostgresKitStore) LoadDeployment(source string) (types.PersistedDeploym
 	return types.PersistedDeployment{
 		Source: r.Source, Code: r.Code, Order: int(r.DeployOrder),
 		DeployedAt: r.DeployedAt, PackageName: r.PackageName,
+		ArtifactKind: types.DeployArtifactKind(r.ArtifactKind),
 	}, nil
 }
 

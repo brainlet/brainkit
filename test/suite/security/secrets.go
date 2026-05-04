@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
@@ -27,7 +30,7 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store, SecretKey: "exfil-test-key-32-characters!!",
-		Modules: []brainkit.Module{toolsmod.New()},
+		Modules: []bkmodule.Module{toolsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -209,7 +212,7 @@ func testSecretRotateDOS(t *testing.T, env *suite.TestEnv) {
 
 	secRotateSecret(t, k, "SHARED_KEY_SEC", "rotated-by-attacker")
 
-	pr3, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
+	pr3, _ := protocol.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.victim-secret-sec.check", Payload: json.RawMessage(`{}`),
 	})
 	ch3 := make(chan []byte, 1)

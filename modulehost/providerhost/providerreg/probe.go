@@ -8,17 +8,30 @@ import (
 	"time"
 )
 
-// ProbeAIProvider runs a live HTTP health check against a registered AI provider.
-// Hits the provider's models endpoint to verify API key validity and connectivity.
+// ProbeAIProvider runs a live HTTP health check against a registered AI
+// provider under the registry lifecycle context.
 func (r *ProviderRegistry) ProbeAIProvider(name string) ProbeResult {
+	return r.ProbeAIProviderContext(r.ctx, name)
+}
+
+// ProbeAIProviderContext runs a live HTTP health check against a registered AI
+// provider. Hits the provider's models endpoint to verify API key validity and
+// connectivity.
+func (r *ProviderRegistry) ProbeAIProviderContext(ctx context.Context, name string) ProbeResult {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	r.mu.RLock()
 	e, ok := r.aiProviders[name]
+	var reg AIProviderRegistration
+	if ok {
+		reg = e.registration.(AIProviderRegistration)
+	}
 	r.mu.RUnlock()
 	if !ok {
 		return ProbeResult{Error: "provider not registered: " + name}
 	}
 
-	reg := e.registration.(AIProviderRegistration)
 	caps := KnownAICapabilities(reg.Type)
 
 	endpoint, headers := probeEndpoint(reg)
@@ -38,7 +51,7 @@ func (r *ProviderRegistry) ProbeAIProvider(name string) ProbeResult {
 	}
 
 	start := time.Now()
-	err := httpProbe(endpoint, headers, timeout)
+	err := httpProbe(ctx, endpoint, headers, timeout)
 	latency := time.Since(start)
 
 	r.mu.Lock()
@@ -183,8 +196,11 @@ func probeEndpoint(reg AIProviderRegistration) (string, map[string]string) {
 }
 
 // httpProbe sends a GET request to the endpoint and checks for a 2xx response.
-func httpProbe(endpoint string, headers map[string]string, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+func httpProbe(parent context.Context, endpoint string, headers map[string]string, timeout time.Duration) error {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)

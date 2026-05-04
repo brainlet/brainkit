@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/tracing"
@@ -147,7 +150,7 @@ func testCrossGoToolEmitsBusEvent(t *testing.T, _ *suite.TestEnv) {
 	})
 	defer unsub()
 
-	pr, _ := sdk.Publish(k, ctx, toolmsg.ToolCallMsg{Name: "process-and-emit-adv", Input: map[string]any{"data": "hello"}})
+	pr, _ := protocol.Publish(k, ctx, toolmsg.ToolCallMsg{Name: "process-and-emit-adv", Input: map[string]any{"data": "hello"}})
 	ch := make(chan []byte, 1)
 	unsub2, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub2()
@@ -172,7 +175,7 @@ func testCrossTracedToolCall(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		TraceStore: traceStore,
-		Modules:    []brainkit.Module{toolsmod.New()},
+		Modules:    []bkmodule.Module{toolsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -188,7 +191,7 @@ func testCrossTracedToolCall(t *testing.T, _ *suite.TestEnv) {
 	})))
 
 	ctx := context.Background()
-	pr, _ := sdk.Publish(k, ctx, toolmsg.ToolCallMsg{Name: "traced-echo-adv", Input: map[string]any{"message": "traced"}})
+	pr, _ := protocol.Publish(k, ctx, toolmsg.ToolCallMsg{Name: "traced-echo-adv", Input: map[string]any{"message": "traced"}})
 	ch := make(chan []byte, 1)
 	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
@@ -263,7 +266,7 @@ func testCrossDeployWithPersistenceAndRestart(t *testing.T, _ *suite.TestEnv) {
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
-		Modules: []brainkit.Module{toolsmod.New(), packages.New()},
+		Modules: []bkmodule.Module{toolsmod.New(), packages.New()},
 	})
 	require.NoError(t, err)
 
@@ -288,7 +291,7 @@ func testCrossDeployWithPersistenceAndRestart(t *testing.T, _ *suite.TestEnv) {
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
-		Modules: []brainkit.Module{toolsmod.New(), packages.New()},
+		Modules: []bkmodule.Module{toolsmod.New(), packages.New()},
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -301,7 +304,7 @@ func testCrossDeployWithPersistenceAndRestart(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(k2, ctx, sdk.CustomMsg{
+	pr, _ := protocol.Publish(k2, ctx, sdk.CustomMsg{
 		Topic: "ts.persist-handler-adv.ask", Payload: json.RawMessage(`{"q":"hello"}`),
 	})
 	ch := make(chan []byte, 1)

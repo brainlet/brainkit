@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestGenerateModulePackageUsesSDKReferences(t *testing.T) {
+func TestGenerateModulePackageUsesSDKAndModuleReferences(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "messages.go"), `package demo
 
@@ -35,21 +35,38 @@ func (TickEvent) BusTopic() string { return "demo.tick" }
 		t.Fatalf("len(types) = %d, want 2: %#v", len(types), types)
 	}
 
-	out := filepath.Join(t.TempDir(), "typed_gen.go")
+	out := filepath.Join(t.TempDir(), "modules", "demo", "typed_gen.go")
 	if err := generate(out, packageName, types); err != nil {
 		t.Fatalf("generate() error = %v", err)
 	}
 
 	generated := readFile(t, out)
 	assertContains(t, generated, "package demo")
+	assertContains(t, generated, `bkmodule "github.com/brainlet/brainkit/module"`)
 	assertContains(t, generated, "\"github.com/brainlet/brainkit/sdk\"")
-	assertContains(t, generated, "func PublishPing(rt sdk.Runtime, ctx context.Context, msg PingMsg, opts ...sdk.PublishOption) (sdk.PublishResult, error)")
-	assertContains(t, generated, "return sdk.Publish(rt, ctx, msg, opts...)")
-	assertContains(t, generated, "func SubscribePingResp(rt sdk.Runtime, ctx context.Context, topic string, handler func(PingResp, sdk.Message)) (func(), error)")
+	assertNotContains(t, generated, "func PublishPing")
+	assertNotContains(t, generated, "func SubscribePingResp")
 	assertContains(t, generated, "func CallPing(rt sdk.CallerRuntime, ctx context.Context, msg PingMsg, opts ...sdk.CallOption) (PingResp, error)")
 	assertContains(t, generated, "return sdk.Call[PingMsg, PingResp](rt, ctx, msg, opts...)")
+	assertContains(t, generated, "func CallPingWithCaller(caller bkmodule.RequestCaller, ctx context.Context, msg PingMsg, opts ...sdk.CallOption) (PingResp, error)")
+	assertContains(t, generated, "return sdk.CallWithCaller[PingMsg, PingResp](caller, ctx, msg, opts...)")
 	assertContains(t, generated, "func EmitTick(rt sdk.Runtime, ctx context.Context, msg TickEvent) error")
 	assertContains(t, generated, "func SubscribeTick(rt sdk.Runtime, ctx context.Context, topic string, handler func(TickEvent, sdk.Message)) (func(), error)")
+}
+
+func TestGenerateNonModulePackageUsesSDKRequestCaller(t *testing.T) {
+	types := []msgType{
+		{Name: "PingMsg", BaseName: "Ping", RespName: "PingResp"},
+	}
+	out := filepath.Join(t.TempDir(), "sdk", "systemmsg", "typed_gen.go")
+	if err := generate(out, "systemmsg", types); err != nil {
+		t.Fatalf("generate() error = %v", err)
+	}
+
+	generated := readFile(t, out)
+	assertContains(t, generated, "package systemmsg")
+	assertNotContains(t, generated, "github.com/brainlet/brainkit/module")
+	assertContains(t, generated, "func CallPingWithCaller(caller sdk.RequestCaller, ctx context.Context, msg PingMsg, opts ...sdk.CallOption) (PingResp, error)")
 }
 
 func TestGenerateSDKPackageUsesLocalReferences(t *testing.T) {
@@ -65,10 +82,12 @@ func TestGenerateSDKPackageUsesLocalReferences(t *testing.T) {
 	generated := readFile(t, out)
 	assertContains(t, generated, "package sdk")
 	assertNotContains(t, generated, "\"github.com/brainlet/brainkit/sdk\"")
-	assertContains(t, generated, "func PublishPing(rt Runtime, ctx context.Context, msg PingMsg, opts ...PublishOption) (PublishResult, error)")
-	assertContains(t, generated, "func SubscribePingResp(rt Runtime, ctx context.Context, topic string, handler func(PingResp, Message)) (func(), error)")
+	assertNotContains(t, generated, "func PublishPing")
+	assertNotContains(t, generated, "func SubscribePingResp")
 	assertContains(t, generated, "func CallPing(rt CallerRuntime, ctx context.Context, msg PingMsg, opts ...CallOption) (PingResp, error)")
 	assertContains(t, generated, "return Call[PingMsg, PingResp](rt, ctx, msg, opts...)")
+	assertContains(t, generated, "func CallPingWithCaller(caller RequestCaller, ctx context.Context, msg PingMsg, opts ...CallOption) (PingResp, error)")
+	assertContains(t, generated, "return CallWithCaller[PingMsg, PingResp](caller, ctx, msg, opts...)")
 	assertContains(t, generated, "func SubscribeTick(rt Runtime, ctx context.Context, topic string, handler func(TickEvent, Message)) (func(), error)")
 }
 

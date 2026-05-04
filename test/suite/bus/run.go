@@ -67,7 +67,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("context_cancellation", func(t *testing.T) { testContextCancellation(t, env) })
 		t.Run("subscribe_cancellation", func(t *testing.T) { testSubscribeCancellation(t, env) })
 
-		// sdk_reply.go — sdk.Reply, sdk.SendChunk, sdk.SendToService
+		// sdk_reply.go — sdk.Reply, sdk.SendChunk, protocol.SendToService
 		t.Run("sdk_reply", func(t *testing.T) { testSDKReply(t, env) })
 		t.Run("sdk_reply_go_to_go", func(t *testing.T) { testSDKReplyGoToGo(t, env) })
 		t.Run("sdk_send_chunk", func(t *testing.T) { testSDKSendChunk(t, env) })

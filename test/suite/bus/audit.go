@@ -12,6 +12,7 @@ import (
 	metricsmod "github.com/brainlet/brainkit/modules/metrics"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -78,7 +79,7 @@ func testAuditNoModuleCommandsAbsent(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(k, ctx, auditmsg.AuditQueryMsg{})
+	pr, err := protocol.Publish(k, ctx, auditmsg.AuditQueryMsg{})
 	require.NoError(t, err)
 
 	ch := make(chan struct{}, 1)

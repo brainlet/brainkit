@@ -1,6 +1,7 @@
 package storagehost
 
 import (
+	"context"
 	"fmt"
 	"sync"
 )
@@ -9,7 +10,9 @@ import (
 // sqlite/libsql-backed Mastra storage and vector stores.
 type Bridge interface {
 	URL() string
-	Close() error
+	// CloseContext releases the bridge before ctx expires. Implementations
+	// should leave the bridge usable when returning an error.
+	CloseContext(context.Context) error
 }
 
 // BridgeBuilder starts a bridge for a local storage path.

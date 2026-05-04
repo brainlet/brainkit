@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/sdk/protocol"
+
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/eval/evalmsg"
@@ -47,7 +50,7 @@ func testTopologyPeersListBus(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		CallerID:  "test",
 		FSRoot:    t.TempDir(),
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			topology.NewModule(topology.Config{
 				Peers: []topology.Peer{
 					{Name: "a", Namespace: "ns-a"},
@@ -120,7 +123,7 @@ func testTopologyCallToErrorsOnUnknownName(t *testing.T, _ *suite.TestEnv) {
 		Transport: transports.EmbeddedNATS(),
 		CallerID:  "caller",
 		FSRoot:    t.TempDir(),
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			topology.NewModule(topology.Config{
 				Peers: []topology.Peer{
 					{Name: "known", Namespace: "some-namespace"},
@@ -167,7 +170,7 @@ func testTopologyCallToResolvesAcrossKits(t *testing.T, env *suite.TestEnv) {
 		Transport: transports.NATS(natsURL),
 		CallerID:  "caller",
 		FSRoot:    t.TempDir(),
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			topology.NewModule(topology.Config{
 				Peers: []topology.Peer{
 					{Name: "target-peer", Namespace: targetNS},
@@ -188,12 +191,12 @@ func testTopologyCallToResolvesAcrossKits(t *testing.T, env *suite.TestEnv) {
 
 	// CustomMsg with a string topic lets us address ts.<source>.ping
 	// through the resolved namespace without a dedicated typed command.
-	pr, err := sdk.Publish(caller, ctx, sdk.CustomMsg{
+	pr, err := protocol.Publish(caller, ctx, sdk.CustomMsg{
 		Topic:   "ts.topo-ping.ping",
 		Payload: json.RawMessage(`{}`),
 	})
 	require.NoError(t, err)
-	// sdk.Publish does not expose WithCallTo — bypass with a direct
+	// protocol.Publish does not expose WithCallTo — bypass with a direct
 	// PublishTo that confirms routing works. The name-based route path
 	// is covered by the higher-level brainkit.Call tests once
 	// CustomMsg becomes Call-shaped. For now assert topology.Resolve

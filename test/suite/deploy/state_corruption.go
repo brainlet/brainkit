@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -46,7 +47,7 @@ func testStateCorruptionBadTranspile(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packages.New()},
+		Modules: []bkmodule.Module{packages.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
@@ -99,7 +100,7 @@ func testStateCorruptionDuplicatePersistedSource(t *testing.T, _ *suite.TestEnv)
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packages.New()},
+		Modules: []bkmodule.Module{packages.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -123,7 +124,7 @@ func testStateCorruptionStoreWipedMidlife(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store,
-		Modules: []brainkit.Module{packages.New()},
+		Modules: []bkmodule.Module{packages.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -166,7 +167,7 @@ func testStateCorruptionEmptyCode(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packages.New()},
+		Modules: []bkmodule.Module{packages.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
@@ -204,7 +205,7 @@ func testStateCorruptionZeroDurationSchedule(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packages.New()},
+		Modules: []bkmodule.Module{packages.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -236,7 +237,7 @@ func testStateCorruptionPastScheduleFires(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packages.New()},
+		Modules: []bkmodule.Module{packages.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -275,7 +276,7 @@ func testStateCorruptionNonexistentRoleOnDeploy(t *testing.T, _ *suite.TestEnv) 
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packages.New()},
+		Modules: []bkmodule.Module{packages.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()

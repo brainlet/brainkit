@@ -2,11 +2,11 @@
 
 **Deploy AI agents as `.ts` files at runtime. No restart. No schema migration. No service to babysit.**
 
-brainkit is a Go library that embeds a hardened JS/TS runtime (QuickJS + SES
-Compartments) and a typed pub/sub bus (Watermill) behind a single `Kit` type.
-You write agents as TypeScript, hand them to a running Kit, and they execute
-inside an isolated Compartment with first-class access to the [Mastra][mastra]
-framework, the AI SDK, and every Go tool you register.
+brainkit is a Go library centered on one `Kit` type: a typed pub/sub bus,
+runtime registries, and opt-in modules. Mount `modules/jsruntime` when you
+want the hardened JS/TS runtime (QuickJS + SES Compartments); TypeScript
+agents then execute inside isolated Compartments with first-class access to the
+[Mastra][mastra] framework, the AI SDK, and every Go tool you register.
 
 One binary. Zero external services in library mode. Same code path scales from
 embedded-in-a-CLI to a multi-kit cluster over NATS.
@@ -20,7 +20,7 @@ Embed a Kit, deploy an agent, call a tool:
 ```go
 kit, _ := brainkit.New(brainkit.Config{
     Namespace: "myapp",
-    Transport: brainkit.EmbeddedNATS(),
+    Transport: transports.EmbeddedNATS(),
     Providers: []brainkit.ProviderConfig{
         brainkit.OpenAI(os.Getenv("OPENAI_API_KEY")),
     },
@@ -133,10 +133,10 @@ Curated — `examples/` has 34 total.
 When library mode isn't enough — long-running agent backend, gateway, plugins:
 
 ```go
-import "github.com/brainlet/brainkit/server"
+import "github.com/brainlet/brainkit/server/quickstart"
 
-srv, _ := server.QuickStart("my-app", "/var/brainkit",
-    server.WithSecretKey(os.Getenv("SECRET_KEY")))
+srv, _ := quickstart.New("my-app", "/var/brainkit",
+    quickstart.WithSecretKey(os.Getenv("SECRET_KEY")))
 defer srv.Close()
 _ = srv.Start(ctx)
 ```
@@ -151,29 +151,45 @@ go run . --config brainkit.yaml
 
 ## Modules
 
-All opt-in. Enable by passing to `Config.Modules`; nothing runs you didn't ask
-for.
+All opt-in. Enable by passing modules to `Config.Modules`; nothing runs you
+didn't ask for. The standard command set is intentionally visible code:
+`presets/standard.CommandSet()` returns `jsruntime`, `agents`, `reference`,
+`control`, `eval`, `health`, `messaging`, `metrics`, `registry`, `secrets`,
+`tools`, and `packages`.
 
-| Module              | Maturity | What it adds                                         |
-|---------------------|----------|------------------------------------------------------|
-| `modules/gateway`   | stable   | HTTP gateway: routes, SSE, WebSocket, static FS      |
-| `modules/mcp`       | stable   | MCP client — external MCP servers become tools       |
-| `modules/plugins`   | beta     | Subprocess plugin supervisor + WebSocket control plane |
-| `modules/schedules` | beta     | Persisted cron-style scheduling                      |
-| `modules/audit`     | beta     | Audit log query surface + SQLite / Postgres stores   |
-| `modules/tracing`   | beta     | Distributed tracing with SQLite backing              |
-| `modules/probes`    | beta     | Provider health probes                               |
-| `modules/discovery` | beta     | Bus-mode peer discovery                              |
-| `modules/topology`  | beta     | Cross-kit routing + `peers.*` bus commands           |
-| `modules/workflow`  | beta     | Declarative agent workflow DSL                       |
-| `modules/harness`   | **wip**  | Higher-level agent orchestration layer               |
+| Module | Maturity | What it adds |
+|---|---|---|
+| `modules/agents` | stable | Agent registry commands |
+| `modules/audit` | stable | Persistent audit query/stats/prune commands and stores |
+| `modules/control` | stable | Drain, peer, module lifecycle, and inspect commands |
+| `modules/discovery` | beta | Static or bus-announced peer discovery |
+| `modules/eval` | beta | `kit.eval` over the narrow JS eval runtime |
+| `modules/gateway` | stable | HTTP gateway: routes, SSE, WebSocket, static FS |
+| `modules/harness` | **wip** | Higher-level agent orchestration layer |
+| `modules/health` | stable | `kit.health` bus snapshot |
+| `modules/jsruntime` | beta | JS/TS runtime activation and runtime capabilities |
+| `modules/mcp` | stable | MCP client: external MCP servers become tools |
+| `modules/messaging` | stable | Nested request/reply bridge through the shared caller |
+| `modules/metrics` | stable | Stable runtime metrics snapshot |
+| `modules/packages` | stable | `.ts` package deploy/teardown/list/info commands |
+| `modules/plugins` | stable | Subprocess plugin supervisor and WebSocket control plane |
+| `modules/probes` | beta | Scheduled provider/storage/vector probes |
+| `modules/reference` | stable | Embedded reference corpus commands |
+| `modules/registry` | stable | Provider/storage/vector registry admin commands |
+| `modules/schedules` | beta | Persisted cron-style scheduling |
+| `modules/secrets` | stable | Secret management commands and events |
+| `modules/testing` | beta | `.test.ts` runner command |
+| `modules/tools` | stable | Tool registry commands and typed Go tool modules |
+| `modules/topology` | beta | Cross-kit routing and `peers.*` bus commands |
+| `modules/tracing` | beta | Distributed tracing with SQLite/Postgres-backed stores |
+| `modules/workflow` | stable | Mastra workflow start/cancel/status wrappers |
 
 ## Architecture shape
 
 ```
     ┌──────────────────────── your Go binary ───────────────────────┐
     │                                                                │
-    │  brainkit.Kit ──► kernel ──► QuickJS context ──► SES lockdown  │
+    │  brainkit.Kit ──► kernel ──► jsruntime module ─► SES lockdown  │
     │      │                           │                             │
     │      │                           ▼                             │
     │      │              ┌───── Compartment ─────┐                  │
@@ -185,7 +201,7 @@ for.
     │      │              └───────────────────────┘    │ bus.*        │
     │      │                           ▲                │ tool.*       │
     │      ▼                           │                │ fetch        │
-    │  Watermill bus ◄─────────────────┼────────────────┘             │
+    │  Brainkit bus ◄──────────────────┼────────────────┘             │
     │      │                           │                              │
     │      ▼                           ▼                              │
     │  Go handlers · tools · plugins · MCP · modules                  │

@@ -9,6 +9,7 @@ import (
 
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -59,7 +60,7 @@ func testMultipleInFlight(t *testing.T, env *suite.TestEnv) {
 func testContextCancellation(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, _ = sdk.Publish(env.Kit, ctx, toolmsg.ToolListMsg{})
+	_, _ = protocol.Publish(env.Kit, ctx, toolmsg.ToolListMsg{})
 }
 
 func testSubscribeCancellation(t *testing.T, env *suite.TestEnv) {

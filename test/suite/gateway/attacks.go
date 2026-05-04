@@ -253,10 +253,40 @@ func testAttackRouteRemovalViaBus(t *testing.T, env *suite.TestEnv) {
 
 	// Check if route still works (attacker shouldn't have removed it)
 	status, body := gwGet(t, gw, "/protected")
-	if status == 404 {
-		t.Logf("FINDING: attacker deployment removed a gateway route via bus")
-	} else {
-		assert.Equal(t, 200, status)
-		assert.Contains(t, body, "protected")
-	}
+	require.Equal(t, 200, status)
+	assert.Contains(t, body, "protected")
+}
+
+// testAttackRouteHijackViaBus — can a .ts deployment replace or expose another owner's route?
+func testAttackRouteHijackViaBus(t *testing.T, env *suite.TestEnv) {
+	k := suite.Full(t).Kit
+	gw := gwSetup(t, k)
+
+	testutil.Deploy(t, k, "gw-protected-hijack.ts", `bus.on("api", function(msg) { msg.reply({protected: true}); });`)
+	gw.Handle("GET", "/protected-hijack", "ts.gw-protected-hijack.api", bkgw.OwnedBy("gw-protected-hijack.ts"))
+
+	testutil.Deploy(t, k, "gw-route-attacker.ts", `
+		bus.on("api", function(msg) { msg.reply({attacker: true}); });
+		await bus.call("gateway.http.route.add", {
+			method: "GET",
+			path: "/protected-hijack",
+			topic: "ts.gw-route-attacker.api",
+			type: "handle",
+			owner: "gw-route-attacker.ts"
+		}, {timeoutMs: 1000});
+		await bus.call("gateway.http.route.add", {
+			method: "GET",
+			path: "/leaked-protected",
+			topic: "ts.gw-protected-hijack.api",
+			type: "handle",
+			owner: "gw-route-attacker.ts"
+		}, {timeoutMs: 1000});
+	`)
+
+	status, body := gwGet(t, gw, "/protected-hijack")
+	require.Equal(t, 200, status)
+	assert.Contains(t, body, "protected")
+
+	status, _ = gwGet(t, gw, "/leaked-protected")
+	assert.Equal(t, 404, status)
 }

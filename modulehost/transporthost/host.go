@@ -5,24 +5,47 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
+	"time"
 
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/google/uuid"
 )
 
 // Host owns the runtime transport, router, command host, remote client, caller,
 // and bus metrics for one Kit runtime.
 type Host struct {
 	transport     *transport.Transport
-	router        *message.Router
+	router        *transport.Router
 	remote        *transport.RemoteClient
 	commandHost   *transport.Host
 	caller        *sdk.Caller
 	busMetrics    *transport.Metrics
 	ownsTransport bool
+
+	closingRouter    atomic.Bool
+	closingCaller    atomic.Bool
+	closingTransport atomic.Bool
+	closedRouter     atomic.Bool
+	closedCaller     atomic.Bool
+	closedTransport  atomic.Bool
+}
+
+// DebugSnapshot is a test/debug view of transport-host lifecycle bookkeeping.
+type DebugSnapshot struct {
+	Router              transport.RouterDebugSnapshot
+	Caller              sdk.CallerDebugSnapshot
+	OwnsTransport       bool
+	ActiveSubscriptions int64
+	ClosingRouter       bool
+	ClosingCaller       bool
+	ClosingTransport    bool
+	ClosedRouter        bool
+	ClosedCaller        bool
+	ClosedTransport     bool
 }
 
 // New builds the transport host from kernel configuration. Concrete network
@@ -37,22 +60,14 @@ func New(cfg types.KernelConfig, logger *slog.Logger) (*Host, error) {
 	remote := transport.NewRemoteClientWithTransport(cfg.Namespace, cfg.CallerID, transportSet)
 	remote.SetIdentity(cfg.ClusterID, cfg.RuntimeID)
 
-	router, err := message.NewRouter(message.RouterConfig{}, watermill.NopLogger{})
+	busMetrics := transport.NewMetrics()
+	remote.SetMetrics(busMetrics)
+	router, err := transport.NewRouter(cfg.CallerID, busMetrics, cfg.MaxConcurrency)
 	if err != nil {
 		if ownsTransport {
 			_ = transportSet.Close()
 		}
 		return nil, fmt.Errorf("brainkit: router: %w", err)
-	}
-
-	busMetrics := transport.NewMetrics()
-	router.AddMiddleware(
-		transport.DepthMiddleware,
-		transport.CallerIDMiddleware(cfg.CallerID),
-		transport.MetricsMiddleware(busMetrics),
-	)
-	if cfg.MaxConcurrency > 0 {
-		router.AddMiddleware(transport.MaxConcurrencyMiddleware(cfg.MaxConcurrency))
 	}
 
 	h := &Host{
@@ -74,7 +89,7 @@ func New(cfg types.KernelConfig, logger *slog.Logger) (*Host, error) {
 
 	runtimeID := cfg.RuntimeID
 	if runtimeID == "" {
-		runtimeID = watermill.NewUUID()
+		runtimeID = uuid.NewString()
 	}
 	caller, err := sdk.NewCaller(h, runtimeID, logger)
 	if err != nil {
@@ -134,6 +149,37 @@ func (h *Host) Metrics() *transport.Metrics {
 	return h.busMetrics
 }
 
+// DebugSnapshot returns lifecycle bookkeeping counts for teardown tests.
+func (h *Host) DebugSnapshot() DebugSnapshot {
+	if h == nil {
+		return DebugSnapshot{}
+	}
+	var active int64
+	if h.remote != nil {
+		active = h.remote.ActiveSubscriptions()
+	}
+	var router transport.RouterDebugSnapshot
+	if h.router != nil {
+		router = h.router.DebugSnapshot()
+	}
+	var caller sdk.CallerDebugSnapshot
+	if h.caller != nil {
+		caller = h.caller.DebugSnapshot()
+	}
+	return DebugSnapshot{
+		Router:              router,
+		Caller:              caller,
+		OwnsTransport:       h.ownsTransport,
+		ActiveSubscriptions: active,
+		ClosingRouter:       h.closingRouter.Load(),
+		ClosingCaller:       h.closingCaller.Load(),
+		ClosingTransport:    h.closingTransport.Load(),
+		ClosedRouter:        h.closedRouter.Load(),
+		ClosedCaller:        h.closedCaller.Load(),
+		ClosedTransport:     h.closedTransport.Load(),
+	}
+}
+
 // RegisterCommand live-mounts one command handler.
 func (h *Host) RegisterCommand(ctx context.Context, binding transport.RawCommandBinding) (*transport.CommandHandle, error) {
 	return h.commandHost.RegisterCommand(ctx, binding)
@@ -164,7 +210,7 @@ func (h *Host) Run(ctx context.Context) {
 	}()
 }
 
-// Running returns a channel closed by Watermill once handlers are subscribed.
+// Running returns a channel closed once handlers are subscribed.
 func (h *Host) Running() <-chan struct{} {
 	return h.router.Running()
 }
@@ -183,20 +229,40 @@ func (h *Host) Start(ctx context.Context) error {
 	}
 }
 
-// CloseRouter stops the Watermill router.
+// CloseRouter stops the message router.
 func (h *Host) CloseRouter() error {
 	if h == nil || h.router == nil {
 		return nil
 	}
-	return h.router.Close()
+	h.closingRouter.Store(true)
+	defer h.closingRouter.Store(false)
+	if err := h.router.Close(); err != nil {
+		return err
+	}
+	h.closedRouter.Store(true)
+	return nil
 }
 
 // CloseCaller closes the shared reply router.
 func (h *Host) CloseCaller() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return h.CloseCallerContext(ctx)
+}
+
+// CloseCallerContext closes the shared reply router under caller-owned
+// lifecycle cancellation.
+func (h *Host) CloseCallerContext(ctx context.Context) error {
 	if h == nil || h.caller == nil {
 		return nil
 	}
-	return h.caller.Close()
+	h.closingCaller.Store(true)
+	defer h.closingCaller.Store(false)
+	if err := h.caller.CloseContext(ctx); err != nil {
+		return err
+	}
+	h.closedCaller.Store(true)
+	return nil
 }
 
 // CloseOwnedTransport closes the transport only when this host created it.
@@ -204,7 +270,13 @@ func (h *Host) CloseOwnedTransport() error {
 	if h == nil || !h.ownsTransport || h.transport == nil {
 		return nil
 	}
-	return h.transport.Close()
+	h.closingTransport.Store(true)
+	defer h.closingTransport.Store(false)
+	if err := h.transport.Close(); err != nil {
+		return err
+	}
+	h.closedTransport.Store(true)
+	return nil
 }
 
 // Close releases all transport-host resources. Kernel normally calls the
@@ -232,6 +304,15 @@ func (h *Host) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.
 	return h.remote.SubscribeRaw(ctx, topic, handler)
 }
 
+// SubscribeRawHandle subscribes to a topic with context-aware close semantics.
+func (h *Host) SubscribeRawHandle(ctx context.Context, topic string, handler func(sdk.Message)) (bkmodule.Handle, error) {
+	handle, err := h.remote.SubscribeRawHandle(ctx, topic, handler)
+	if err != nil {
+		return nil, err
+	}
+	return bkmodule.HandleFunc(handle.CloseContext), nil
+}
+
 // PublishRawToNamespace publishes to a target namespace.
 func (h *Host) PublishRawToNamespace(ctx context.Context, targetNamespace, topic string, payload json.RawMessage) (string, error) {
 	return h.remote.PublishRawToNamespace(ctx, targetNamespace, topic, payload)
@@ -257,14 +338,5 @@ func (h *Host) PublishReply(ctx context.Context, replyTo, correlationID string, 
 	if replyTo == "" {
 		return nil
 	}
-	wmsg := message.NewMessage(watermill.NewUUID(), []byte(payload))
-	wmsg.SetContext(ctx)
-	wmsg.Metadata.Set("correlationId", correlationID)
-	if done {
-		wmsg.Metadata.Set("done", "true")
-	}
-	if envelope {
-		wmsg.Metadata.Set("envelope", "true")
-	}
-	return h.transport.Publisher.Publish(replyTo, wmsg)
+	return h.transport.PublishResolved(ctx, replyTo, correlationID, payload, done, envelope)
 }

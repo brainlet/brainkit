@@ -20,7 +20,7 @@ kit, err := brainkit.New(brainkit.Config{
     Namespace: "mcp-demo",
     Transport: brainkit.Memory(),
     FSRoot:    "/tmp/mcp-demo",
-    Modules: []brainkit.Module{
+    Modules: []module.Module{
         mcpmod.New(map[string]mcpmod.ServerConfig{
             "fs": {
                 Command: "npx",

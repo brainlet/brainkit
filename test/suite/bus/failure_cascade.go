@@ -9,11 +9,14 @@ import (
 	"testing"
 	"time"
 
+	bkmodule "github.com/brainlet/brainkit/module"
+
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/sdk/systemmsg"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
@@ -33,7 +36,7 @@ func testCascadeDeployWithBrokenStore(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store,
-		Modules: []brainkit.Module{packages.New()},
+		Modules: []bkmodule.Module{packages.New()},
 		ErrorHandler: func(err error) {
 			errorCalled = true
 		},
@@ -72,7 +75,7 @@ func testCascadeSecretRotatePluginFails(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Set a secret, then rotate it — no plugins running, so restart is a no-op
-	pr1, _ := sdk.Publish(freshEnv.Kit, ctx, secretmsg.SecretsSetMsg{Name: "ROTATE_KEY_CASCADE", Value: "v1"})
+	pr1, _ := protocol.Publish(freshEnv.Kit, ctx, secretmsg.SecretsSetMsg{Name: "ROTATE_KEY_CASCADE", Value: "v1"})
 	ch1 := make(chan []byte, 1)
 	unsub1, _ := freshEnv.Kit.SubscribeRaw(ctx, pr1.ReplyTo, func(m sdk.Message) { ch1 <- m.Payload })
 	select {
@@ -83,7 +86,7 @@ func testCascadeSecretRotatePluginFails(t *testing.T, _ *suite.TestEnv) {
 	unsub1()
 
 	// Rotate
-	pr2, _ := sdk.Publish(freshEnv.Kit, ctx, secretmsg.SecretsRotateMsg{Name: "ROTATE_KEY_CASCADE", NewValue: "v2", Restart: true})
+	pr2, _ := protocol.Publish(freshEnv.Kit, ctx, secretmsg.SecretsRotateMsg{Name: "ROTATE_KEY_CASCADE", NewValue: "v2", Restart: true})
 	ch2 := make(chan []byte, 1)
 	unsub2, _ := freshEnv.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 	defer unsub2()
@@ -143,7 +146,7 @@ func testCascadeTeardownCleansSubscriptions(t *testing.T, _ *suite.TestEnv) {
 	testutil.Teardown(t, freshEnv.Kit, "sub-cleanup-cascade.ts")
 
 	// Publish again — should not get a response (handler is gone)
-	pr, err := sdk.Publish(freshEnv.Kit, ctx, sdk.CustomMsg{Topic: "ts.sub-cleanup-cascade.ping", Payload: json.RawMessage(`{}`)})
+	pr, err := protocol.Publish(freshEnv.Kit, ctx, sdk.CustomMsg{Topic: "ts.sub-cleanup-cascade.ping", Payload: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 
 	ch := make(chan bool, 1)
@@ -244,7 +247,7 @@ func testCascadeRetryExhausted(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Modules: []brainkit.Module{packages.New()},
+		Modules: []bkmodule.Module{packages.New()},
 		RetryPolicies: map[string]brainkit.RetryPolicy{
 			"ts.retry-test-cascade.*": {MaxRetries: 2, InitialDelay: 10 * time.Millisecond},
 		},

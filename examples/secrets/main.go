@@ -10,6 +10,7 @@ package main
 import (
 	"context"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"path/filepath"
 	"time"
@@ -41,7 +42,7 @@ func run() error {
 		FSRoot:    tmp,
 		Store:     store,
 		SecretKey: "demo-secret-key-sufficiently-long!",
-		Modules:   []brainkit.Module{secretsmod.New()},
+		Modules:   []bkmodule.Module{secretsmod.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

@@ -10,6 +10,7 @@ package main
 import (
 	"context"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"time"
 
@@ -39,7 +40,7 @@ func main() {
 		Namespace: "orchestrator",
 		Transport: transports.EmbeddedNATS(),
 		FSRoot:    ".",
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			topology.NewModule(topology.Config{
 				Peers: []topology.Peer{
 					{Name: "analytics", Namespace: "analytics-prod"},

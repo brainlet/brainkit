@@ -76,6 +76,34 @@ func TestSQLiteTraceStore_RecordAndGet(t *testing.T) {
 	}
 }
 
+func TestSQLiteTraceStoreCloseIsIdempotentWithRetention(t *testing.T) {
+	db := openTestDB(t)
+	store, err := modtracing.NewSQLiteTraceStore(db, modtracing.WithRetention(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close twice: %v", err)
+	}
+}
+
+func TestSQLiteTraceStoreCloseClosesDatabase(t *testing.T) {
+	db := openTestDB(t)
+	store, err := modtracing.NewSQLiteTraceStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if err := db.Ping(); err == nil {
+		t.Fatal("database remained open after trace store close")
+	}
+}
+
 func TestSQLiteTraceStore_ListTraces(t *testing.T) {
 	db := openTestDB(t)
 	store, err := modtracing.NewSQLiteTraceStore(db)

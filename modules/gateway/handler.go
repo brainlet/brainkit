@@ -15,7 +15,8 @@ func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched
 		return
 	}
 
-	if gw.caller == nil {
+	caller := gw.requestCaller()
+	if caller == nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -23,7 +24,7 @@ func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched
 	ctx, cancel := context.WithTimeout(r.Context(), gw.config.Timeout)
 	defer cancel()
 
-	reply, err := gw.caller.Call(ctx, matched.Topic, payload, sdk.CallerConfig{})
+	reply, err := caller.Call(ctx, matched.Topic, payload, sdk.CallerConfig{})
 	if err != nil {
 		var tErr *sdk.CallTimeoutError
 		if errors.As(err, &tErr) {

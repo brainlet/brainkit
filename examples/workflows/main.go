@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"time"
 
@@ -34,7 +35,7 @@ func run() error {
 		Namespace: "workflows-demo",
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
-		Modules: []brainkit.Module{packages.New(),
+		Modules: []bkmodule.Module{packages.New(),
 			workflowmod.New(),
 		},
 	})

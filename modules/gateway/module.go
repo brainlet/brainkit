@@ -15,9 +15,10 @@ func (gw *Gateway) ID() string { return "gateway" }
 // Status reports maturity (stable).
 func (gw *Gateway) Status() bkmodule.Status { return bkmodule.StatusStable }
 
-func (gw *Gateway) Mount(_ context.Context, host bkmodule.Host) error {
+func (gw *Gateway) Mount(ctx context.Context, host bkmodule.Host) error {
 	health, _ := bkmodule.Capability[bkmodule.HealthProbes](host, bkmodule.CapabilityHealthProbes)
 	control, _ := bkmodule.Capability[bkmodule.RuntimeControl](host, bkmodule.CapabilityRuntimeControl)
+	lifecycleDebug, _ := bkmodule.Capability[bkmodule.LifecycleDebugRegistry](host, bkmodule.CapabilityLifecycleDebugRegistry)
 	caller, err := bkmodule.RequireCapability[bkmodule.RequestCaller](host, bkmodule.CapabilityRequestCaller)
 	if err != nil {
 		return fmt.Errorf("gateway: %w", err)
@@ -27,9 +28,19 @@ func (gw *Gateway) Mount(_ context.Context, host bkmodule.Host) error {
 		health:   health,
 		control:  control,
 	})
-	gw.caller = caller
+	gw.setCaller(caller)
 	if err := gw.Start(); err != nil {
 		return err
+	}
+	if lifecycleDebug != nil {
+		handle, err := lifecycleDebug.RegisterLifecycleDebug(ctx, "gateway", func() any {
+			return gw.DebugSnapshot()
+		})
+		if err != nil {
+			_ = gw.Close()
+			return fmt.Errorf("gateway: lifecycle debug: %w", err)
+		}
+		host.Scope().Defer(handle.Close)
 	}
 	host.Scope().Resource(bkmodule.ResourceWithMetadata(
 		bkmodule.ResourceKindHTTP,
@@ -37,9 +48,13 @@ func (gw *Gateway) Mount(_ context.Context, host bkmodule.Host) error {
 		map[string]string{"listen": gw.config.Listen},
 		"HTTP gateway listener.",
 	))
-	host.Scope().Defer(func(context.Context) error {
-		gw.caller = nil
-		return gw.Close()
+	host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindHTTP, "gateway.routes", "Runtime HTTP route table."))
+	host.Scope().Defer(func(closeCtx context.Context) error {
+		if err := gw.StopContext(closeCtx); err != nil {
+			return err
+		}
+		gw.setCaller(nil)
+		return nil
 	})
 	return nil
 }
@@ -60,11 +75,15 @@ func (rt mountedRuntime) PublishRaw(ctx context.Context, topic string, payload j
 }
 
 func (rt mountedRuntime) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.Message)) (func(), error) {
-	handle, err := rt.messages.SubscribeRaw(ctx, topic, handler)
+	handle, err := rt.SubscribeRawHandle(ctx, topic, handler)
 	if err != nil {
 		return nil, err
 	}
 	return func() { _ = handle.Close(context.Background()) }, nil
+}
+
+func (rt mountedRuntime) SubscribeRawHandle(ctx context.Context, topic string, handler func(sdk.Message)) (bkmodule.Handle, error) {
+	return rt.messages.SubscribeRaw(ctx, topic, handler)
 }
 
 func (rt mountedRuntime) ReplyRaw(ctx context.Context, replyTo, correlationID string, payload json.RawMessage, done bool) error {

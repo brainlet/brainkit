@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit"
+	bkmodule "github.com/brainlet/brainkit/module"
 	controlmod "github.com/brainlet/brainkit/modules/control"
 	evalmod "github.com/brainlet/brainkit/modules/eval"
 	"github.com/brainlet/brainkit/modules/eval/evalmsg"
@@ -27,8 +27,8 @@ type callerHolder interface {
 }
 
 type moduleKit interface {
-	Module(id string) (brainkit.Module, bool)
-	Mount(context.Context, brainkit.Module) error
+	Module(id string) (bkmodule.Module, bool)
+	Mount(context.Context, bkmodule.Module) error
 }
 
 func ensureHealthModule(rt sdk.Runtime) bool {

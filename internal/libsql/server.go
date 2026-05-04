@@ -19,6 +19,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -27,6 +28,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
 	"github.com/brainlet/brainkit/internal/syncx"
 
 	_ "modernc.org/sqlite"
@@ -128,8 +130,13 @@ func NewServer(dbPath string, opts ...Option) (*Server, error) {
 // URL returns the HTTP URL for connecting from JS.
 func (s *Server) URL() string { return s.url }
 
-// Close shuts down the server and closes the database.
-func (s *Server) Close() error {
+// CloseContext shuts down the server and closes the database within ctx. If a
+// graceful HTTP shutdown exceeds ctx, it force-closes active connections so the
+// storage host can still complete its teardown deadline.
+func (s *Server) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	s.mu.Lock()
 	for _, tx := range s.batons {
 		tx.Rollback()
@@ -137,8 +144,29 @@ func (s *Server) Close() error {
 	s.batons = nil
 	s.mu.Unlock()
 
-	s.srv.Shutdown(context.Background())
-	return s.db.Close()
+	var err error
+	if s.srv != nil {
+		shutdownErr := s.srv.Shutdown(ctx)
+		if shutdownErr != nil {
+			if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				if closeErr := s.srv.Close(); closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
+					shutdownErr = errors.Join(shutdownErr, closeErr)
+				} else {
+					shutdownErr = nil
+				}
+			}
+			err = errors.Join(err, shutdownErr)
+		}
+	}
+	if s.db != nil {
+		err = errors.Join(err, s.db.Close())
+	}
+	return err
+}
+
+// Close shuts down the server without an external deadline.
+func (s *Server) Close() error {
+	return s.CloseContext(context.Background())
 }
 
 // --- Hrana/Pipeline Protocol Types ---
@@ -160,7 +188,7 @@ type pipelineEntry struct {
 	Type  string        `json:"type"`
 	Stmt  *stmtRequest  `json:"stmt,omitempty"`
 	Batch *batchRequest `json:"batch,omitempty"`
-	SQL   *string       `json:"sql,omitempty"`   // for sequence
+	SQL   *string       `json:"sql,omitempty"`    // for sequence
 	SQLId *int          `json:"sql_id,omitempty"` // for store_sql, close_sql
 }
 
@@ -169,14 +197,14 @@ type batchRequest struct {
 }
 
 type batchStep struct {
-	Stmt      stmtRequest    `json:"stmt"`
+	Stmt      stmtRequest     `json:"stmt"`
 	Condition *batchCondition `json:"condition,omitempty"`
 }
 
 type batchCondition struct {
-	Type  string          `json:"type"`
-	Step  *int            `json:"step,omitempty"`
-	Cond  *batchCondition `json:"cond,omitempty"`
+	Type  string           `json:"type"`
+	Step  *int             `json:"step,omitempty"`
+	Cond  *batchCondition  `json:"cond,omitempty"`
 	Conds []batchCondition `json:"conds,omitempty"`
 }
 
@@ -277,9 +305,9 @@ func errResult(msg string) pipelineResult {
 }
 
 type execResponse struct {
-	Type          string       `json:"type"`
-	Result        *execResult  `json:"result,omitempty"`
-	IsAutocommit  *bool        `json:"is_autocommit,omitempty"`
+	Type         string      `json:"type"`
+	Result       *execResult `json:"result,omitempty"`
+	IsAutocommit *bool       `json:"is_autocommit,omitempty"`
 }
 
 type batchResponse struct {

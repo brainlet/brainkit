@@ -32,18 +32,10 @@ func NewRootCmd() *cobra.Command {
 
 	root.AddCommand(
 		newVersionCmd(),
-		newInitCmd(),
 		newStartCmd(),
 		newDeployCmd(),
-		newTeardownCmd(),
 		newCallCmd(),
-		newSendCmd(),
-		newEvalCmd(),
 		newInspectCmd(),
-		newSecretsCmd(),
-		newPluginCmd(),
-		newTestCmd(),
-		newModulesCmd(),
 		newNewCmd(),
 	)
 

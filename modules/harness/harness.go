@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/brainlet/brainkit/internal/syncx"
+	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/brainlet/brainkit/internal/syncx"
 )
 
 // Harness orchestrates agent execution with thread persistence,
@@ -27,11 +30,18 @@ type Harness struct {
 
 	threadLock *ThreadLock
 
-	heartbeats map[string]*time.Ticker
-	hbMu       syncx.Mutex
+	heartbeats    map[string]*time.Ticker
+	heartbeatStop chan struct{}
+	closeOnce     sync.Once
+	hbWG          sync.WaitGroup
+	hbMu          syncx.Mutex
+	hbWait        sync.Once
+	hbDone        chan struct{}
+	closing       atomic.Bool
+	closed        atomic.Bool
+	activeHB      atomic.Int64
 
 	initialized bool
-	closed      bool
 }
 
 // Init creates and initializes a Harness on the given runtime.
@@ -47,16 +57,22 @@ func Init(rt Runtime, cfg HarnessConfig) (*Harness, error) {
 	}
 
 	h := &Harness{
-		rt:           rt,
-		config:       cfg,
-		displayState: NewDisplayState(),
-		threadLock:   lock,
-		heartbeats:   make(map[string]*time.Ticker),
+		rt:            rt,
+		config:        cfg,
+		displayState:  NewDisplayState(),
+		threadLock:    lock,
+		heartbeats:    make(map[string]*time.Ticker),
+		heartbeatStop: make(chan struct{}),
+		hbDone:        make(chan struct{}),
 	}
 
 	// Register Go→JS bridge functions
-	h.registerEventBridge()
-	h.registerLockBridges()
+	if err := h.registerEventBridge(); err != nil {
+		return nil, err
+	}
+	if err := h.registerLockBridges(); err != nil {
+		return nil, err
+	}
 
 	// Build config JSON for the JS createHarness() function
 	jsConfig := h.buildJSConfig()
@@ -85,12 +101,54 @@ func Init(rt Runtime, cfg HarnessConfig) (*Harness, error) {
 
 // Close stops heartbeats, releases locks, and tears down the Harness.
 func (h *Harness) Close() error {
-	if h.closed {
-		return nil
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return h.CloseContext(ctx)
+}
+
+// CloseContext stops heartbeats, releases locks, and waits for Go-side
+// heartbeat handlers to return under caller-owned lifecycle cancellation.
+func (h *Harness) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	h.closed = true
-	h.stopHeartbeats()
+	h.closing.Store(true)
+	h.closeOnce.Do(func() {
+		if h.heartbeatStop != nil {
+			close(h.heartbeatStop)
+		}
+		h.stopHeartbeats()
+	})
+	if err := h.waitHeartbeats(ctx); err != nil {
+		return err
+	}
+	h.closed.Store(true)
+	h.closing.Store(false)
 	return nil
+}
+
+func (h *Harness) waitHeartbeats(ctx context.Context) error {
+	h.hbMu.Lock()
+	done := h.hbDone
+	if done == nil {
+		done = make(chan struct{})
+		h.hbDone = done
+	}
+	h.hbWait.Do(func() {
+		go func() {
+			h.hbWG.Wait()
+			h.closed.Store(true)
+			h.closing.Store(false)
+			close(done)
+		}()
+	})
+	h.hbMu.Unlock()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("harness heartbeat shutdown: %w", ctx.Err())
+	}
 }
 
 // GetDisplayState returns a thread-safe deep copy of the canonical display state.
@@ -391,11 +449,7 @@ func (h *Harness) HasModelSelected() bool {
 func (h *Harness) RespondToToolApproval(decision ToolApprovalDecision) error {
 	b, _ := json.Marshal(map[string]string{"decision": string(decision)})
 	code := fmt.Sprintf(`__brainkit_harness.respondToToolApproval(JSON.parse(%s))`, quoteJSString(string(b)))
-	if h.rt.BridgeIsEvalBusy() {
-		_, err := h.rt.BridgeEvalOnJSThread("harness-respond-approval.js", code)
-		return err
-	}
-	_, err := h.rt.BridgeEval("harness-respond-approval.js", code)
+	_, err := h.rt.EvalControl(h.rt.RuntimeContext(), "harness-respond-approval.js", code)
 	if err != nil {
 		return fmt.Errorf("respondToToolApproval: %w", err)
 	}
@@ -444,11 +498,7 @@ func (h *Harness) GrantSessionTool(toolName string) error {
 func (h *Harness) RespondToQuestion(questionID, answer string) error {
 	b, _ := json.Marshal(map[string]string{"questionId": questionID, "answer": answer})
 	code := fmt.Sprintf(`__brainkit_harness.respondToQuestion(JSON.parse(%s))`, quoteJSString(string(b)))
-	if h.rt.BridgeIsEvalBusy() {
-		_, err := h.rt.BridgeEvalOnJSThread("harness-respond-question.js", code)
-		return err
-	}
-	_, err := h.rt.BridgeEval("harness-respond-question.js", code)
+	_, err := h.rt.EvalControl(h.rt.RuntimeContext(), "harness-respond-question.js", code)
 	if err != nil {
 		return fmt.Errorf("respondToQuestion: %w", err)
 	}
@@ -460,11 +510,7 @@ func (h *Harness) RespondToQuestion(questionID, answer string) error {
 func (h *Harness) RespondToPlanApproval(planID string, resp PlanResponse) error {
 	b, _ := json.Marshal(map[string]any{"planId": planID, "response": resp})
 	code := fmt.Sprintf(`__brainkit_harness.respondToPlanApproval(JSON.parse(%s))`, quoteJSString(string(b)))
-	if h.rt.BridgeIsEvalBusy() {
-		_, err := h.rt.BridgeEvalOnJSThread("harness-respond-plan.js", code)
-		return err
-	}
-	_, err := h.rt.BridgeEval("harness-respond-plan.js", code)
+	_, err := h.rt.EvalControl(h.rt.RuntimeContext(), "harness-respond-plan.js", code)
 	if err != nil {
 		return fmt.Errorf("respondToPlanApproval: %w", err)
 	}
@@ -676,6 +722,9 @@ func (h *Harness) buildJSConfig() map[string]any {
 
 // startHeartbeats starts Go-side heartbeat timers.
 func (h *Harness) startHeartbeats() {
+	if h.heartbeatStop == nil {
+		h.heartbeatStop = make(chan struct{})
+	}
 	for _, hb := range h.config.HeartbeatHandlers {
 		interval := time.Duration(hb.IntervalMs) * time.Millisecond
 		if interval <= 0 {
@@ -688,24 +737,41 @@ func (h *Harness) startHeartbeats() {
 		h.hbMu.Unlock()
 
 		handler := hb.Handler
+		if handler == nil {
+			continue
+		}
 		if hb.Immediate {
-			go func() {
+			h.hbWG.Add(1)
+			h.activeHB.Add(1)
+			go func(fn func() error) {
+				defer func() {
+					h.activeHB.Add(-1)
+					h.hbWG.Done()
+				}()
 				defer func() { recover() }()
-				handler()
-			}()
+				_ = fn()
+			}(handler)
 		}
 
-		go func(t *time.Ticker, fn func() error) {
-			for range t.C {
-				if h.closed {
+		h.hbWG.Add(1)
+		h.activeHB.Add(1)
+		go func(t *time.Ticker, fn func() error, stop <-chan struct{}) {
+			defer func() {
+				h.activeHB.Add(-1)
+				h.hbWG.Done()
+			}()
+			for {
+				select {
+				case <-stop:
 					return
+				case <-t.C:
+					func() {
+						defer func() { recover() }()
+						fn()
+					}()
 				}
-				func() {
-					defer func() { recover() }()
-					fn()
-				}()
 			}
-		}(ticker, handler)
+		}(ticker, handler, h.heartbeatStop)
 	}
 }
 

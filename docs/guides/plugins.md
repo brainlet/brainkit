@@ -46,7 +46,7 @@ Plugins depend only on the `brainkit/sdk` tree:
 - `sdk` — message types, the `Runtime` interface.
 - `sdk/pluginws` — WebSocket wire-protocol types.
 
-No QuickJS, no Watermill, no esbuild.
+No QuickJS runtime, no in-process bus runtime, no esbuild.
 
 ## Write a plugin
 
@@ -103,14 +103,16 @@ binary:
 ```go
 import (
     "github.com/brainlet/brainkit"
+    bkmodule "github.com/brainlet/brainkit/module"
     pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+    "github.com/brainlet/brainkit/transports"
 )
 
 kit, err := brainkit.New(brainkit.Config{
     Namespace: "plugin-host-demo",
-    Transport: brainkit.EmbeddedNATS(),
+    Transport: transports.EmbeddedNATS(),
     FSRoot:    "/var/lib/host",
-    Modules: []brainkit.Module{
+    Modules: []bkmodule.Module{
         pluginsmod.NewModule(pluginsmod.Config{
             Plugins: []pluginsmod.PluginConfig{{
                 Name:         "demo",
@@ -123,7 +125,7 @@ kit, err := brainkit.New(brainkit.Config{
 })
 ```
 
-`plugins.PluginConfig` fields most users touch:
+`pluginsmod.PluginConfig` fields most users touch:
 
 | Field | Purpose |
 |---|---|

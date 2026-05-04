@@ -8,6 +8,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,7 +30,7 @@ func TestPluginsNoModule(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	pr, err := pluginmsg.PublishPluginListRunning(k, ctx, pluginmsg.PluginListRunningMsg{})
+	pr, err := protocol.Publish(k, ctx, pluginmsg.PluginListRunningMsg{})
 	require.NoError(t, err)
 
 	ch := make(chan sdk.Message, 1)

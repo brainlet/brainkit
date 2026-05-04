@@ -3,13 +3,14 @@ package gateway
 import (
 	"io/fs"
 	"strings"
+
 	"github.com/brainlet/brainkit/internal/syncx"
 )
 
 type routeType int
 
 const (
-	routeHandle    routeType = iota
+	routeHandle routeType = iota
 	routeStream
 	routeWebhook
 	routeWebSocket
@@ -68,6 +69,17 @@ func (t *routeTable) remove(method, path string) bool {
 		}
 	}
 	return false
+}
+
+func (t *routeTable) ownerFor(method, path string) (string, bool) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	for _, r := range t.routes {
+		if r.Method == method && r.Path == path {
+			return r.Owner, true
+		}
+	}
+	return "", false
 }
 
 func (t *routeTable) removeByOwner(owner string) int {

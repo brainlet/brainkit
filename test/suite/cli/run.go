@@ -9,6 +9,7 @@ import (
 func Run(t *testing.T, env *suite.TestEnv) {
 	t.Run("cli", func(t *testing.T) {
 		// cobra.go — scaffolder + version (no running server needed).
+		t.Run("root_command_surface", func(t *testing.T) { testRootCommandSurface(t, env) })
 		t.Run("version", func(t *testing.T) { testVersion(t, env) })
 		t.Run("version_json", func(t *testing.T) { testVersionJSON(t, env) })
 		t.Run("new_package", func(t *testing.T) { testNewPackage(t, env) })

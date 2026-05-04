@@ -22,12 +22,12 @@ type JSEvaluator = runtimecap.JSEvaluator
 // PluginRestarter abstracts plugin restart for secrets rotation.
 type PluginRestarter = plugincap.Restarter
 
-// Deployer handles lifecycle of .ts/.js file deployments.
-type Deployer = runtimecap.Deployer
-
 // TSRunner evaluates JS/TS code in the active runtime.
 type TSRunner = runtimecap.TSRunner
 
 // JSRuntimeAttachment is the engine-facing surface implemented by the
 // optional JS/TS runtime package.
 type JSRuntimeAttachment = runtimecap.Attachment
+
+var _ runtimecap.Host = (*Kernel)(nil)
+var _ runtimecap.EnableHost = (*Kernel)(nil)

@@ -8,11 +8,14 @@ covers every piece you'd reach for in a production program.
 ## The Kit
 
 ```go
-import "github.com/brainlet/brainkit"
+import (
+    "github.com/brainlet/brainkit"
+    "github.com/brainlet/brainkit/transports"
+)
 
 kit, err := brainkit.New(brainkit.Config{
     Namespace: "my-app",
-    Transport: brainkit.EmbeddedNATS(),
+    Transport: transports.EmbeddedNATS(),
     FSRoot:    "/var/lib/my-app",
 })
 if err != nil { log.Fatal(err) }
@@ -56,8 +59,7 @@ fields:
 | `EnvVars` | `map[string]string` | Overrides `os.Getenv` within this Kit. |
 | `SecretKey` | `string` | Master key for the encrypted secret store. Empty = env-only dev mode. |
 | `SecretStore` | `SecretStore` | Override the auto-created store. |
-| `Tracing` | `bool` | Enable tracing with an auto-created in-memory store. |
-| `TraceStore` | `TraceStore` | Override the auto-created trace store. |
+| `TraceStore` | `TraceStore` | Explicit span store. Nil leaves tracing no-op unless a tracing module attaches one. |
 | `TraceSampleRate` | `float64` | 0.0–1.0. Default 1.0. |
 | `Store` | `KitStore` | Persistence for deployments, schedules, plugins. `nil` = ephemeral. |
 | `Logger` | `*slog.Logger` | Default `slog.Default()`. |
@@ -67,7 +69,7 @@ fields:
 | `JSRuntime` | `bool` | Requests the embedded JS/TS runtime for deploy/eval/workflow/harness paths. Zero-value Kit leaves it off; import `modules/jsruntime` or `presets/standard` so the request can be satisfied. |
 | `MaxStackSize` | `int` | QuickJS stack bytes. Default 1 MB. |
 | `RetryPolicies` | `map[string]RetryPolicy` | Topic glob → retry config. |
-| `Modules` | `[]Module` | Opt-in subsystems. |
+| `Modules` | `[]module.Module` | Opt-in subsystems. |
 
 ## Runtime Admin Modules
 
@@ -77,16 +79,19 @@ by opt-in modules, not root Kit accessors.
 ```go
 kit, err := brainkit.New(brainkit.Config{
     Transport: brainkit.Memory(),
-    Modules: []brainkit.Module{
+    Modules: []module.Module{
         registrymod.New(),
         secretsmod.New(),
     },
 })
 
+providerConfig, _ := json.Marshal(map[string]any{
+    "APIKey": os.Getenv("OPENAI_API_KEY"),
+})
 _, err = registrymsg.CallProviderAdd(kit, ctx, registrymsg.ProviderAddMsg{
     Name:   "openai",
     Type:   "openai",
-    Config: brainkit.MustJSON(map[string]any{"APIKey": os.Getenv("OPENAI_API_KEY")}),
+    Config: providerConfig,
 })
 
 _, err = secretmsg.CallSecretsSet(kit, ctx,
@@ -198,6 +203,9 @@ resp, err := health.CallKitHealth(kit, ctx, health.KitHealthMsg{})
 Your editor's autocomplete on `Call` in the message-owning package
 will show the typed helper set. Use generic `brainkit.Call` when you
 need Kit-specific options such as topology-aware `brainkit.WithCallTo`.
+Module code that only has the narrow request/reply capability can use the
+matching `CallXxxWithCaller(caller, ctx, msg, opts...)` wrapper instead of
+constructing a fake runtime.
 
 ### Streaming
 
@@ -239,28 +247,22 @@ See [`examples/streaming/`](../../examples/streaming/).
 | `WithCallBufferPolicy(p)` | `BufferBlock` (default), `BufferDropNewest`, `BufferDropOldest`, `BufferError`. |
 | `WithCallNoCancelSignal()` | Suppress the best-effort `_brainkit.cancel` publish on ctx cancel. |
 
-### Raw envelope
+### Diagnostics-Only Protocol Access
 
-The typed Call helpers are the normal path. If you need the raw
-envelope (custom topics, pre-built payload, subscription
-bookkeeping) use the `sdk` package directly:
+The typed Call helpers are the normal path. `sdk/protocol` is for transport
+diagnostics, protocol bridges, and tests that intentionally inspect wire
+payloads. Application code should use `brainkit.Call`, `brainkit.CallStream`,
+or generated module-owned `CallXxx` helpers.
 
 ```go
 import (
-    "github.com/brainlet/brainkit/modules/plugins/pluginmsg"
-    "github.com/brainlet/brainkit/modules/tools/toolmsg"
     "github.com/brainlet/brainkit/sdk"
 )
 
-pr, err := sdk.Publish(kit, ctx, toolmsg.ToolCallMsg{Name: "echo"})
-// pr.ReplyTo, pr.CorrelationID, pr.MessageID, pr.Topic
+type DomainEvent struct { ID string `json:"id"` }
+func (DomainEvent) BusTopic() string { return "domain.event" }
 
-unsub, err := sdk.SubscribeTo[toolmsg.ToolCallResp](kit, ctx, pr.ReplyTo,
-    func(resp toolmsg.ToolCallResp, m sdk.Message) { /* ... */ })
-defer unsub()
-
-err = sdk.Emit(kit, ctx, pluginmsg.PluginRegisteredEvent{Name: "cron"})
-pr, err = sdk.SendToService(kit, ctx, "calc.ts", "add", map[string]int{"a": 1, "b": 2})
+err := sdk.Emit(kit, ctx, DomainEvent{ID: "evt-123"})
 ```
 
 `Kit` implements `sdk.Runtime`, `sdk.CrossNamespaceRuntime`, and
@@ -348,23 +350,36 @@ type Module interface {
 }
 ```
 
-Modules may additionally implement `StatusReporter` to expose a
+Modules may additionally implement `module.StatusReporter` to expose a
 maturity tag (`stable`, `beta`, `wip`).
 
 Shipped modules live under `modules/`:
 
 | Module | Constructor | Status |
 |---|---|---|
+| `modules/agents` | `agents.New()` | stable |
 | `modules/audit` | `audit.NewModule(audit.Config{...})` | stable |
-| `modules/discovery` | `discovery.NewModule(discovery.Config{...})` | stable |
+| `modules/control` | `control.New()` | stable |
+| `modules/discovery` | `discovery.NewModule(discovery.ModuleConfig{...})` | beta |
+| `modules/eval` | `eval.New()` | beta |
 | `modules/gateway` | `gateway.New(gateway.Config{...})` | stable |
+| `modules/health` | `health.New()` | stable |
 | `modules/harness` | `harness.NewModule(harness.Config{...})` | WIP |
+| `modules/jsruntime` | `jsruntime.New()` | beta |
 | `modules/mcp` | `mcpmod.New(map[string]mcpmod.ServerConfig{...})` | stable |
+| `modules/messaging` | `messaging.New()` | stable |
+| `modules/metrics` | `metrics.New()` | stable |
+| `modules/packages` | `packages.New()` | stable |
 | `modules/plugins` | `pluginsmod.NewModule(pluginsmod.Config{...})` | stable |
-| `modules/probes` | `probes.NewModule(probes.Config{...})` | stable |
-| `modules/schedules` | `schedulesmod.NewModule(schedulesmod.Config{...})` | stable |
-| `modules/topology` | `topology.NewModule(topology.Config{...})` | stable |
-| `modules/tracing` | `tracing.New(tracing.Config{...})` | stable |
+| `modules/probes` | `probes.New(probes.Config{...})` | beta |
+| `modules/reference` | `reference.New()` | stable |
+| `modules/registry` | `registry.New()` | stable |
+| `modules/schedules` | `schedulesmod.NewModule(schedulesmod.Config{...})` | beta |
+| `modules/secrets` | `secrets.New()` | stable |
+| `modules/testing` | `testing.New()` | beta |
+| `modules/tools` | `tools.New()` | stable |
+| `modules/topology` | `topology.NewModule(topology.Config{...})` | beta |
+| `modules/tracing` | `tracing.New(tracing.Config{...})` | beta |
 | `modules/workflow` | `workflowmod.New()` | stable |
 
 Wire them by passing to `Config.Modules`:
@@ -373,13 +388,14 @@ Wire them by passing to `Config.Modules`:
 import (
     "github.com/brainlet/brainkit/modules/audit"
     "github.com/brainlet/brainkit/modules/tracing"
+    "github.com/brainlet/brainkit/transports"
 )
 
 kit, err := brainkit.New(brainkit.Config{
     Namespace: "obs-demo",
-    Transport: brainkit.EmbeddedNATS(),
+    Transport: transports.EmbeddedNATS(),
     FSRoot:    "/tmp/obs",
-    Modules: []brainkit.Module{
+    Modules: []module.Module{
         audit.NewModule(audit.Config{Store: auditStore}),
         tracing.New(tracing.Config{Store: traceStore}),
     },
@@ -398,9 +414,9 @@ its peer table; otherwise the name is treated as a raw namespace.
 See [`examples/cross-kit/`](../../examples/cross-kit/) and
 [`examples/multi-kit/`](../../examples/multi-kit/).
 
-Raw cross-namespace publish / subscribe is also available via
-`sdk.PublishTo` + `Kit.SubscribeRawTo`, but the `WithCallTo` option
-on `Call` / `CallStream` is the normal path.
+Raw cross-namespace publish / subscribe exists for modules and transport
+diagnostics, but the `WithCallTo` option on `Call` / `CallStream` is the normal
+application path.
 
 ## The server package
 
@@ -409,9 +425,13 @@ YAML config, HTTP gateway, tracing, probes, audit, and (optionally)
 plugins.
 
 ```go
-import "github.com/brainlet/brainkit/server"
+import (
+	"github.com/brainlet/brainkit/server"
+	"github.com/brainlet/brainkit/server/configfile"
+	_ "github.com/brainlet/brainkit/server/standard"
+)
 
-cfg, err := server.LoadConfig("brainkit.yaml")
+cfg, err := configfile.Load("brainkit.yaml")
 srv, err := server.New(cfg)
 defer srv.Close()
 
@@ -425,11 +445,13 @@ if err := srv.Start(ctx); err != nil { log.Fatal(err) }
 For programmatic use without a YAML file:
 
 ```go
-srv, err := server.QuickStart("my-app", "/var/lib/my-app",
-    server.WithListen(":8080"),
-    server.WithSecretKey(os.Getenv("BRAINKIT_SECRET_KEY")),
-    server.WithPackages("./packages/*"),
-    server.WithExtraModules(myModule),
+import "github.com/brainlet/brainkit/server/quickstart"
+
+srv, err := quickstart.New("my-app", "/var/lib/my-app",
+    quickstart.WithListen(":8080"),
+    quickstart.WithSecretKey(os.Getenv("BRAINKIT_SECRET_KEY")),
+    quickstart.WithPackages(myPackage),
+    quickstart.WithExtraModules(myModule),
 )
 ```
 

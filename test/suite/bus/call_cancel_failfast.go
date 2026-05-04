@@ -10,6 +10,7 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -105,7 +106,7 @@ func testExhaustedEventCarriesCorrelationId(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	exhaustManifest, _ := json.Marshal(map[string]string{"name": "exhaust-cid", "entry": "exhaust-cid.ts"})
-	pr, _ := sdk.Publish(exEnv.Kit, ctx, packagemsg.PackageDeployMsg{
+	pr, _ := protocol.Publish(exEnv.Kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: exhaustManifest,
 		Files:    map[string]string{"exhaust-cid.ts": `bus.on("fail", (msg) => { throw new Error("cid exhaust"); });`},
 	})
@@ -129,7 +130,7 @@ func testExhaustedEventCarriesCorrelationId(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer exUnsub()
 
-	sendPR, _ := sdk.SendToService(exEnv.Kit, ctx, "exhaust-cid.ts", "fail", map[string]bool{"x": true})
+	sendPR, _ := protocol.SendToService(exEnv.Kit, ctx, "exhaust-cid.ts", "fail", map[string]bool{"x": true})
 	require.NotEmpty(t, sendPR.CorrelationID)
 
 	select {

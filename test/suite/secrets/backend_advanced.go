@@ -7,6 +7,7 @@ import (
 
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +20,7 @@ func testSecretsOnTransport(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Set
-	pr1, err := sdk.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "transport-key-suite", Value: "transport-val"})
+	pr1, err := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "transport-key-suite", Value: "transport-val"})
 	require.NoError(t, err)
 	ch1 := make(chan []byte, 1)
 	unsub1, err := env.Kit.SubscribeRaw(ctx, pr1.ReplyTo, func(m sdk.Message) { ch1 <- m.Payload })
@@ -32,7 +33,7 @@ func testSecretsOnTransport(t *testing.T, env *suite.TestEnv) {
 	unsub1()
 
 	// Get
-	pr2, err := sdk.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "transport-key-suite"})
+	pr2, err := protocol.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "transport-key-suite"})
 	require.NoError(t, err)
 	ch2 := make(chan []byte, 1)
 	unsub2, err := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })

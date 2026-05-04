@@ -1,8 +1,9 @@
 package engine
 
 import (
+	"context"
+
 	"github.com/brainlet/brainkit/internal/types"
-	"github.com/brainlet/brainkit/modulehost/storagehost"
 )
 
 func (k *Kernel) AddStorage(name string, cfg types.StorageConfig) error {
@@ -13,12 +14,24 @@ func (k *Kernel) RemoveStorage(name string) error {
 	return k.storageHost.RemoveStorage(name)
 }
 
-func (k *Kernel) StorageURL(name string) string {
-	return k.storageHost.URL(name)
+func (k *Kernel) RemoveStorageContext(ctx context.Context, name string) error {
+	return k.storageHost.RemoveStorageContext(ctx, name)
 }
 
-func (k *Kernel) StorageManager() *storagehost.Manager {
-	return k.storageHost
+func (k *Kernel) AddVector(name string, cfg types.VectorConfig) error {
+	return k.storageHost.AddVector(name, cfg)
+}
+
+func (k *Kernel) RemoveVector(name string) error {
+	return k.storageHost.RemoveVector(name)
+}
+
+func (k *Kernel) RemoveVectorContext(ctx context.Context, name string) error {
+	return k.storageHost.RemoveVectorContext(ctx, name)
+}
+
+func (k *Kernel) StorageURL(name string) string {
+	return k.storageHost.URL(name)
 }
 
 // initStorages starts sqlite bridges for all sqlite storage entries.
@@ -29,8 +42,8 @@ func (k *Kernel) initStorages(cfg types.KernelConfig) (map[string]string, error)
 }
 
 // registerStorages registers all storages in the provider registry.
-func (k *Kernel) registerStorages(cfg types.KernelConfig, bridgeURLs map[string]string) {
-	k.storageHost.RegisterStorages(cfg, bridgeURLs)
+func (k *Kernel) registerStorages(cfg types.KernelConfig, bridgeURLs map[string]string) error {
+	return k.storageHost.RegisterStorages(cfg, bridgeURLs)
 }
 
 // registerVectors registers all vector stores in the provider registry.

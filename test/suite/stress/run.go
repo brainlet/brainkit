@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 )
 
@@ -89,7 +90,7 @@ func sendAndReceive(t *testing.T, rt sdk.Runtime, msg sdk.BrainkitMessage, timeo
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	pr, err := sdk.Publish(rt, ctx, msg)
+	pr, err := protocol.Publish(rt, ctx, msg)
 	if err != nil {
 		t.Logf("publish failed: %v", err)
 		return nil, false
@@ -112,4 +113,3 @@ func sendAndReceive(t *testing.T, rt sdk.Runtime, msg sdk.BrainkitMessage, timeo
 		return nil, false
 	}
 }
-

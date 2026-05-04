@@ -10,49 +10,51 @@ import (
 )
 
 const (
-	CapabilityRuntimeID             = "brainkit.core.runtime_id"
-	CapabilityNamespace             = "brainkit.core.namespace"
-	CapabilityCallerID              = "brainkit.core.caller_id"
-	CapabilityPresenceTransport     = "brainkit.core.presence_transport"
-	CapabilityDeployer              = "brainkit.core.deployer"
-	CapabilityTSRunner              = "brainkit.core.ts_runner"
-	CapabilityEvalRuntime           = "brainkit.core.eval_runtime"
-	CapabilityPluginChecker         = "brainkit.core.plugin_checker"
-	CapabilitySetScheduleHandler    = "brainkit.core.set_schedule_handler"
-	CapabilitySetAuditStore         = "brainkit.core.set_audit_store"
-	CapabilitySetAuditVerbosity     = "brainkit.core.set_audit_verbosity"
-	CapabilitySetTraceStore         = "brainkit.core.set_trace_store"
-	CapabilityProbeAll              = "brainkit.core.probe_all"
-	CapabilityCallJS                = "brainkit.core.call_js"
-	CapabilityHarnessRuntime        = "brainkit.core.harness_runtime"
-	CapabilityTransportKind         = "brainkit.core.transport_kind"
-	CapabilitySecretStore           = "brainkit.core.secret_store"
-	CapabilityPluginRestarter       = "brainkit.core.plugin_restarter"
-	CapabilityRefreshProviderSecret = "brainkit.core.refresh_provider_secret"
-	CapabilityShutdownSignal        = "brainkit.core.shutdown_signal"
-	CapabilityRemoteClient          = "brainkit.core.remote_client"
-	CapabilityReferenceCatalog      = "brainkit.core.reference_catalog"
-	CapabilityToolRegistry          = "brainkit.core.tool_registry"
-	CapabilityProviderRegistry      = "brainkit.core.provider_registry"
-	CapabilityStorageManager        = "brainkit.core.storage_manager"
-	CapabilityKitStore              = "brainkit.core.kit_store"
-	CapabilityMetricsSnapshot       = "brainkit.core.metrics_snapshot"
-	CapabilityHealthSnapshot        = "brainkit.core.health_snapshot"
-	CapabilityHealthProbes          = "brainkit.core.health_probes"
-	CapabilityRequestCaller         = "brainkit.core.request_caller"
-	CapabilityAgentRegistry         = "brainkit.core.agent_registry"
-	CapabilityMountedModules        = "brainkit.core.mounted_modules"
-	CapabilityModuleLifecycle       = "brainkit.core.module_lifecycle"
-	CapabilityToolCommands          = "brainkit.core.tool_commands"
-	CapabilityRuntimeControl        = "brainkit.core.runtime_control"
-	CapabilityTracer                = "brainkit.core.tracer"
-	CapabilityAuditRecorder         = "brainkit.core.audit_recorder"
-	CapabilityReportError           = "brainkit.core.report_error"
-	CapabilitySetPluginChecker      = "brainkit.core.set_plugin_checker"
-	CapabilitySetPluginRestarter    = "brainkit.core.set_plugin_restarter"
-	CapabilityJSRuntimeHost         = "brainkit.core.jsruntime_host"
-	CapabilityEnableJSRuntime       = "brainkit.core.enable_js_runtime"
-	CapabilityHasJSRuntime          = "brainkit.core.has_js_runtime"
+	CapabilityRuntimeID              = "brainkit.core.runtime_id"
+	CapabilityNamespace              = "brainkit.core.namespace"
+	CapabilityCallerID               = "brainkit.core.caller_id"
+	CapabilityPresenceTransport      = "brainkit.core.presence_transport"
+	CapabilityArtifactDeployer       = "brainkit.core.artifact_deployer"
+	CapabilityEvalRuntime            = "brainkit.core.eval_runtime"
+	CapabilityTestRuntime            = "brainkit.core.test_runtime"
+	CapabilityPluginChecker          = "brainkit.core.plugin_checker"
+	CapabilityScheduleHandlerLease   = "brainkit.core.schedule_handler_lease"
+	CapabilityAuditStoreLease        = "brainkit.core.audit_store_lease"
+	CapabilityAuditVerbosityLease    = "brainkit.core.audit_verbosity_lease"
+	CapabilityTraceStoreLease        = "brainkit.core.trace_store_lease"
+	CapabilityProbeAll               = "brainkit.core.probe_all"
+	CapabilityCallJS                 = "brainkit.core.call_js"
+	CapabilityHarnessRuntime         = "brainkit.core.harness_runtime"
+	CapabilityTransportKind          = "brainkit.core.transport_kind"
+	CapabilitySecretStore            = "brainkit.core.secret_store"
+	CapabilityPluginRestarter        = "brainkit.core.plugin_restarter"
+	CapabilityRefreshProviderSecret  = "brainkit.core.refresh_provider_secret"
+	CapabilityShutdownSignal         = "brainkit.core.shutdown_signal"
+	CapabilityRemoteClient           = "brainkit.core.remote_client"
+	CapabilityReferenceCatalog       = "brainkit.core.reference_catalog"
+	CapabilityToolRegistry           = "brainkit.core.tool_registry"
+	CapabilityProviderRegistry       = "brainkit.core.provider_registry"
+	CapabilityRegistryMutation       = "brainkit.core.registry_mutation"
+	CapabilityKitStore               = "brainkit.core.kit_store"
+	CapabilityMetricsSnapshot        = "brainkit.core.metrics_snapshot"
+	CapabilityHealthSnapshot         = "brainkit.core.health_snapshot"
+	CapabilityLifecycleDebugRegistry = "brainkit.core.lifecycle_debug_registry"
+	CapabilityLifecycleDebugSnapshot = "brainkit.core.lifecycle_debug_snapshot"
+	CapabilityHealthProbes           = "brainkit.core.health_probes"
+	CapabilityRequestCaller          = "brainkit.core.request_caller"
+	CapabilityAgentRegistry          = "brainkit.core.agent_registry"
+	CapabilityMountedModules         = "brainkit.core.mounted_modules"
+	CapabilityModuleLifecycle        = "brainkit.core.module_lifecycle"
+	CapabilityToolCommands           = "brainkit.core.tool_commands"
+	CapabilityRuntimeControl         = "brainkit.core.runtime_control"
+	CapabilityTracer                 = "brainkit.core.tracer"
+	CapabilityAuditRecorder          = "brainkit.core.audit_recorder"
+	CapabilityReportError            = "brainkit.core.report_error"
+	CapabilityPluginCheckerLease     = "brainkit.core.plugin_checker_lease"
+	CapabilityPluginRestarterLease   = "brainkit.core.plugin_restarter_lease"
+	CapabilityJSRuntimeHost          = "brainkit.core.jsruntime_host"
+	CapabilityEnableJSRuntime        = "brainkit.core.enable_js_runtime"
+	CapabilityHasJSRuntime           = "brainkit.core.has_js_runtime"
 )
 
 // PluginChecker is the narrow capability a plugins module exposes so package
@@ -86,13 +88,49 @@ type HealthProbes interface {
 	Ready(context.Context) bool
 }
 
+// ProbeRunner runs provider/storage/vector probe sweeps under caller-owned
+// lifecycle cancellation. Modules should use this instead of raw callback
+// functions so hot-unmount can cancel and wait for in-flight probe work.
+type ProbeRunner interface {
+	ProbeAll(context.Context)
+}
+
+// ProbeRunnerFunc adapts a function to ProbeRunner.
+type ProbeRunnerFunc func(context.Context)
+
+// ProbeAll satisfies ProbeRunner.
+func (f ProbeRunnerFunc) ProbeAll(ctx context.Context) {
+	if f != nil {
+		f(ctx)
+	}
+}
+
+// ProviderSecretRefresher refreshes provider runtime state after a secret has
+// rotated. Implementations must update the provider source of truth and return
+// errors from any active runtime cache refresh instead of silently dropping
+// them.
+type ProviderSecretRefresher interface {
+	RefreshProviderSecret(context.Context, string, string) error
+}
+
+// RegistryMutationManager owns live provider/storage/vector mutations that can
+// affect runtime resources. Command modules should use this instead of
+// composing raw provider registries, storage managers, and runtime cache
+// invalidators themselves.
+type RegistryMutationManager interface {
+	AddRegistryProvider(context.Context, string, string, json.RawMessage) error
+	RemoveRegistryProvider(context.Context, string) error
+	AddRegistryStorage(context.Context, string, string, json.RawMessage) error
+	RemoveRegistryStorage(context.Context, string) error
+	AddRegistryVector(context.Context, string, string, json.RawMessage) error
+	RemoveRegistryVector(context.Context, string) error
+}
+
 // RequestCaller is the neutral request/reply capability for modules that need
 // to call arbitrary bus commands. The default implementation is the SDK
 // shared-inbox caller, so replies are routed asynchronously by correlation ID
 // rather than by creating a subscription per call.
-type RequestCaller interface {
-	Call(context.Context, string, json.RawMessage, sdk.CallerConfig) (json.RawMessage, error)
-}
+type RequestCaller = sdk.RequestCaller
 
 // CapabilityHost manages named runtime capabilities exposed by modules.
 type CapabilityHost interface {
@@ -100,6 +138,10 @@ type CapabilityHost interface {
 	Get(string) (any, bool)
 	Require(string) (any, error)
 }
+
+// LeaseFunc installs a module-owned runtime hook and returns a closeable lease
+// that detaches that exact hook when the module scope closes.
+type LeaseFunc[T any] func(context.Context, T) (Handle, error)
 
 // Capability returns a capability value only when it is present and has the
 // requested type.

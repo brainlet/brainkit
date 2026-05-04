@@ -5,9 +5,9 @@ package runtimehost
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"sort"
+	"sync"
 
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/modulecap/runtime"
@@ -22,18 +22,26 @@ type SubscribeFanOut func(context.Context, string, func(sdk.Message)) (func(), e
 // Host is the narrow runtime surface needed by persistence and propagation
 // orchestration.
 type Host interface {
-	runtimecap.Deployer
+	runtimecap.SourceDeployer
 	HasJSRuntime() bool
 	SetDeployOrderSeed(seed int32)
-	CallJS(ctx context.Context, fn string, args any) (json.RawMessage, error)
 }
 
-// Manager owns persistence restoration, deployment propagation, and workflow
-// restart orchestration for an attached JS runtime.
+// Manager owns persistence restoration and deployment propagation for an
+// attached JS runtime.
 type Manager struct {
 	host            Host
 	logger          *slog.Logger
 	subscribeFanOut SubscribeFanOut
+
+	mu                sync.Mutex
+	propagationUnsubs []func()
+}
+
+// DebugSnapshot reports runtime-host-owned propagation state for lifecycle
+// inspection and teardown tests.
+type DebugSnapshot struct {
+	PropagationSubscriptions int
 }
 
 // New creates a runtime host manager.
@@ -59,10 +67,27 @@ func (m *Manager) InitPersistence(cfg types.KernelConfig) {
 
 	// Schedule restoration is the schedules module's responsibility; it runs
 	// on its own mount via the attached Store.
+}
 
-	if len(cfg.Storages) > 0 {
-		m.RestartActiveWorkflows(cfg)
+// Close releases runtime-host subscriptions. Safe to call more than once.
+func (m *Manager) Close() error {
+	if m == nil {
+		return nil
 	}
+	unsubs := m.takePropagationUnsubs()
+	for _, unsub := range unsubs {
+		unsub()
+	}
+	return nil
+}
+
+func (m *Manager) DebugSnapshot() DebugSnapshot {
+	if m == nil {
+		return DebugSnapshot{}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return DebugSnapshot{PropagationSubscriptions: len(m.propagationUnsubs)}
 }
 
 // RedeployPersistedDeployments loads and re-deploys all persisted .ts deployments.
@@ -93,6 +118,9 @@ func (m *Manager) RedeployPersistedDeployments(cfg types.KernelConfig) {
 		if d.PackageName != "" {
 			opts = append(opts, types.WithPackageName(d.PackageName))
 		}
+		if d.EffectiveArtifactKind() == types.DeployArtifactNormalizedJS {
+			opts = append(opts, types.WithNormalizedJS())
+		}
 		if _, err := m.host.Deploy(context.Background(), d.Source, d.Code, opts...); err != nil {
 			types.InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.DeployError{
 				Source: d.Source, Phase: "redeploy", Cause: err,
@@ -103,39 +131,6 @@ func (m *Manager) RedeployPersistedDeployments(cfg types.KernelConfig) {
 	m.logger.Info("redeployed persisted deployments", slog.Int("count", len(deployments)))
 }
 
-// RestartActiveWorkflows calls restartAllActiveWorkflowRuns() on all registered
-// workflows and reports non-fatal recovery errors through the configured handler.
-func (m *Manager) RestartActiveWorkflows(cfg types.KernelConfig) {
-	if !m.runtimeReady() {
-		return
-	}
-	raw, err := m.host.CallJS(context.Background(), "__brainkit.storage.restartWorkflows", nil)
-	if err != nil {
-		types.InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.PersistenceError{
-			Operation: "RestartActiveWorkflows", Cause: err,
-		}, types.ErrorContext{Operation: "RestartActiveWorkflows", Component: "kernel"})
-		return
-	}
-	var parsed struct {
-		Restarted int `json:"restarted"`
-		Errors    []struct {
-			Workflow string `json:"workflow"`
-			Error    string `json:"error"`
-		} `json:"errors"`
-	}
-	if json.Unmarshal(raw, &parsed) != nil {
-		return
-	}
-	for _, wfErr := range parsed.Errors {
-		types.InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.PersistenceError{
-			Operation: "RestartWorkflow", Source: wfErr.Workflow, Cause: fmt.Errorf("%s", wfErr.Error),
-		}, types.ErrorContext{Operation: "RestartWorkflow", Component: "workflow", Source: wfErr.Workflow})
-	}
-	if parsed.Restarted > 0 {
-		m.logger.Info("restarted active workflows", slog.Int("definitions", parsed.Restarted))
-	}
-}
-
 // SubscribeToDeploymentPropagation listens for deploy/teardown events from
 // other replicas and mirrors them locally from the shared store.
 func (m *Manager) SubscribeToDeploymentPropagation(cfg types.KernelConfig) {
@@ -143,7 +138,7 @@ func (m *Manager) SubscribeToDeploymentPropagation(cfg types.KernelConfig) {
 		return
 	}
 
-	_, _ = m.subscribeFanOut(context.Background(), systemmsg.TopicKitDeployed, func(msg sdk.Message) {
+	deployUnsub, err := m.subscribeFanOut(context.Background(), systemmsg.TopicKitDeployed, func(msg sdk.Message) {
 		var evt systemmsg.KitDeployedEvent
 		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
 			return
@@ -158,7 +153,14 @@ func (m *Manager) SubscribeToDeploymentPropagation(cfg types.KernelConfig) {
 				slog.String("error", err.Error()))
 			return
 		}
-		if _, err := m.host.Deploy(context.Background(), dep.Source, dep.Code, types.WithRestoring()); err != nil {
+		opts := []types.DeployOption{types.WithRestoring()}
+		if dep.PackageName != "" {
+			opts = append(opts, types.WithPackageName(dep.PackageName))
+		}
+		if dep.EffectiveArtifactKind() == types.DeployArtifactNormalizedJS {
+			opts = append(opts, types.WithNormalizedJS())
+		}
+		if _, err := m.host.Deploy(context.Background(), dep.Source, dep.Code, opts...); err != nil {
 			m.logger.Warn("propagation: deploy failed",
 				slog.String("source", evt.Source),
 				slog.String("error", err.Error()))
@@ -168,8 +170,12 @@ func (m *Manager) SubscribeToDeploymentPropagation(cfg types.KernelConfig) {
 				slog.String("runtimeID", evt.RuntimeID))
 		}
 	})
+	if err != nil {
+		m.logger.Warn("propagation: subscribe deploy failed", slog.String("error", err.Error()))
+		return
+	}
 
-	_, _ = m.subscribeFanOut(context.Background(), systemmsg.TopicKitTeardowned, func(msg sdk.Message) {
+	teardownUnsub, err := m.subscribeFanOut(context.Background(), systemmsg.TopicKitTeardowned, func(msg sdk.Message) {
 		var evt systemmsg.KitTeardownedEvent
 		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
 			return
@@ -187,6 +193,30 @@ func (m *Manager) SubscribeToDeploymentPropagation(cfg types.KernelConfig) {
 				slog.String("runtimeID", evt.RuntimeID))
 		}
 	})
+	if err != nil {
+		deployUnsub()
+		m.logger.Warn("propagation: subscribe teardown failed", slog.String("error", err.Error()))
+		return
+	}
+	m.replacePropagationUnsubs([]func(){deployUnsub, teardownUnsub})
+}
+
+func (m *Manager) replacePropagationUnsubs(unsubs []func()) {
+	m.mu.Lock()
+	old := append([]func(){}, m.propagationUnsubs...)
+	m.propagationUnsubs = unsubs
+	m.mu.Unlock()
+	for _, unsub := range old {
+		unsub()
+	}
+}
+
+func (m *Manager) takePropagationUnsubs() []func() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	unsubs := append([]func(){}, m.propagationUnsubs...)
+	m.propagationUnsubs = nil
+	return unsubs
 }
 
 func (m *Manager) runtimeReady() bool {

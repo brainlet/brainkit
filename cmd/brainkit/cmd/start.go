@@ -8,6 +8,8 @@ import (
 	"syscall"
 
 	"github.com/brainlet/brainkit/server"
+	"github.com/brainlet/brainkit/server/configfile"
+	_ "github.com/brainlet/brainkit/server/standard"
 	"github.com/spf13/cobra"
 )
 
@@ -32,7 +34,7 @@ used by "brainkit deploy", "brainkit call", "brainkit inspect".`,
 			// env vars always win; missing file is a silent no-op.
 			loadDotEnv(".env")
 
-			cfg, err := server.LoadConfig(configPath)
+			cfg, err := configfile.Load(configPath)
 			if err != nil {
 				return fmt.Errorf("load config %q: %w", configPath, err)
 			}

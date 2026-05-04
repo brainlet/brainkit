@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"os/exec"
@@ -67,7 +68,7 @@ func run() error {
 		Namespace: "mcp-demo",
 		Transport: brainkit.Memory(),
 		FSRoot:    tmp,
-		Modules: []brainkit.Module{
+		Modules: []bkmodule.Module{
 			mcpmod.New(map[string]mcpmod.ServerConfig{
 				"fs": {
 					Command: "npx",

@@ -28,16 +28,17 @@ const (
 // Descriptor is the module manifest used for listing, docs, dependency
 // resolution, and runtime introspection.
 type Descriptor struct {
-	Name          string                 `json:"name"`
-	Status        Status                 `json:"status,omitempty"`
-	Summary       string                 `json:"summary,omitempty"`
-	Provides      []string               `json:"provides,omitempty"`
-	Requires      []string               `json:"requires,omitempty"`
-	Commands      []MessageDescriptor    `json:"commands,omitempty"`
-	Events        []MessageDescriptor    `json:"events,omitempty"`
-	Subscriptions []MessageDescriptor    `json:"subscriptions,omitempty"`
-	Capabilities  []CapabilityDescriptor `json:"capabilities,omitempty"`
-	Resources     []ResourceDescriptor   `json:"resources,omitempty"`
+	Name             string                 `json:"name"`
+	Status           Status                 `json:"status,omitempty"`
+	Summary          string                 `json:"summary,omitempty"`
+	Provides         []string               `json:"provides,omitempty"`
+	Requires         []string               `json:"requires,omitempty"`
+	Commands         []MessageDescriptor    `json:"commands,omitempty"`
+	Events           []MessageDescriptor    `json:"events,omitempty"`
+	Subscriptions    []MessageDescriptor    `json:"subscriptions,omitempty"`
+	Capabilities     []CapabilityDescriptor `json:"capabilities,omitempty"`
+	CapabilityGroups *CapabilityGroups      `json:"capabilityGroups,omitempty"`
+	Resources        []ResourceDescriptor   `json:"resources,omitempty"`
 }
 
 // Describer is implemented by factories or modules that expose metadata.
@@ -85,12 +86,51 @@ type ModuleBuildConfig struct {
 	YAML string          `json:"yaml,omitempty"`
 }
 
+// ModuleDependencyStatus reports whether a manifest dependency can be satisfied
+// by the current Kit. A dependency is available when it is already mounted or
+// when its factory is registered and can be auto-mounted before the caller.
+type ModuleDependencyStatus struct {
+	Name        string `json:"name"`
+	RequestedBy string `json:"requestedBy,omitempty"`
+	Mounted     bool   `json:"mounted"`
+	Registered  bool   `json:"registered"`
+	Available   bool   `json:"available"`
+}
+
+// CapabilityAvailability reports whether a manifest capability is currently
+// available to the module that requested it.
+type CapabilityAvailability struct {
+	Module    string              `json:"module,omitempty"`
+	Name      string              `json:"name"`
+	Direction CapabilityDirection `json:"direction,omitempty"`
+	Type      string              `json:"type,omitempty"`
+	Summary   string              `json:"summary,omitempty"`
+	Available bool                `json:"available"`
+	Source    string              `json:"source,omitempty"`
+	Provider  string              `json:"provider,omitempty"`
+}
+
+// ModulePreflight is the runtime view of a module manifest against the current
+// Kit. It is intentionally separate from Descriptor: descriptors are stable
+// manifests, while preflight includes current dependency and capability
+// availability.
+type ModulePreflight struct {
+	Ready                       bool                     `json:"ready"`
+	RequiredModules             []ModuleDependencyStatus `json:"requiredModules,omitempty"`
+	MissingModules              []string                 `json:"missingModules,omitempty"`
+	RequiredCapabilities        []CapabilityAvailability `json:"requiredCapabilities,omitempty"`
+	OptionalCapabilities        []CapabilityAvailability `json:"optionalCapabilities,omitempty"`
+	MissingRequiredCapabilities []CapabilityAvailability `json:"missingRequiredCapabilities,omitempty"`
+	Errors                      []string                 `json:"errors,omitempty"`
+}
+
 // ModuleLifecycle is the control-plane capability for registered linked-code
 // module lifecycle operations.
 type ModuleLifecycle interface {
 	MountModule(context.Context, string, ModuleBuildConfig) (Descriptor, error)
 	UnmountModule(context.Context, string) (Descriptor, error)
 	DescribeModule(context.Context, string) (Descriptor, bool, error)
+	PreflightModule(context.Context, string) (ModulePreflight, error)
 }
 
 var (

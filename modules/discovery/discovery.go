@@ -1,6 +1,8 @@
 package discovery
 
-import "time"
+import (
+	"time"
+)
 
 // Provider resolves peer addresses for Kit-to-Kit networking.
 type Provider interface {
@@ -27,7 +29,7 @@ type PeerConfig struct {
 	Meta      map[string]string
 }
 
-// ModuleConfig configures the discovery brainkit.Module. Pass to NewModule.
+// ModuleConfig configures the discovery module. Pass to NewModule.
 // Type:
 //   - "static": peers are fixed at boot, taken from StaticPeers.
 //   - "bus":    peers are learned from presence announcements on the transport.

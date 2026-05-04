@@ -15,8 +15,7 @@ Every deployment has a stable namespace:
 - `bus.on("ask")` inside that deployment subscribes to
   `ts.my-service.ask`.
 - Go callers reach it with
-  `brainkit.Call[sdk.CustomMsg, Resp](..., sdk.CustomMsg{Topic: "ts.my-service.ask", ...})`
-  or `sdk.SendToService(kit, ctx, "my-service", "ask", payload)`.
+  `brainkit.Call[sdk.CustomMsg, Resp](..., sdk.CustomMsg{Topic: "ts.my-service.ask", ...})`.
 - Other `.ts` code reaches it with
   `bus.sendTo("my-service", "ask", data)` for fire-and-forget or
   `bus.callService("my-service", "ask", data, { timeoutMs })` for
@@ -56,7 +55,7 @@ Symmetric with the Go surface:
 | `sdk.SubscribeTo` | `bus.subscribe(topic, handler)` |
 | `brainkit.Call` | `bus.call(topic, payload, { timeoutMs })` |
 | `brainkit.Call` to a service topic | `bus.callService(service, topic, payload, { timeoutMs })` |
-| `sdk.SendToService` / event send | `bus.sendTo(service, topic, payload)` |
+| `sdk.Emit` to `protocol.ResolveServiceTopic(service, topic)` | `bus.sendTo(service, topic, payload)` |
 | `brainkit.CallStream` | `bus.callStream(topic, payload, { timeoutMs, onChunk })` |
 | `brainkit.CallStream` to a service topic | `bus.callServiceStream(service, topic, payload, { timeoutMs, onChunk })` |
 | `WithCallTo("peer")` | `bus.callTo("peer", topic, payload, { timeoutMs })` / `bus.callToStream(...)` |

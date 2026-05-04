@@ -17,14 +17,13 @@
     "allowJs": true,
     "types": [],
     "paths": {
-      "kit":    ["../internal/engine/runtime/kit.d.ts"],
-      "ai":     ["../internal/engine/runtime/ai.d.ts"],
-      "agent":  ["../internal/engine/runtime/agent.d.ts"]
+      "kit":    ["../internal/dts/runtime/kit.d.ts"],
+      "ai":     ["../internal/dts/runtime/ai.d.ts"],
+      "agent":  ["../internal/dts/runtime/agent.d.ts"]
     }
   },
   "include": [
     "ts/**/*.ts",
-    "../internal/engine/runtime/globals.d.ts"
+    "../internal/dts/runtime/globals.d.ts"
   ]
 }
-

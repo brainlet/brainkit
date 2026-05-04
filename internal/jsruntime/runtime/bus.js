@@ -188,9 +188,8 @@
             }
           },
           error: function(message) {
-            // Keep the legacy typed-stream-error shape here — the SSE
-            // gateway depends on it. Envelope wrapping for streams will
-            // land alongside the gateway stream rewrite.
+            // Keep the typed-stream-error shape here because the SSE gateway
+            // reassembles stream chunks by type/seq/total.
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
                 JSON.stringify({ type: "error", seq: _seq, total: _seq, data: { message: typeof message === "string" ? message : String(message) } }),
@@ -198,8 +197,8 @@
             }
           },
           end: function(finalData) {
-            // Keep the legacy typed-stream-end shape — same reason as
-            // stream.error above.
+            // Keep the typed-stream-end shape for the gateway stream
+            // reassembly path.
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
                 JSON.stringify({ type: "end", seq: _seq, total: _seq, data: finalData || null }),

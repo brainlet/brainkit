@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"strings"
@@ -81,7 +82,7 @@ func run(rerank bool) error {
 		Namespace: "rag-pipeline-demo",
 		Transport: brainkit.Memory(),
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
-		Modules:   []brainkit.Module{packages.New()},
+		Modules:   []bkmodule.Module{packages.New()},
 		Vectors: map[string]brainkit.VectorConfig{
 			"docs": brainkit.PgVectorStore(pgURL),
 		},

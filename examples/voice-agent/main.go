@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"path/filepath"
@@ -110,7 +111,7 @@ func run(outRaw, question string, play bool) error {
 		Transport: brainkit.Memory(),
 		FSRoot:    wsRoot,
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
-		Modules:   []brainkit.Module{packages.New()},
+		Modules:   []bkmodule.Module{packages.New()},
 	}
 	if play {
 		// Wire desktop playback. Without this, .ts code calling

@@ -33,7 +33,10 @@ func (r *Runtime) initJSRuntimeGlobals(cfg types.KernelConfig) error {
 		provMap := make(map[string]map[string]string)
 		for name, reg := range cfg.AIProviders {
 			creds := providerhost.ExtractProviderCredentials(reg)
-			entry := map[string]string{"APIKey": creds.APIKey}
+			entry := map[string]string{
+				"type":   string(reg.Type),
+				"APIKey": creds.APIKey,
+			}
 			if creds.BaseURL != "" {
 				entry["BaseURL"] = creds.BaseURL
 			}
@@ -59,14 +62,6 @@ func (r *Runtime) evalJSCall(ctx context.Context, fn string, args any) (json.Raw
 		return nil, err
 	}
 	return json.RawMessage(result), nil
-}
-
-func (r *Runtime) evalJSCallSync(fn string, args any) {
-	if r.bridge == nil {
-		return
-	}
-	argsJSON, _ := json.Marshal(args)
-	r.bridge.Eval("__dispatch_sync__.js", fmt.Sprintf("%s(JSON.parse(%q))", fn, string(argsJSON)))
 }
 
 func (r *Runtime) upgradeMastraStorage() {

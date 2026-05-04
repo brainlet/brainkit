@@ -15,6 +15,7 @@ import (
 	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/require"
 )
@@ -128,10 +129,10 @@ func TestPluginToolCallViaBusEmbedded(t *testing.T) {
 		defer unsub()
 
 		start := time.Now()
-		_, err = sdk.Publish(kernel, ctx, toolmsg.ToolCallMsg{
+		_, err = protocol.Publish(kernel, ctx, toolmsg.ToolCallMsg{
 			Name:  "echo",
 			Input: "test input",
-		}, sdk.WithReplyTo(replyTo))
+		}, protocol.WithReplyTo(replyTo))
 		require.NoError(t, err)
 
 		select {

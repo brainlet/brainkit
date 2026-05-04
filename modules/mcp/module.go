@@ -6,6 +6,8 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"sync"
+	"sync/atomic"
 
 	toolreg "github.com/brainlet/brainkit/internal/tools"
 	bkmodule "github.com/brainlet/brainkit/module"
@@ -18,8 +20,10 @@ import (
 // Module is a Kit-scoped MCP module. Construct via New and include in
 // brainkit.Config.Modules.
 type Module struct {
+	mu      sync.RWMutex
 	servers map[string]ServerConfig
 	manager *MCPManager
+	closing atomic.Bool
 }
 
 // New creates an MCP module that will connect to the given servers at
@@ -37,24 +41,31 @@ func (m *Module) Status() bkmodule.Status { return bkmodule.StatusStable }
 // Mount connects configured MCP servers and scopes the discovered tools plus
 // mcp.* commands to the module lifetime.
 func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
-	if len(m.servers) == 0 {
-		return nil
+	manager := NewManager()
+	m.mu.Lock()
+	m.manager = manager
+	m.mu.Unlock()
+	if len(m.servers) > 0 {
+		host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindProcess, "mcp.servers", "External MCP server connections."))
+	}
+	host.Scope().Defer(m.CloseContext)
+	lifecycleDebug, _ := bkmodule.Capability[bkmodule.LifecycleDebugRegistry](host, bkmodule.CapabilityLifecycleDebugRegistry)
+	if lifecycleDebug != nil {
+		handle, err := lifecycleDebug.RegisterLifecycleDebug(ctx, "mcp", func() any {
+			return m.DebugSnapshot()
+		})
+		if err != nil {
+			return err
+		}
+		host.Scope().Defer(handle.Close)
 	}
 
-	m.manager = NewManager()
-	host.Scope().Defer(func(context.Context) error {
-		if m.manager != nil {
-			return m.manager.Close()
-		}
-		return nil
-	})
-
 	for name, cfg := range m.servers {
-		if err := m.manager.Connect(ctx, name, cfg); err != nil {
+		if err := manager.Connect(ctx, name, cfg); err != nil {
 			host.Logger().Warn("mcp connect failed", "server", name, "error", err)
 			continue
 		}
-		for _, tool := range m.manager.ListToolsForServer(name) {
+		for _, tool := range manager.ListToolsForServer(name) {
 			toolCopy := tool
 			fullName := toolreg.ComposeName("mcp", toolCopy.ServerName, "1.0.0", toolCopy.Name)
 			if _, err := host.Tools().Register(ctx, bkmodule.ToolSpec{
@@ -66,7 +77,7 @@ func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 				Description: toolCopy.Description,
 				InputSchema: toolCopy.InputSchema,
 				Executor: bkmodule.ToolExecutorFunc(func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
-					return m.manager.CallTool(ctx, toolCopy.ServerName, toolCopy.Name, input)
+					return manager.CallTool(ctx, toolCopy.ServerName, toolCopy.Name, input)
 				}),
 			}); err != nil {
 				return err
@@ -90,17 +101,33 @@ func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 
 // Close disconnects from every MCP server.
 func (m *Module) Close() error {
-	if m.manager != nil {
-		return m.manager.Close()
+	return m.CloseContext(context.Background())
+}
+
+func (m *Module) CloseContext(ctx context.Context) error {
+	manager := m.currentManager()
+	if manager == nil {
+		return nil
 	}
-	return nil
+	m.closing.Store(true)
+	defer m.closing.Store(false)
+	err := manager.CloseContext(ctx)
+	if err == nil {
+		m.mu.Lock()
+		if m.manager == manager {
+			m.manager = nil
+		}
+		m.mu.Unlock()
+	}
+	return err
 }
 
 func (m *Module) listTools(_ context.Context, _ mcpmsg.McpListToolsMsg) (*mcpmsg.McpListToolsResp, error) {
-	if m.manager == nil {
+	manager := m.currentManager()
+	if manager == nil {
 		return nil, &sdkerrors.NotConfiguredError{Feature: "mcp"}
 	}
-	tools := m.manager.ListTools()
+	tools := manager.ListTools()
 	var infos []mcpmsg.McpToolInfo
 	for _, t := range tools {
 		infos = append(infos, mcpmsg.McpToolInfo{Name: t.Name, Server: t.ServerName, Description: t.Description})
@@ -109,15 +136,22 @@ func (m *Module) listTools(_ context.Context, _ mcpmsg.McpListToolsMsg) (*mcpmsg
 }
 
 func (m *Module) callTool(ctx context.Context, req mcpmsg.McpCallToolMsg) (*mcpmsg.McpCallToolResp, error) {
-	if m.manager == nil {
+	manager := m.currentManager()
+	if manager == nil {
 		return nil, &sdkerrors.NotConfiguredError{Feature: "mcp"}
 	}
 	argsJSON, _ := json.Marshal(req.Args)
-	result, err := m.manager.CallTool(ctx, req.Server, req.Tool, argsJSON)
+	result, err := manager.CallTool(ctx, req.Server, req.Tool, argsJSON)
 	if err != nil {
 		return nil, err
 	}
 	return &mcpmsg.McpCallToolResp{Result: result}, nil
+}
+
+func (m *Module) currentManager() *MCPManager {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.manager
 }
 
 // ServerYAML is one entry in the YAML `servers:` map. Exactly one of
@@ -156,7 +190,7 @@ func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	return New(servers), nil
 }
 
-// Describe surfaces module metadata for `brainkit modules list`.
+// Describe surfaces module metadata for module manifests.
 func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:     "mcp",
@@ -166,6 +200,12 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Commands: []bkmodule.MessageDescriptor{
 			bkmodule.CommandMessage[mcpmsg.McpCallToolMsg, mcpmsg.McpCallToolResp](),
 			bkmodule.CommandMessage[mcpmsg.McpListToolsMsg, mcpmsg.McpListToolsResp](),
+		},
+		Resources: []bkmodule.ResourceDescriptor{
+			bkmodule.Resource(bkmodule.ResourceKindProcess, "mcp.servers", "External MCP server connections."),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.OptionalCapabilityOf[bkmodule.LifecycleDebugRegistry](bkmodule.CapabilityLifecycleDebugRegistry),
 		},
 	}
 }

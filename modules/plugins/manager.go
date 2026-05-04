@@ -3,11 +3,14 @@ package plugins
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -23,6 +26,7 @@ type pluginManager struct {
 	plugins      map[string]*pluginConn
 	mu           syncx.Mutex
 	startCounter int32
+	stopping     bool
 }
 
 // pluginConn tracks one connected plugin subprocess.
@@ -31,12 +35,15 @@ type pluginConn struct {
 	identity  string
 	cmd       *exec.Cmd
 	cancel    context.CancelFunc
+	exited    chan struct{} // closed as soon as the subprocess Wait returns
 	done      chan struct{} // closed when process exits AND no restart will happen
 	startedAt time.Time
 
 	mu       syncx.Mutex
 	restarts int  // number of times restarted after crash
 	stopping bool // true when stopPlugin was called — prevents auto-restart
+	stopOnce sync.Once
+	stopCh   chan struct{}
 }
 
 func newPluginManager(mod *Module) *pluginManager {
@@ -66,25 +73,30 @@ func (pm *pluginManager) startAll(configs []PluginConfig) {
 // times this plugin has been restarted (0 for initial start).
 func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 	ctx, cancel := context.WithCancel(context.Background())
+	var createdWSServer *pluginWSServer
+	cleanupStartupFailure := func() {
+		cancel()
+		if createdWSServer != nil {
+			pm.closeCreatedWSServer(createdWSServer)
+		}
+	}
 
 	cmd := exec.CommandContext(ctx, cfg.Binary, cfg.Args...)
 
 	// Start WS server on first plugin (lazy init)
-	if pm.wsServer == nil {
-		ws, err := newPluginWSServer(pm.mod)
-		if err != nil {
-			cancel()
-			return fmt.Errorf("plugin ws server: %w", err)
-		}
-		pm.wsServer = ws
+	ws, wsURL, err := pm.ensureWSServer()
+	if err != nil {
+		cancel()
+		return err
 	}
+	createdWSServer = ws
 
 	// Pass WS URL to plugin — no transport env vars needed
 	var env []string
 	for k, v := range cfg.Env {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
-	env = append(env, fmt.Sprintf("BRAINKIT_PLUGIN_WS_URL=%s", pm.wsServer.URL()))
+	env = append(env, fmt.Sprintf("BRAINKIT_PLUGIN_WS_URL=%s", wsURL))
 	env = append(env, fmt.Sprintf("BRAINKIT_NAMESPACE=%s", pm.mod.kit.Namespace()))
 	env = append(env, fmt.Sprintf("BRAINKIT_NODE_ID=%s", pm.mod.kit.CallerID()))
 	if len(cfg.Config) > 0 {
@@ -108,19 +120,21 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		cancel()
+		cleanupStartupFailure()
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
 	cmd.Stderr = &logWriter{logger: pm.log(), plugin: cfg.Name}
 
 	if err := cmd.Start(); err != nil {
-		cancel()
+		cleanupStartupFailure()
 		return fmt.Errorf("start: %w", err)
 	}
 
 	// Read READY line with timeout
 	readyCh := make(chan string, 1)
+	stdoutDone := make(chan struct{})
 	go func() {
+		defer close(stdoutDone)
 		scanner := bufio.NewScanner(stdout)
 		if scanner.Scan() {
 			line := scanner.Text()
@@ -134,10 +148,29 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 	select {
 	case identity := <-readyCh:
 		pm.log().Info("plugin ready", slog.String("plugin", cfg.Name), slog.String("identity", identity))
+	case <-stdoutDone:
+		select {
+		case identity := <-readyCh:
+			pm.log().Info("plugin ready", slog.String("plugin", cfg.Name), slog.String("identity", identity))
+		default:
+			cleanupStartupFailure()
+			if waitErr := cmd.Wait(); waitErr != nil {
+				return fmt.Errorf("plugin exited before READY: %w", waitErr)
+			}
+			return fmt.Errorf("plugin exited before READY")
+		}
 	case <-time.After(cfg.StartTimeout):
-		cancel()
-		cmd.Process.Kill()
-		return &sdk.TimeoutError{Operation: "plugin READY"}
+		cleanupStartupFailure()
+		var err error = &sdk.TimeoutError{Operation: "plugin READY"}
+		if cmd.Process != nil {
+			if killErr := cmd.Process.Kill(); killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+				err = errors.Join(err, fmt.Errorf("plugin %q kill after READY timeout: %w", cfg.Name, killErr))
+			}
+		}
+		waitCtx, waitCancel := context.WithTimeout(context.Background(), time.Second)
+		err = errors.Join(err, waitCommand(waitCtx, cmd))
+		waitCancel()
+		return err
 	}
 
 	pc := &pluginConn{
@@ -145,12 +178,40 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 		identity:  cfg.Name,
 		cmd:       cmd,
 		cancel:    cancel,
+		exited:    make(chan struct{}),
 		done:      make(chan struct{}),
+		stopCh:    make(chan struct{}),
 		restarts:  restartCount,
 		startedAt: time.Now(),
 	}
 
 	pm.mu.Lock()
+	if pm.stopping {
+		pm.mu.Unlock()
+		if signalErr := cmd.Process.Signal(syscall.SIGTERM); signalErr != nil && !errors.Is(signalErr, os.ErrProcessDone) {
+			pm.log().Warn("plugin manager stopping: signal started plugin failed",
+				slog.String("plugin", cfg.Name),
+				slog.String("error", signalErr.Error()))
+		}
+		waitCtx, waitCancel := context.WithTimeout(context.Background(), pc.config.ShutdownTimeout)
+		if pc.config.ShutdownTimeout <= 0 {
+			waitCancel()
+			waitCtx, waitCancel = context.WithTimeout(context.Background(), 5*time.Second)
+		}
+		if waitErr := waitCommand(waitCtx, cmd); waitErr != nil {
+			if killErr := cmd.Process.Kill(); killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+				pm.log().Warn("plugin manager stopping: kill started plugin failed",
+					slog.String("plugin", cfg.Name),
+					slog.String("error", killErr.Error()))
+			}
+			killCtx, killCancel := context.WithTimeout(context.Background(), time.Second)
+			_ = waitCommand(killCtx, cmd)
+			killCancel()
+		}
+		waitCancel()
+		cleanupStartupFailure()
+		return errPluginManagerStopping
+	}
 	pm.plugins[cfg.Name] = pc
 	pm.mu.Unlock()
 
@@ -165,10 +226,104 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 	return nil
 }
 
+func waitCommand(ctx context.Context, cmd *exec.Cmd) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+var errPluginManagerStopping = errors.New("plugin manager is stopping")
+
+var pluginKillWaitTimeout = time.Second
+
+func (pc *pluginConn) requestStop() {
+	if pc == nil || pc.stopCh == nil {
+		return
+	}
+	pc.stopOnce.Do(func() { close(pc.stopCh) })
+}
+
+func (pc *pluginConn) stopRequested() <-chan struct{} {
+	if pc == nil {
+		return nil
+	}
+	return pc.stopCh
+}
+
+func (pm *pluginManager) ensureWSServer() (*pluginWSServer, string, error) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	if pm.stopping {
+		return nil, "", errPluginManagerStopping
+	}
+	if pm.wsServer != nil {
+		return nil, pm.wsServer.URL(), nil
+	}
+	ws, err := newPluginWSServer(pm.mod)
+	if err != nil {
+		return nil, "", fmt.Errorf("plugin ws server: %w", err)
+	}
+	pm.wsServer = ws
+	return ws, ws.URL(), nil
+}
+
+func (pm *pluginManager) closeCreatedWSServer(ws *pluginWSServer) {
+	if ws == nil {
+		return
+	}
+	pm.mu.Lock()
+	if pm.wsServer != ws {
+		pm.mu.Unlock()
+		return
+	}
+	pm.wsServer = nil
+	pm.mu.Unlock()
+	ws.Close()
+}
+
+func (pm *pluginManager) closeWSServer(ctx context.Context) error {
+	if pm == nil {
+		return nil
+	}
+	pm.mu.Lock()
+	ws := pm.wsServer
+	pm.mu.Unlock()
+	if ws == nil {
+		return nil
+	}
+	if err := ws.CloseContext(ctx); err != nil {
+		return err
+	}
+	pm.mu.Lock()
+	if pm.wsServer == ws {
+		pm.wsServer = nil
+	}
+	pm.mu.Unlock()
+	return nil
+}
+
+func (pm *pluginManager) isStopping() bool {
+	pm.mu.Lock()
+	stopping := pm.stopping
+	pm.mu.Unlock()
+	return stopping
+}
+
 // watchProcess waits for the plugin to exit, logs the reason, and auto-restarts
 // if configured. Runs in its own goroutine.
 func (pm *pluginManager) watchProcess(pc *pluginConn) {
 	err := pc.cmd.Wait()
+	if pc.exited != nil {
+		close(pc.exited)
+	}
 
 	// Log exit reason
 	exitCode := -1
@@ -188,6 +343,10 @@ func (pm *pluginManager) watchProcess(pc *pluginConn) {
 
 	if stopping {
 		// Intentional shutdown — don't restart
+		close(pc.done)
+		return
+	}
+	if pm.isStopping() {
 		close(pc.done)
 		return
 	}
@@ -227,6 +386,9 @@ func (pm *pluginManager) watchProcess(pc *pluginConn) {
 	select {
 	case <-time.After(backoff):
 		// Backoff elapsed — proceed with restart
+	case <-pc.stopRequested():
+		close(pc.done)
+		return
 	case <-pm.mod.kit.ShutdownSignal():
 		// Kit shutting down — don't restart, exit immediately
 		close(pc.done)
@@ -237,7 +399,7 @@ func (pm *pluginManager) watchProcess(pc *pluginConn) {
 	pc.mu.Lock()
 	stopping = pc.stopping
 	pc.mu.Unlock()
-	if stopping {
+	if stopping || pm.isStopping() {
 		close(pc.done)
 		return
 	}
@@ -246,58 +408,156 @@ func (pm *pluginManager) watchProcess(pc *pluginConn) {
 	pc.cancel()
 
 	if restartErr := pm.startPlugin(pc.config, nextRestart); restartErr != nil {
+		if errors.Is(restartErr, errPluginManagerStopping) {
+			close(pc.done)
+			return
+		}
 		pm.mod.kit.ReportError(fmt.Errorf("plugin %s: %w", pc.config.Name, restartErr), types.ErrorContext{
 			Operation: "RestartPlugin", Component: "plugin", Source: pc.config.Name,
 		})
 		close(pc.done)
+		return
 	}
-	// If restart succeeded, startPlugin registered a new pluginConn with a new done channel.
-	// The old pc.done is never closed — that's fine, nobody is waiting on it except stopPlugin
-	// which already set stopping=true before this path.
+	pc.mu.Lock()
+	stopping = pc.stopping
+	pc.mu.Unlock()
+	if stopping || pm.isStopping() {
+		pm.mu.Lock()
+		next := pm.plugins[pc.config.Name]
+		pm.mu.Unlock()
+		if next != nil && next != pc {
+			if err := pm.stopPlugin(context.Background(), pc.config.Name, next); err != nil {
+				pm.mod.kit.ReportError(fmt.Errorf("plugin %s: stop restarted process: %w", pc.config.Name, err), types.ErrorContext{
+					Operation: "StopRestartedPlugin", Component: "plugin", Source: pc.config.Name,
+				})
+			}
+		}
+	}
+	close(pc.done)
 }
 
-func (pm *pluginManager) stopAll() {
+func (pm *pluginManager) stopAll(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	pm.mu.Lock()
+	pm.stopping = true
 	plugins := make(map[string]*pluginConn, len(pm.plugins))
 	for k, v := range pm.plugins {
 		plugins[k] = v
 	}
 	pm.mu.Unlock()
 
+	var err error
 	for name, pc := range plugins {
-		pm.stopPlugin(name, pc)
+		err = errors.Join(err, pm.stopPlugin(ctx, name, pc))
 	}
+	return err
 }
 
-func (pm *pluginManager) stopPlugin(name string, pc *pluginConn) {
+func (pm *pluginManager) stopPlugin(ctx context.Context, name string, pc *pluginConn) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if pc == nil {
+		return nil
+	}
 	// Mark as stopping — prevents auto-restart
 	pc.mu.Lock()
 	pc.stopping = true
 	pc.mu.Unlock()
+	pc.requestStop()
+
+	var err error
 
 	// Send SIGTERM
-	if pc.cmd.Process != nil {
-		pc.cmd.Process.Signal(syscall.SIGTERM)
+	if pc.cmd != nil && pc.cmd.Process != nil {
+		if signalErr := pc.cmd.Process.Signal(syscall.SIGTERM); signalErr != nil && !errors.Is(signalErr, os.ErrProcessDone) {
+			err = errors.Join(err, fmt.Errorf("plugin %q signal: %w", name, signalErr))
+		}
 	}
+	if pc.done == nil {
+		if pc.cancel != nil {
+			pc.cancel()
+		}
+		pm.removePluginIfSame(name, pc)
+		return err
+	}
+
+	timeout := pc.config.ShutdownTimeout
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 
 	select {
 	case <-pc.done:
-	case <-time.After(pc.config.ShutdownTimeout):
+	case <-timer.C:
 		pm.log().Warn("plugin shutdown timeout, killing", slog.String("plugin", name))
-		if pc.cmd.Process != nil {
-			pc.cmd.Process.Kill()
-		}
-		// Wait for watchProcess to finish
-		<-pc.done
+		err = errors.Join(err, fmt.Errorf("plugin %q shutdown timeout", name))
+		killCtx, cancel := context.WithTimeout(context.Background(), pluginKillWaitTimeout)
+		err = errors.Join(err, pm.killAndWait(killCtx, name, pc))
+		cancel()
+	case <-ctx.Done():
+		pm.log().Warn("plugin shutdown context canceled, killing", slog.String("plugin", name), slog.String("error", ctx.Err().Error()))
+		err = errors.Join(err, ctx.Err())
+		killCtx, cancel := context.WithTimeout(context.Background(), pluginKillWaitTimeout)
+		err = errors.Join(err, pm.killAndWait(killCtx, name, pc))
+		cancel()
 	}
 
-	pc.cancel()
+	if pc.cancel != nil {
+		pc.cancel()
+	}
 
-	pm.mu.Lock()
-	delete(pm.plugins, name)
-	pm.mu.Unlock()
+	if pluginConnDone(pc) {
+		pm.removePluginIfSame(name, pc)
+	}
 
 	pm.log().Info("plugin stopped", slog.String("plugin", name))
+	return err
+}
+
+func pluginConnDone(pc *pluginConn) bool {
+	if pc == nil || pc.done == nil {
+		return true
+	}
+	select {
+	case <-pc.done:
+		return true
+	default:
+		return false
+	}
+}
+
+func (pm *pluginManager) removePluginIfSame(name string, pc *pluginConn) {
+	pm.mu.Lock()
+	if pm.plugins[name] == pc {
+		delete(pm.plugins, name)
+	}
+	pm.mu.Unlock()
+}
+
+func (pm *pluginManager) killAndWait(ctx context.Context, name string, pc *pluginConn) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var err error
+	if pc.cmd != nil && pc.cmd.Process != nil {
+		if killErr := pc.cmd.Process.Kill(); killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+			err = errors.Join(err, fmt.Errorf("plugin %q kill: %w", name, killErr))
+		}
+	}
+	if pc.done == nil {
+		return err
+	}
+	select {
+	case <-pc.done:
+	case <-ctx.Done():
+		err = errors.Join(err, ctx.Err())
+	}
+	return err
 }
 
 func (pm *pluginManager) listPlugins() []types.RunningPlugin {

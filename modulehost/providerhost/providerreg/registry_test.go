@@ -1,7 +1,12 @@
 package providerreg
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -146,4 +151,68 @@ func TestKnownCapabilities(t *testing.T) {
 	unknown := KnownAICapabilities("unknown-provider")
 	assert.True(t, unknown.Chat)
 	assert.False(t, unknown.Embedding)
+}
+
+func TestCloseCancelsRegisterProbeGoroutines(t *testing.T) {
+	started := make(chan struct{})
+	var once sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		once.Do(func() { close(started) })
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	r := New(ProbeConfig{ProbeOnRegister: true, ProbeTimeout: time.Hour})
+	err := r.RegisterAIProvider("openai", AIProviderRegistration{
+		Type:   AIProviderOpenAI,
+		Config: OpenAIProviderConfig{APIKey: "sk-test", BaseURL: srv.URL},
+	})
+	require.NoError(t, err)
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("probe request did not start")
+	}
+
+	closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Second)
+	defer closeCancel()
+	done := make(chan error, 1)
+	go func() { done <- r.CloseContext(closeCtx) }()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("Close did not cancel active probe")
+	}
+	require.Eventually(t, func() bool { return r.ActiveProbes() == 0 }, time.Second, 10*time.Millisecond)
+
+	err = r.RegisterAIProvider("after-close", AIProviderRegistration{Type: AIProviderOpenAI})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "closed")
+}
+
+func TestCloseContextRetriesWithSinglePendingProbeWait(t *testing.T) {
+	r := New(ProbeConfig{})
+	release := make(chan struct{})
+	r.wg.Add(1)
+	r.activeProbes.Add(1)
+	go func() {
+		defer r.wg.Done()
+		defer r.activeProbes.Add(-1)
+		<-release
+	}()
+
+	for i := 0; i < 2; i++ {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		err := r.CloseContext(closeCtx)
+		cancel()
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, int64(1), r.ActiveProbes())
+	}
+
+	close(release)
+	require.NoError(t, r.CloseContext(context.Background()))
+	require.Equal(t, int64(0), r.ActiveProbes())
 }

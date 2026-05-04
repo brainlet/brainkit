@@ -24,6 +24,7 @@ import (
 	"github.com/brainlet/brainkit/modules/workflow"
 	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	_ "github.com/brainlet/brainkit/storagebridges"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/google/uuid"
@@ -339,7 +340,7 @@ func (e *TestEnv) PublishAndWait(t *testing.T, msg sdk.BrainkitMessage, timeout 
 	}
 	defer unsub()
 
-	_, err = sdk.Publish(e.Kit, ctx, msg, sdk.WithReplyTo(replyTo))
+	_, err = protocol.Publish(e.Kit, ctx, msg, protocol.WithReplyTo(replyTo))
 	if err != nil {
 		return nil, err
 	}

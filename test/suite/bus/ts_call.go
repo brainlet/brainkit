@@ -10,6 +10,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -28,7 +29,7 @@ func tsCallDeployAndTrigger(t *testing.T, env *suite.TestEnv, source, handlerCod
 	payload, err := json.Marshal(map[string]any{})
 	require.NoError(t, err)
 	data, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
-		Topic:   sdk.ResolveServiceTopic(source, "trigger"),
+		Topic:   protocol.ResolveServiceTopic(source, "trigger"),
 		Payload: payload,
 	})
 	require.NoError(t, err)

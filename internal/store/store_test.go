@@ -19,7 +19,7 @@ func testKitStoreDeployments(t *testing.T, store types.KitStore) {
 	// Save
 	err := store.SaveDeployment(types.PersistedDeployment{
 		Source: "hello.ts", Code: "export default {}", Order: 1,
-		DeployedAt: now, PackageName: "test",
+		DeployedAt: now, PackageName: "test", ArtifactKind: types.DeployArtifactNormalizedJS,
 	})
 	require.NoError(t, err)
 
@@ -31,6 +31,7 @@ func testKitStoreDeployments(t *testing.T, store types.KitStore) {
 	assert.Equal(t, "export default {}", deps[0].Code)
 	assert.Equal(t, 1, deps[0].Order)
 	assert.Equal(t, "test", deps[0].PackageName)
+	assert.Equal(t, types.DeployArtifactNormalizedJS, deps[0].EffectiveArtifactKind())
 
 	// Load one
 	dep, err := store.LoadDeployment("hello.ts")
@@ -40,7 +41,7 @@ func testKitStoreDeployments(t *testing.T, store types.KitStore) {
 	// Upsert
 	err = store.SaveDeployment(types.PersistedDeployment{
 		Source: "hello.ts", Code: "updated code", Order: 2,
-		DeployedAt: now, PackageName: "test",
+		DeployedAt: now, PackageName: "test", ArtifactKind: types.DeployArtifactNormalizedJS,
 	})
 	require.NoError(t, err)
 	dep, _ = store.LoadDeployment("hello.ts")

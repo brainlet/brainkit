@@ -9,6 +9,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,7 +25,7 @@ func testPumpScheduleLatency(t *testing.T, env *suite.TestEnv) {
 	for i := range latencies {
 		start := time.Now()
 		_, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
-			Topic:   sdk.ResolveServiceTopic("latency-test.ts", "ping"),
+			Topic:   protocol.ResolveServiceTopic("latency-test.ts", "ping"),
 			Payload: json.RawMessage(`{"x":true}`),
 		})
 		require.NoError(t, err)

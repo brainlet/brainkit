@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"path/filepath"
@@ -50,7 +51,7 @@ func run() error {
 		Transport: brainkit.Memory(),
 		FSRoot:    tmp,
 		Store:     store,
-		Modules: []brainkit.Module{packages.New(),
+		Modules: []bkmodule.Module{packages.New(),
 			schedulesmod.NewModule(schedulesmod.Config{Store: store}),
 		},
 	})

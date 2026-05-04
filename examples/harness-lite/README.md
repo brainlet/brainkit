@@ -29,7 +29,7 @@ harn := harness.NewModule(harness.Config{
 })
 
 kit, _ := brainkit.New(brainkit.Config{
-    Modules: []brainkit.Module{harn},
+    Modules: []module.Module{harn},
     // ...
 })
 defer kit.Close()

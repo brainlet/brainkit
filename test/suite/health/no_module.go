@@ -8,6 +8,7 @@ import (
 	"github.com/brainlet/brainkit"
 	healthmod "github.com/brainlet/brainkit/modules/health"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 )
 
@@ -29,7 +30,7 @@ func testNoModuleCommandsAbsent(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(k, ctx, healthmod.KitHealthMsg{})
+	pr, err := protocol.Publish(k, ctx, healthmod.KitHealthMsg{})
 	if err != nil {
 		t.Fatalf("publish kit.health: %v", err)
 	}
