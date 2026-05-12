@@ -1,4 +1,4 @@
-.PHONY: all brainkit install deps deps-go deps-npm deps-root deps-root-save deps-root-check deps-profiles deps-profile-check deps-modules build generate test test-v test-compile test-suite test-full test-all test-campaigns-transport test-campaigns-transport-embedded test-campaigns-transport-nats test-campaigns-transport-amqp test-campaigns-transport-redis test-campaigns-transport-external bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples examples-smoke examples-smoke-compile examples-smoke-offline examples-smoke-live examples-smoke-server examples-smoke-external examples-smoke-all clean podman-init podman-start podman-up podman-launchd-up podman-launchd-down podman-link-socket podman-verify podman-down podman-status podman-reset podman-nuke podman-ensure type-check
+.PHONY: all brainkit install deps deps-go deps-npm deps-root deps-root-save deps-root-check deps-profiles deps-profile-check deps-modules build generate test test-v test-compile test-suite test-full test-all test-campaigns-transport test-campaigns-transport-embedded test-campaigns-transport-nats test-campaigns-transport-amqp test-campaigns-transport-redis test-campaigns-transport-external bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples examples-smoke examples-smoke-compile examples-smoke-offline examples-smoke-live examples-smoke-server examples-smoke-external examples-smoke-all plugins-build plugins-test plugins-smoke clean podman-init podman-start podman-up podman-launchd-up podman-launchd-down podman-link-socket podman-verify podman-down podman-status podman-reset podman-nuke podman-ensure type-check
 
 PODMAN_MACHINE ?= brainkit
 PODMAN_CPUS ?= 4
@@ -10,6 +10,10 @@ PODMAN_LAUNCHD_LOG ?= /tmp/podman/$(PODMAN_MACHINE)-launchd-start.out
 TEST_SUITE_P ?= 2
 TEST_ALL_TIMEOUT ?= 1800s
 TEST_TRANSPORT_TIMEOUT ?= 1200s
+PLUGINS_ROOT ?= ../plugins
+PLUGIN_REPOS ?=
+PLUGIN_BUILD_DIR ?=
+PLUGIN_TEST_TIMEOUT ?= 600s
 ROOT_DEPS_MANIFEST ?= api/brainkit-root.deps
 ROOT_DEPS_CMD = go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' . | sed '/^$$/d' | sort -u
 PROFILE_DEPS_PACKAGES ?= . ./server ./server/configfile ./server/standard ./server/standard/runtime ./server/standard/artifactruntime ./server/standard/packages ./presets/standard/core ./presets/standard/runtime ./presets/standard/artifactruntime ./presets/standard/packages ./modules/jsruntime ./modules/jsruntime/artifact ./modules/packages ./modules/packages/bundlers/esbuild ./modules/packages/source ./modules/packages/client ./modules/packages/scaffold
@@ -256,6 +260,18 @@ examples-smoke-external: podman-ensure
 
 examples-smoke-all: podman-ensure
 	DOCKER_HOST=unix://$(PODMAN_SOCKET) scripts/examples-smoke.sh all
+
+# Sibling plugin workspace gates. README-only plugin drafts are skipped; repos
+# with go.mod are built/tested in place, with build binaries written to a temp
+# directory unless PLUGIN_BUILD_DIR is set.
+plugins-build:
+	PLUGINS_ROOT=$(PLUGINS_ROOT) PLUGIN_REPOS="$(PLUGIN_REPOS)" PLUGIN_BUILD_DIR="$(PLUGIN_BUILD_DIR)" scripts/plugins-workspace.sh build
+
+plugins-test:
+	PLUGINS_ROOT=$(PLUGINS_ROOT) PLUGIN_REPOS="$(PLUGIN_REPOS)" PLUGIN_TEST_TIMEOUT=$(PLUGIN_TEST_TIMEOUT) scripts/plugins-workspace.sh test
+
+plugins-smoke:
+	PLUGINS_ROOT=$(PLUGINS_ROOT) PLUGIN_REPOS="$(PLUGIN_REPOS)" PLUGIN_BUILD_DIR="$(PLUGIN_BUILD_DIR)" PLUGIN_TEST_TIMEOUT=$(PLUGIN_TEST_TIMEOUT) scripts/plugins-workspace.sh smoke
 
 # Clean generated bundles, node_modules, and binaries
 clean:
