@@ -223,7 +223,7 @@ func testForgerySubscriptionBomb(t *testing.T, env *suite.TestEnv) {
 		output({created: ids.length});
 	`)
 
-	result, _ := secEvalTSErr(k, "__bomb.ts", `
+	result, _ := secEvalJSErr(k, "__bomb.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -279,7 +279,7 @@ func testForgeryCommandTopicBypass(t *testing.T, env *suite.TestEnv) {
 		output(results);
 	`)
 
-	result, _ := secEvalTSErr(k, "__cmd_bypass.ts", `
+	result, _ := secEvalJSErr(k, "__cmd_bypass.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -336,7 +336,7 @@ func testForgeryMetadataInjection(t *testing.T, env *suite.TestEnv) {
 		output(results);
 	`)
 
-	result, _ := secEvalTSErr(k, "__meta_inj.ts", `
+	result, _ := secEvalJSErr(k, "__meta_inj.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -356,7 +356,7 @@ func testForgeryCrossDeploymentResult(t *testing.T, env *suite.TestEnv) {
 		output("attacker");
 	`)
 
-	result, _ := secEvalTSErr(k, "__check_result.ts", `
+	result, _ := secEvalJSErr(k, "__check_result.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || "");
 	`)
@@ -396,7 +396,7 @@ func testForgeryMaliciousGoTool(t *testing.T, env *suite.TestEnv) {
 		});
 	`)
 
-	result, _ := secEvalTSErr(k, "__inj.ts", `
+	result, _ := secEvalJSErr(k, "__inj.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});

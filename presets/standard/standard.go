@@ -4,6 +4,7 @@ package standard
 
 import (
 	bkmodule "github.com/brainlet/brainkit/module"
+	artifactruntimepreset "github.com/brainlet/brainkit/presets/standard/artifactruntime"
 	"github.com/brainlet/brainkit/presets/standard/commands"
 	"github.com/brainlet/brainkit/presets/standard/core"
 	packagepreset "github.com/brainlet/brainkit/presets/standard/packages"
@@ -20,6 +21,13 @@ func CoreSet() []bkmodule.Module {
 // builders.
 func RuntimeSet() []bkmodule.Module {
 	return runtimepreset.Set()
+}
+
+// ArtifactRuntimeSet returns the artifact-only JS runtime/eval modules. Raw
+// `.ts` source deploys are rejected; package/tooling callers should pass
+// normalized JavaScript artifacts.
+func ArtifactRuntimeSet() []bkmodule.Module {
+	return artifactruntimepreset.Set()
 }
 
 // PackageSet returns the JS runtime/eval/package deployment modules, including

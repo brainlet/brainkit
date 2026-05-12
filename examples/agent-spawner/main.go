@@ -33,19 +33,19 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/examples/internal/exampleenv"
 	"github.com/brainlet/brainkit/modules/packages/client"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 )
 
 func main() {
+	exampleenv.LoadRootDotEnv()
 	modelID := flag.String("model", "gpt-4o-mini", "OpenAI model id used by both agents")
 	request := flag.String("request", "I need an agent that writes a single short haiku about whatever topic the caller provides. Keep it to three lines. Name it haiku-bot.",
 		"free-form instruction for the architect")
@@ -75,7 +75,7 @@ func run(apiKey, modelID, request, askPrompt string) error {
 		Transport: brainkit.Memory(),
 		FSRoot:    tmp,
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(apiKey)},
-		Modules:   []bkmodule.Module{packages.New()},
+		Modules:   standard.PackageSet(),
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

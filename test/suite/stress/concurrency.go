@@ -81,7 +81,7 @@ func testConcurrencyPublishUnsubscribeRace(t *testing.T, env *suite.TestEnv) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			testutil.EvalTSErr(tk, "__stress_race_pub.ts", `
+			testutil.EvalJSErr(tk, "__stress_race_pub.ts", `
 				try { bus.publish("ts.pubsub-stress-race.ping", {}); } catch(e) {}
 				return "ok";
 			`)
@@ -105,7 +105,7 @@ func testConcurrencySecretSetGetRace(t *testing.T, env *suite.TestEnv) {
 
 		go func() {
 			defer wg.Done()
-			testutil.EvalTSErr(tk, "__stress_secret_set.ts", fmt.Sprintf(`
+			testutil.EvalJSErr(tk, "__stress_secret_set.ts", fmt.Sprintf(`
 				try {
 					__go_brainkit_request("secrets.set", JSON.stringify({name: "stress-race-key", value: %q}));
 				} catch(e) {}
@@ -115,7 +115,7 @@ func testConcurrencySecretSetGetRace(t *testing.T, env *suite.TestEnv) {
 
 		go func() {
 			defer wg.Done()
-			testutil.EvalTSErr(tk, "__stress_secret_get.ts", `
+			testutil.EvalJSErr(tk, "__stress_secret_get.ts", `
 				try { secrets.get("stress-race-key"); } catch(e) {}
 				return "ok";
 			`)
@@ -248,8 +248,8 @@ func testConcurrencyCloseDuringHandlers(t *testing.T, env *suite.TestEnv) {
 	assert.NoError(t, err)
 }
 
-// E08: EvalTS from 5 goroutines simultaneously
-func testConcurrencyParallelEvalTS(t *testing.T, env *suite.TestEnv) {
+// E08: EvalJS from 5 goroutines simultaneously
+func testConcurrencyParallelEvalJS(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipped in short mode")
 	}
@@ -265,7 +265,7 @@ func testConcurrencyParallelEvalTS(t *testing.T, env *suite.TestEnv) {
 		i := i
 		go func() {
 			defer wg.Done()
-			results[i], errs[i] = testutil.EvalTSErr(tk, fmt.Sprintf("__stress_parallel_%d.ts", i),
+			results[i], errs[i] = testutil.EvalJSErr(tk, fmt.Sprintf("__stress_parallel_%d.ts", i),
 				fmt.Sprintf(`return "result-%d";`, i))
 		}()
 	}

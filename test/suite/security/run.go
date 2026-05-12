@@ -190,15 +190,15 @@ func secDeployErr(k *brainkit.Kit, source, code string) error {
 	return testutil.DeployErr(k, source, code)
 }
 
-// secEvalTS evaluates TS code and returns the result string.
-func secEvalTS(t *testing.T, k *brainkit.Kit, source, code string) string {
+// secEvalJS evaluates TS code and returns the result string.
+func secEvalJS(t *testing.T, k *brainkit.Kit, source, code string) string {
 	t.Helper()
-	return testutil.EvalTS(t, k, source, code)
+	return testutil.EvalJS(t, k, source, code)
 }
 
-// secEvalTSErr evaluates TS code and returns (result, error).
-func secEvalTSErr(k *brainkit.Kit, source, code string) (string, error) {
-	return testutil.EvalTSErr(k, source, code)
+// secEvalJSErr evaluates TS code and returns (result, error).
+func secEvalJSErr(k *brainkit.Kit, source, code string) (string, error) {
+	return testutil.EvalJSErr(k, source, code)
 }
 
 // secTeardown tears down a deployment.

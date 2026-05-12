@@ -56,22 +56,13 @@ type TestRunnerConfig struct {
 	ExpectJSON bool          // fixture mode: compare output() against expect.json
 }
 
-// DeployKind describes the artifact shape the test runner hands to the
-// runtime.
-type DeployKind string
-
-const (
-	DeploySource       DeployKind = "source"
-	DeployNormalizedJS DeployKind = "normalized_js"
-)
-
 // Runtime is the minimal interface the TestRunner needs from a Kernel.
 // Avoids import cycle between kit/testing and kit.
 type Runtime interface {
-	// EvalTS evaluates TypeScript code and returns the result string.
-	EvalTS(ctx context.Context, source, code string) (string, error)
-	// Deploy deploys code into a Compartment.
-	Deploy(ctx context.Context, source, code string, kind DeployKind) error
+	// EvalJS evaluates JavaScript code and returns the result string.
+	EvalJS(ctx context.Context, source, code string) (string, error)
+	// Deploy deploys normalized JavaScript code into a Compartment.
+	Deploy(ctx context.Context, source, code string) error
 	// Teardown removes a deployment.
 	Teardown(ctx context.Context, source string) error
 }
@@ -121,7 +112,11 @@ func (r *TestRunner) Run(ctx context.Context) (*RunResult, error) {
 
 // RunCode runs inline test code (not from a file). Used for programmatic test execution.
 func (r *TestRunner) RunCode(ctx context.Context, name, code string) (*SuiteResult, error) {
-	return r.executeTestCode(ctx, name, code, DeploySource)
+	normalized, err := normalizeInlineTestCode(name, code)
+	if err != nil {
+		return nil, err
+	}
+	return r.executeTestCode(ctx, name, normalized)
 }
 
 func (r *TestRunner) discoverTestFiles() ([]string, error) {
@@ -170,7 +165,7 @@ func (r *TestRunner) runFile(ctx context.Context, filePath string) SuiteResult {
 		return suite
 	}
 
-	result, err := r.executeTestCode(ctx, filePath, code, DeployNormalizedJS)
+	result, err := r.executeTestCode(ctx, filePath, code)
 	if err != nil {
 		suite.Tests = append(suite.Tests, TestResult{
 			Name: "execution", Error: err.Error(), Duration: time.Since(start),
@@ -193,8 +188,10 @@ func (r *TestRunner) runExpectJSON(ctx context.Context, filePath string) SuiteRe
 	name := filepath.Base(dir)
 	suite := SuiteResult{File: name}
 
-	// Read the .ts source
-	code, err := readFileBytes(filePath)
+	// Bundle the fixture source before handing it to the runtime. Runtime
+	// deployment accepts JavaScript artifacts; TypeScript normalization belongs
+	// here in the test/package tooling layer.
+	code, err := bundleTestFile(filePath)
 	if err != nil {
 		suite.Tests = append(suite.Tests, TestResult{Name: name, Error: err.Error()})
 		suite.Failed = 1
@@ -214,7 +211,7 @@ func (r *TestRunner) runExpectJSON(ctx context.Context, filePath string) SuiteRe
 
 	// Deploy and run, capture output()
 	source := "__fixture_" + name + ".ts"
-	if deployErr := r.rt.Deploy(ctx, source, string(code), DeploySource); deployErr != nil {
+	if deployErr := r.rt.Deploy(ctx, source, code); deployErr != nil {
 		suite.Tests = append(suite.Tests, TestResult{Name: name, Error: deployErr.Error()})
 		suite.Failed = 1
 		suite.Duration = time.Since(start)
@@ -223,7 +220,7 @@ func (r *TestRunner) runExpectJSON(ctx context.Context, filePath string) SuiteRe
 	defer r.rt.Teardown(ctx, source)
 
 	// Get the output value
-	output, err := r.rt.EvalTS(ctx, "__get_output.ts", `return JSON.stringify(globalThis.__module_result || null);`)
+	output, err := r.rt.EvalJS(ctx, "__get_output.ts", `return JSON.stringify(globalThis.__module_result || null);`)
 	if err != nil {
 		suite.Tests = append(suite.Tests, TestResult{Name: name, Error: err.Error()})
 		suite.Failed = 1
@@ -287,7 +284,28 @@ func bundleTestFile(filePath string) (string, error) {
 	return string(result.OutputFiles[0].Contents), nil
 }
 
-func (r *TestRunner) executeTestCode(ctx context.Context, name, code string, kind DeployKind) (*SuiteResult, error) {
+func normalizeInlineTestCode(name, code string) (string, error) {
+	loader := api.LoaderJS
+	if strings.HasSuffix(name, ".ts") || strings.HasSuffix(name, ".tsx") {
+		loader = api.LoaderTS
+	}
+	result := api.Transform(code, api.TransformOptions{
+		Loader: loader,
+		Format: api.FormatESModule,
+		Target: api.ESNext,
+	})
+	if len(result.Errors) > 0 {
+		msg := result.Errors[0]
+		loc := ""
+		if msg.Location != nil {
+			loc = fmt.Sprintf(" at %s:%d:%d", msg.Location.File, msg.Location.Line, msg.Location.Column)
+		}
+		return "", fmt.Errorf("normalize inline test %s: %s%s", name, msg.Text, loc)
+	}
+	return string(result.Code), nil
+}
+
+func (r *TestRunner) executeTestCode(ctx context.Context, name, code string) (*SuiteResult, error) {
 	start := time.Now()
 	suite := &SuiteResult{File: name}
 
@@ -310,13 +328,13 @@ func (r *TestRunner) executeTestCode(ctx context.Context, name, code string, kin
 
 	// Deploy the test code so it registers test() calls
 	testSource := "__test_" + filepath.Base(name)
-	if err := r.rt.Deploy(ctx, testSource, cleanCode, kind); err != nil {
+	if err := r.rt.Deploy(ctx, testSource, cleanCode); err != nil {
 		return nil, fmt.Errorf("deploy test %s: %w", name, err)
 	}
 	defer r.rt.Teardown(ctx, testSource)
 
 	// Execute __runTests() to run all registered tests
-	resultJSON, err := r.rt.EvalTS(ctx, "__run_tests.ts", `return await globalThis.__runTests();`)
+	resultJSON, err := r.rt.EvalJS(ctx, "__run_tests.ts", `return await globalThis.__runTests();`)
 	if err != nil {
 		return nil, fmt.Errorf("run tests %s: %w", name, err)
 	}

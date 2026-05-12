@@ -24,7 +24,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("drain_timeout_forces_close", func(t *testing.T) { testDrainTimeoutForcesClose(t, env) })
 		t.Run("close_still_works", func(t *testing.T) { testCloseStillWorks(t, env) })
 		t.Run("messages_dropped_during_drain", func(t *testing.T) { testMessagesDroppedDuringDrain(t, env) })
-		t.Run("evalts_works_during_drain", func(t *testing.T) { testEvalTSWorksDuringDrain(t, env) })
+		t.Run("evalts_works_during_drain", func(t *testing.T) { testEvalJSWorksDuringDrain(t, env) })
 
 		// metrics.go
 		t.Run("metrics_reflects_state", func(t *testing.T) { testMetricsReflectsState(t, env) })

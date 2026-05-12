@@ -23,7 +23,7 @@ func testTSImportsStripped(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	result, _ := env.EvalTS(`
+	result, _ := env.EvalJS(`
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});
@@ -94,7 +94,7 @@ func testUnicodeSourceName(t *testing.T, env *suite.TestEnv) {
 func testJSNotTS(t *testing.T, env *suite.TestEnv) {
 	testutil.Deploy(t, env.Kit, "plain-edge.js", `output("js works");`)
 
-	result, _ := env.EvalTS(`return String(globalThis.__module_result || "");`)
+	result, _ := env.EvalJS(`return String(globalThis.__module_result || "");`)
 	assert.Equal(t, "js works", result)
 }
 
@@ -123,7 +123,7 @@ func testAsyncInit(t *testing.T, env *suite.TestEnv) {
 		output({ asyncResult: result });
 	`)
 
-	result, _ := env.EvalTS(`
+	result, _ := env.EvalJS(`
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});

@@ -26,8 +26,8 @@ func (r *Runtime) harnessRuntime() *HarnessRuntime {
 	return &HarnessRuntime{r: r}
 }
 
-func (h *HarnessRuntime) EvalTS(ctx context.Context, filename, code string) (string, error) {
-	return h.r.EvalTS(ctx, filename, code)
+func (h *HarnessRuntime) EvalJS(ctx context.Context, filename, code string) (string, error) {
+	return h.r.EvalJS(ctx, filename, code)
 }
 
 func (h *HarnessRuntime) RuntimeContext() context.Context { return h.r.bridge.GoContext() }

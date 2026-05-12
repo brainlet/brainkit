@@ -100,7 +100,7 @@ func testGoSideRuntimeRegisterUnregister(t *testing.T, _ *suite.TestEnv) {
 func testJSBridgeHas(t *testing.T, _ *suite.TestEnv) {
 	k := registryEnv(t)
 
-	result := testutil.EvalTS(t, k, "__test_reg_has.ts", `
+	result := testutil.EvalJS(t, k, "__test_reg_has.ts", `
 		var hasOpenAI = registry.has("provider", "openai");
 		var hasAnthropic = registry.has("provider", "anthropic");
 		return JSON.stringify({ hasOpenAI: hasOpenAI, hasAnthropic: hasAnthropic });
@@ -123,7 +123,7 @@ func testJSBridgeList(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	result := testutil.EvalTS(t, k, "__test_reg_list.ts", `
+	result := testutil.EvalJS(t, k, "__test_reg_list.ts", `
 		var providers = registry.list("provider");
 		return JSON.stringify({ count: providers.length, names: providers.map(function(p) { return p.name; }).sort() });
 	`)
@@ -135,7 +135,7 @@ func testJSBridgeList(t *testing.T, _ *suite.TestEnv) {
 func testJSBridgeResolve(t *testing.T, _ *suite.TestEnv) {
 	k := registryEnv(t)
 
-	result := testutil.EvalTS(t, k, "__test_reg_resolve.ts", `
+	result := testutil.EvalJS(t, k, "__test_reg_resolve.ts", `
 		try {
 			var p = provider("openai");
 			return JSON.stringify({ resolved: true, type: typeof p });
@@ -181,7 +181,7 @@ func testWithDeployedTS(t *testing.T, _ *suite.TestEnv) {
 func testJSDynamicProviderRegisterUsableByModel(t *testing.T, _ *suite.TestEnv) {
 	env := suite.NewEnv(t, suite.EnvConfig{FSRoot: true})
 
-	result := testutil.EvalTS(t, env.Kit, "__test_dynamic_provider.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_dynamic_provider.ts", `
 		const originalCreateOpenAI = globalThis.__agent_embed.createOpenAI;
 		const seen = [];
 		globalThis.__agent_embed.createOpenAI = function(opts) {
@@ -228,7 +228,7 @@ func testJSDynamicProviderRegisterUsableByModel(t *testing.T, _ *suite.TestEnv) 
 func testJSDynamicProviderRegisterPropagatesValidation(t *testing.T, _ *suite.TestEnv) {
 	env := suite.NewEnv(t, suite.EnvConfig{FSRoot: true})
 
-	_, err := testutil.EvalTSErr(env.Kit, "__test_bad_dynamic_provider.ts", `
+	_, err := testutil.EvalJSErr(env.Kit, "__test_bad_dynamic_provider.ts", `
 		registry.register("provider", "", {
 			type: "openai",
 			apiKey: "dynamic-key",
@@ -253,7 +253,7 @@ func testSecretRotateRefreshesJSProviderCache(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	setup := testutil.EvalTS(t, k, "__test_provider_secret_refresh_setup.ts", `
+	setup := testutil.EvalJS(t, k, "__test_provider_secret_refresh_setup.ts", `
 		globalThis.__test_provider_seen = [];
 		globalThis.__test_original_create_openai = globalThis.__agent_embed.createOpenAI;
 		globalThis.__agent_embed.createOpenAI = function(opts) {
@@ -279,7 +279,7 @@ func testSecretRotateRefreshesJSProviderCache(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	require.True(t, resp.Rotated)
 
-	result := testutil.EvalTS(t, k, "__test_provider_secret_refresh_after.ts", `
+	result := testutil.EvalJS(t, k, "__test_provider_secret_refresh_after.ts", `
 		try {
 			const resolved = registry.resolve("provider", "openai");
 			const after = provider("openai")("after");
@@ -315,7 +315,7 @@ func testBusProviderAddInvalidatesJSProviderCache(t *testing.T, _ *suite.TestEnv
 	require.NoError(t, err)
 	defer k.Close()
 
-	setup := testutil.EvalTS(t, k, "__test_provider_bus_cache_setup.ts", `
+	setup := testutil.EvalJS(t, k, "__test_provider_bus_cache_setup.ts", `
 		globalThis.__test_bus_provider_seen = [];
 		globalThis.__test_bus_original_create_openai = globalThis.__agent_embed.createOpenAI;
 		globalThis.__agent_embed.createOpenAI = function(opts) {
@@ -342,7 +342,7 @@ func testBusProviderAddInvalidatesJSProviderCache(t *testing.T, _ *suite.TestEnv
 	require.NoError(t, err)
 	require.True(t, resp.Added)
 
-	result := testutil.EvalTS(t, k, "__test_provider_bus_cache_after.ts", `
+	result := testutil.EvalJS(t, k, "__test_provider_bus_cache_after.ts", `
 		try {
 			const resolved = registry.resolve("provider", "openai");
 			const after = provider("openai")("after");

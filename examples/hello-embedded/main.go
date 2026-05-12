@@ -7,14 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
 	"github.com/brainlet/brainkit/modules/packages/client"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -23,7 +21,7 @@ func main() {
 		Namespace: "hello-embedded",
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
-		Modules:   []bkmodule.Module{packages.New()},
+		Modules:   standard.PackageSet(),
 	})
 	if err != nil {
 		log.Fatalf("new kit: %v", err)

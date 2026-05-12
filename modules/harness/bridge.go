@@ -76,7 +76,7 @@ func (h *Harness) callJS(method string, argsJSON string) (string, error) {
 	} else {
 		code = fmt.Sprintf(`return JSON.stringify(await __brainkit_harness.%s(JSON.parse(%s)))`, method, quoteJSString(argsJSON))
 	}
-	return h.rt.EvalTS(h.rt.RuntimeContext(), "harness-call.ts", code)
+	return h.rt.EvalJS(h.rt.RuntimeContext(), "harness-call.ts", code)
 }
 
 // callJSVoid calls a JS method and discards the result.
@@ -87,14 +87,14 @@ func (h *Harness) callJSVoid(method string, argsJSON string) error {
 
 // callJSDirect calls with a pre-built expression (no arg parsing).
 func (h *Harness) callJSDirect(code string) (string, error) {
-	return h.rt.EvalTS(h.rt.RuntimeContext(), "harness-direct.ts", code)
+	return h.rt.EvalJS(h.rt.RuntimeContext(), "harness-direct.ts", code)
 }
 
 // callJSSimple calls a method that returns a primitive (string, bool, number).
 // Wraps result in JSON.stringify for safe Go parsing.
 func (h *Harness) callJSSimple(method string) (string, error) {
 	code := fmt.Sprintf(`return JSON.stringify(await __brainkit_harness.%s())`, method)
-	return h.rt.EvalTS(h.rt.RuntimeContext(), "harness-simple.ts", code)
+	return h.rt.EvalJS(h.rt.RuntimeContext(), "harness-simple.ts", code)
 }
 
 // quoteJSString returns a JSON-encoded string (which is a valid JS string literal).

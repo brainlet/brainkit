@@ -1,4 +1,4 @@
-// Package jsruntime owns hot-mount activation of the embedded JS/TS runtime.
+// Package jsruntime owns hot-mount activation of the embedded JavaScript runtime.
 package jsruntime
 
 import (
@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/brainlet/brainkit/internal/embed/typescript"
 	runtimejs "github.com/brainlet/brainkit/internal/jsruntime"
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
@@ -13,7 +14,7 @@ import (
 	"github.com/brainlet/brainkit/modulecap/runtime"
 )
 
-// Module enables the embedded JS/TS runtime on mount.
+// Module enables the embedded JavaScript runtime on mount.
 type Module struct{}
 
 type artifactDeployer struct {
@@ -23,15 +24,18 @@ type artifactDeployer struct {
 type evalRuntime struct {
 	runtime interface {
 		runtimecap.SourceDeployer
-		runtimecap.TSRunner
+		runtimecap.JSRunner
 		EvalModule(ctx context.Context, source, code string) (string, error)
 	}
 }
 
 type testingRuntime struct {
-	source   runtimecap.SourceDeployer
 	artifact runtimecap.ArtifactDeployer
-	ts       runtimecap.TSRunner
+	js       runtimecap.JSRunner
+}
+
+func prepareTypeScriptSource(source, code string) (string, error) {
+	return typescript.TranspileTS(code, source)
 }
 
 func (d artifactDeployer) DeployArtifact(ctx context.Context, source, code string, opts ...types.DeployOption) ([]types.ResourceInfo, error) {
@@ -57,8 +61,8 @@ func (d artifactDeployer) ResourcesFrom(source string) ([]types.ResourceInfo, er
 	return nil, nil
 }
 
-func (r evalRuntime) EvalTS(ctx context.Context, source, code string) (string, error) {
-	return r.runtime.EvalTS(ctx, source, code)
+func (r evalRuntime) EvalJS(ctx context.Context, source, code string) (string, error) {
+	return r.runtime.EvalJS(ctx, source, code)
 }
 
 func (r evalRuntime) EvalModule(ctx context.Context, source, code string) (string, error) {
@@ -70,15 +74,11 @@ func (r evalRuntime) EvalScript(ctx context.Context, source, code string) (strin
 		return "", err
 	}
 	defer r.runtime.Teardown(ctx, source)
-	return r.runtime.EvalTS(ctx, "__read_eval.ts", `return globalThis.__module_result || "null";`)
+	return r.runtime.EvalJS(ctx, "__read_eval.js", `return globalThis.__module_result || "null";`)
 }
 
-func (r testingRuntime) EvalTS(ctx context.Context, source, code string) (string, error) {
-	return r.ts.EvalTS(ctx, source, code)
-}
-
-func (r testingRuntime) DeploySource(ctx context.Context, source, code string) ([]types.ResourceInfo, error) {
-	return r.source.Deploy(ctx, source, code)
+func (r testingRuntime) EvalJS(ctx context.Context, source, code string) (string, error) {
+	return r.js.EvalJS(ctx, source, code)
 }
 
 func (r testingRuntime) DeployArtifact(ctx context.Context, source, code string) ([]types.ResourceInfo, error) {
@@ -86,7 +86,7 @@ func (r testingRuntime) DeployArtifact(ctx context.Context, source, code string)
 }
 
 func (r testingRuntime) Teardown(ctx context.Context, source string) (int, error) {
-	return r.source.Teardown(ctx, source)
+	return r.artifact.Teardown(ctx, source)
 }
 
 // New creates the JS runtime module.
@@ -98,19 +98,19 @@ func (m *Module) ID() string { return "jsruntime" }
 // Status reports maturity.
 func (m *Module) Status() bkmodule.Status { return bkmodule.StatusBeta }
 
-// Mount starts the embedded JS/TS runtime if it is not already active.
+// Mount starts the embedded JavaScript runtime if it is not already active.
 func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 	runtimeHost, err := bkmodule.RequireCapability[runtimecap.Host](host, bkmodule.CapabilityJSRuntimeHost)
 	if err != nil {
 		return fmt.Errorf("jsruntime: %w", err)
 	}
-	if err := runtimejs.Enable(ctx, runtimeHost); err != nil {
+	if err := runtimejs.Enable(ctx, runtimeHost, runtimejs.WithSourcePreparer(prepareTypeScriptSource)); err != nil {
 		return err
 	}
 	host.Scope().Defer(func(ctx context.Context) error {
 		return runtimeHost.DisableJSRuntime(ctx)
 	})
-	host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindRuntime, "jsruntime.heap", "Embedded JS/TS runtime activation lease."))
+	host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindRuntime, "jsruntime.heap", "Embedded JavaScript runtime activation lease."))
 	lifecycleDebug, _ := bkmodule.Capability[bkmodule.LifecycleDebugRegistry](host, bkmodule.CapabilityLifecycleDebugRegistry)
 	runtimeDebug, _ := runtimeHost.(runtimecap.DebugSnapshotter)
 	if lifecycleDebug != nil && runtimeDebug != nil {
@@ -129,7 +129,7 @@ func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 	artifact := artifactDeployer{deployer: runtimeHost}
 	for name, value := range map[string]any{
 		bkmodule.CapabilityEnableJSRuntime: func(ctx context.Context) error {
-			return runtimejs.Enable(ctx, runtimeHost)
+			return runtimejs.Enable(ctx, runtimeHost, runtimejs.WithSourcePreparer(prepareTypeScriptSource))
 		},
 		bkmodule.CapabilityHasJSRuntime: func() bool {
 			return runtimeHost.HasJSRuntime()
@@ -137,9 +137,8 @@ func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 		bkmodule.CapabilityArtifactDeployer: artifact,
 		bkmodule.CapabilityEvalRuntime:      evalRuntime{runtime: runtimeHost},
 		bkmodule.CapabilityTestRuntime: testingRuntime{
-			source:   runtimeHost,
 			artifact: artifact,
-			ts:       runtimeHost,
+			js:       runtimeHost,
 		},
 		bkmodule.CapabilityCallJS: func(ctx context.Context, fn string, args any) (json.RawMessage, error) {
 			return runtimeHost.CallJS(ctx, fn, args)
@@ -177,7 +176,7 @@ func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "jsruntime",
 		Status:  bkmodule.StatusBeta,
-		Summary: "Embedded JS/TS runtime activation.",
+		Summary: "Embedded JavaScript runtime activation.",
 		Provides: []string{
 			"jsruntime",
 		},
@@ -193,7 +192,7 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.OptionalCapabilityOf[bkmodule.LifecycleDebugRegistry](bkmodule.CapabilityLifecycleDebugRegistry),
 		},
 		Resources: []bkmodule.ResourceDescriptor{
-			bkmodule.Resource(bkmodule.ResourceKindRuntime, "jsruntime.heap", "Embedded JS/TS runtime activation lease."),
+			bkmodule.Resource(bkmodule.ResourceKindRuntime, "jsruntime.heap", "Embedded JavaScript runtime activation lease."),
 		},
 	}
 }

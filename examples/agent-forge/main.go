@@ -41,17 +41,16 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/examples/internal/exampleenv"
 	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/modules/packages/scaffold"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -76,6 +75,7 @@ type ForgeIssue struct {
 }
 
 func main() {
+	exampleenv.LoadRootDotEnv()
 	request := flag.String("request",
 		"An agent that turns a plain-English sentence into a single concise and witty tweet under 240 characters. Name it tweet-bot.",
 		"freeform description of the agent to forge")
@@ -114,7 +114,7 @@ func run(apiKey, request, askPrompt, outRoot string, keep bool) error {
 		Transport: brainkit.Memory(),
 		FSRoot:    tmp,
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(apiKey)},
-		Modules:   []bkmodule.Module{packages.New()},
+		Modules:   standard.CommandSet(),
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

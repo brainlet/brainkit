@@ -15,7 +15,7 @@ import (
 func TestEnv_Full_Smoke(t *testing.T) {
 	env := Full(t)
 	require.NotNil(t, env.Kit)
-	result, err := env.EvalTS(`return "hello"`)
+	result, err := env.EvalJS(`return "hello"`)
 	require.NoError(t, err)
 	assert.Equal(t, "hello", result)
 }

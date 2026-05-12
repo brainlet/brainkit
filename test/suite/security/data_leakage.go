@@ -59,7 +59,7 @@ func testLeakageErrorMessageContent(t *testing.T, env *suite.TestEnv) {
 	}
 
 	t.Run("fs-read-missing", func(t *testing.T) {
-		result := secEvalTS(t, k, "__test.ts", `
+		result := secEvalJS(t, k, "__test.ts", `
 			try { fs.readFileSync("/internal/config/secrets.json"); return "LEAKED"; }
 			catch(e) { return e.code || "error"; }
 		`)
@@ -94,7 +94,7 @@ func testLeakageSharedGlobalState(t *testing.T, env *suite.TestEnv) {
 		output(findings);
 	`)
 
-	result, _ := secEvalTSErr(k, "__leak.ts", `
+	result, _ := secEvalJSErr(k, "__leak.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -192,7 +192,7 @@ func testLeakageSecretTimingSideChannel(t *testing.T, env *suite.TestEnv) {
 	var existsTimes []time.Duration
 	for i := 0; i < 20; i++ {
 		start := time.Now()
-		result, err := secEvalTSErr(k, "__timing_exists.ts", `
+		result, err := secEvalJSErr(k, "__timing_exists.ts", `
 			var val = secrets.get("TIMING_KEY_SEC");
 			return val.length > 0 ? "found" : "empty";
 		`)
@@ -206,7 +206,7 @@ func testLeakageSecretTimingSideChannel(t *testing.T, env *suite.TestEnv) {
 	var missingTimes []time.Duration
 	for i := 0; i < 20; i++ {
 		start := time.Now()
-		result, err := secEvalTSErr(k, "__timing_missing.ts", `
+		result, err := secEvalJSErr(k, "__timing_missing.ts", `
 			var val = secrets.get("NONEXISTENT_KEY_12345_SEC");
 			return val.length > 0 ? "found" : "empty";
 		`)
@@ -246,7 +246,7 @@ func testLeakageDeploymentReconnaissance(t *testing.T, env *suite.TestEnv) {
 		output(result);
 	`)
 	if err == nil {
-		result, _ := secEvalTSErr(k, "__recon.ts", `
+		result, _ := secEvalJSErr(k, "__recon.ts", `
 			var r = globalThis.__module_result;
 			return JSON.stringify(r || {});
 		`)
@@ -260,7 +260,7 @@ func testLeakageDeploymentReconnaissance(t *testing.T, env *suite.TestEnv) {
 		output(JSON.parse(raw));
 	`)
 	if err == nil {
-		result, _ := secEvalTSErr(k, "__tool_recon.ts", `
+		result, _ := secEvalJSErr(k, "__tool_recon.ts", `
 			var r = globalThis.__module_result;
 			return JSON.stringify(r || {});
 		`)
@@ -272,7 +272,7 @@ func testLeakageDeploymentReconnaissance(t *testing.T, env *suite.TestEnv) {
 func testLeakageFilesystemReconnaissance(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t).Kit
 
-	secEvalTS(t, k, "__setup.ts", `
+	secEvalJS(t, k, "__setup.ts", `
 		fs.mkdirSync("config-sec", {recursive: true});
 		fs.mkdirSync("secrets-sec", {recursive: true});
 		fs.writeFileSync("config-sec/database.json", '{"host":"prod-db"}');
@@ -309,7 +309,7 @@ func testLeakageFilesystemReconnaissance(t *testing.T, env *suite.TestEnv) {
 		output(results);
 	`)
 
-	result, _ := secEvalTSErr(k, "__fs_recon.ts", `
+	result, _ := secEvalJSErr(k, "__fs_recon.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -349,7 +349,7 @@ func testLeakageProviderReconnaissance(t *testing.T, env *suite.TestEnv) {
 		output(results);
 	`)
 
-	result, _ := secEvalTSErr(k, "__prov_recon.ts", `
+	result, _ := secEvalJSErr(k, "__prov_recon.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)

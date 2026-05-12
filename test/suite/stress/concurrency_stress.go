@@ -118,7 +118,7 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 				case <-stop:
 					return
 				default:
-					testutil.EvalTSErr(tk, "__stress_read_rot.ts", `return secrets.get("stress-rotating");`)
+					testutil.EvalJSErr(tk, "__stress_read_rot.ts", `return secrets.get("stress-rotating");`)
 					readCount.Add(1)
 				}
 			}
@@ -144,8 +144,8 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 	assert.NoError(t, err)
 }
 
-// testDeployWhileEvalTS deploys new services while EvalTS is running.
-func testDeployWhileEvalTS(t *testing.T, env *suite.TestEnv) {
+// testDeployWhileEvalJS deploys new services while EvalJS is running.
+func testDeployWhileEvalJS(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipped in short mode")
 	}
@@ -160,7 +160,7 @@ func testDeployWhileEvalTS(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			testutil.EvalTSErr(tk, fmt.Sprintf("__stress_eval_%d.ts", i), `return "eval-" + Math.random();`)
+			testutil.EvalJSErr(tk, fmt.Sprintf("__stress_eval_%d.ts", i), `return "eval-" + Math.random();`)
 		}
 	}()
 
@@ -240,7 +240,7 @@ func testScheduleStorm(t *testing.T, env *suite.TestEnv) {
 	assert.Greater(t, count, int64(25), "majority of schedules should fire")
 }
 
-// testMultiSurfaceSimultaneous exercises Go SDK + .ts + EvalTS all at once.
+// testMultiSurfaceSimultaneous exercises Go SDK + .ts + EvalJS all at once.
 func testMultiSurfaceSimultaneous(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipped in short mode")
@@ -276,12 +276,12 @@ func testMultiSurfaceSimultaneous(t *testing.T, env *suite.TestEnv) {
 		}
 	}()
 
-	// EvalTS surface
+	// EvalJS surface
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			testutil.EvalTSErr(tk, "__stress_ms.ts", `return "eval-ok";`)
+			testutil.EvalJSErr(tk, "__stress_ms.ts", `return "eval-ok";`)
 		}
 	}()
 

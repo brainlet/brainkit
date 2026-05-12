@@ -22,16 +22,15 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/examples/internal/exampleenv"
 	"github.com/brainlet/brainkit/modules/packages/client"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -61,6 +60,7 @@ type askReply struct {
 }
 
 func main() {
+	exampleenv.LoadRootDotEnv()
 	rerank := flag.Bool("rerank", false, "route the ambiguous question through rerankWithScorer before the agent sees the sources")
 	flag.Parse()
 	if err := run(*rerank); err != nil {
@@ -84,7 +84,7 @@ func run(rerank bool) error {
 		Namespace: "rag-pipeline-demo",
 		Transport: brainkit.Memory(),
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
-		Modules:   []bkmodule.Module{packages.New()},
+		Modules:   standard.PackageSet(),
 		Vectors: map[string]brainkit.VectorConfig{
 			"docs": brainkit.PgVectorStore(pgURL),
 		},

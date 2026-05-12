@@ -9,7 +9,7 @@ import "context"
 // modules/jsruntime can provide a typed capability without importing the
 // harness module implementation.
 type Runtime interface {
-	EvalTS(ctx context.Context, filename, code string) (string, error)
+	EvalJS(ctx context.Context, filename, code string) (string, error)
 	RuntimeContext() context.Context
 	RegisterEventBridge(func(string)) error
 	RegisterLockBridge(acquire func(string) error, release func(string) error) error

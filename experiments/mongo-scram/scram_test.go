@@ -31,7 +31,7 @@ func TestSCRAMCrypto(t *testing.T) {
 	defer k.Close()
 
 	// Test crypto primitives used by SCRAM-SHA-256
-	result := testutil.EvalTS(t, k, "__scram_crypto.ts", `
+	result := testutil.EvalJS(t, k, "__scram_crypto.ts", `
 		var crypto = globalThis.crypto;
 		var results = {};
 
@@ -164,7 +164,7 @@ func TestSCRAMJSAuth(t *testing.T) {
 	}
 	defer k.Close()
 
-	result := testutil.EvalTS(t, k, "__scram.ts", `
+	result := testutil.EvalJS(t, k, "__scram.ts", `
 		try {
 			var embed = globalThis.__agent_embed;
 			var store = new embed.MongoDBStore({

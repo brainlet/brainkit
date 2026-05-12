@@ -32,7 +32,7 @@ func testSandboxDirectBridgeAccess(t *testing.T, env *suite.TestEnv) {
 		output(leaked);
 	`)
 
-	result, _ := secEvalTSErr(k, "__esc.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalJSErr(k, "__esc.ts", `return String(globalThis.__module_result || "");`)
 	assert.Equal(t, "NO", result, "raw Go bridges should NOT be accessible inside Compartment")
 }
 
@@ -57,7 +57,7 @@ func testSandboxHijackCompartment(t *testing.T, env *suite.TestEnv) {
 		output(stolen);
 	`)
 
-	result, _ := secEvalTSErr(k, "__hijack.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalJSErr(k, "__hijack.ts", `return String(globalThis.__module_result || "");`)
 	assert.NotContains(t, result, "HIJACKED", "attacker should not access victim's compartment")
 }
 
@@ -86,7 +86,7 @@ func testSandboxRegistryManipulation(t *testing.T, env *suite.TestEnv) {
 		output(results);
 	`)
 
-	result, _ := secEvalTSErr(k, "__reg_atk.ts", `
+	result, _ := secEvalJSErr(k, "__reg_atk.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -114,7 +114,7 @@ func testSandboxBusSubsHijack(t *testing.T, env *suite.TestEnv) {
 		output(leaked);
 	`)
 
-	result, _ := secEvalTSErr(k, "__bus_hijack.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalJSErr(k, "__bus_hijack.ts", `return String(globalThis.__module_result || "");`)
 	assert.NotContains(t, result, "HIJACKED", "should not be able to hijack bus subscription handlers")
 }
 
@@ -151,7 +151,7 @@ func testSandboxPrototypePollution(t *testing.T, env *suite.TestEnv) {
 		return // SES blocked during eval — that's fine
 	}
 
-	result, _ := secEvalTSErr(k, "__proto.ts", `
+	result, _ := secEvalJSErr(k, "__proto.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -164,7 +164,7 @@ func testSandboxPrototypePollution(t *testing.T, env *suite.TestEnv) {
 		output(clean);
 	`)
 	if err == nil {
-		result2, _ := secEvalTSErr(k, "__innocent.ts", `
+		result2, _ := secEvalJSErr(k, "__innocent.ts", `
 			var r = globalThis.__module_result;
 			return JSON.stringify(r || {});
 		`)
@@ -214,7 +214,7 @@ func testSandboxEndowmentOverwrite(t *testing.T, env *suite.TestEnv) {
 		output(r === undefined ? "INTACT" : "BROKEN");
 	`)
 
-	result, _ := secEvalTSErr(k, "__check.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalJSErr(k, "__check.ts", `return String(globalThis.__module_result || "");`)
 	assert.Equal(t, "INTACT", result, "endowment overwrite should not cross Compartment boundaries")
 }
 
@@ -252,7 +252,7 @@ func testSandboxGlobalThisAccess(t *testing.T, env *suite.TestEnv) {
 		return // SES blocked the probe — sandbox is working
 	}
 
-	result, _ := secEvalTSErr(k, "__gt.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalJSErr(k, "__gt.ts", `return String(globalThis.__module_result || "");`)
 	assert.NotContains(t, result, "leaked", "should not be able to access real globalThis from Compartment")
 }
 
@@ -288,7 +288,7 @@ func testSandboxFSPathTraversal(t *testing.T, env *suite.TestEnv) {
 		output(results);
 	`)
 
-	result, _ := secEvalTSErr(k, "__fs_esc.ts", `
+	result, _ := secEvalJSErr(k, "__fs_esc.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -317,7 +317,7 @@ func testSandboxFSWriteEscape(t *testing.T, env *suite.TestEnv) {
 		output(results);
 	`)
 
-	result, _ := secEvalTSErr(k, "__fs_w_esc.ts", `
+	result, _ := secEvalJSErr(k, "__fs_w_esc.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});
@@ -359,7 +359,7 @@ func testSandboxRuntimeModification(t *testing.T, env *suite.TestEnv) {
 		output(results);
 	`)
 
-	result, _ := secEvalTSErr(k, "__mod_rt.ts", `
+	result, _ := secEvalJSErr(k, "__mod_rt.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -368,7 +368,7 @@ func testSandboxRuntimeModification(t *testing.T, env *suite.TestEnv) {
 		output(typeof backdoor === "function" ? "BACKDOOR_FOUND" : "CLEAN");
 	`)
 	if err == nil {
-		result2, _ := secEvalTSErr(k, "__after_mod.ts", `return String(globalThis.__module_result || "");`)
+		result2, _ := secEvalJSErr(k, "__after_mod.ts", `return String(globalThis.__module_result || "");`)
 		assert.Equal(t, "CLEAN", result2, "runtime modification should not affect new deployments")
 	}
 	_ = result

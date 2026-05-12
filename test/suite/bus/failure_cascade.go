@@ -137,7 +137,7 @@ func testCascadeTeardownCleansSubscriptions(t *testing.T, _ *suite.TestEnv) {
 	`)
 
 	// Verify it works
-	result := testutil.EvalTS(t, freshEnv.Kit, "__ping-cascade.ts", `
+	result := testutil.EvalJS(t, freshEnv.Kit, "__ping-cascade.ts", `
 		var r = await bus.call("ts.sub-cleanup-cascade.ping", {}, {timeoutMs: 1000});
 		return r && r.pong ? "ok" : "fail";
 	`)
@@ -216,7 +216,7 @@ func testCascadePublishDuringDrain(t *testing.T, _ *suite.TestEnv) {
 	testutil.SetDraining(t, freshEnv.Kit, true)
 
 	// Publish should still work (publish isn't affected by drain — only handlers are)
-	result := testutil.EvalTS(t, freshEnv.Kit, "__drain_pub_cascade.ts", `
+	result := testutil.EvalJS(t, freshEnv.Kit, "__drain_pub_cascade.ts", `
 		var r = bus.publish("ts.drain-pub-cascade.ask", {});
 		return r === undefined ? "published" : "fail";
 	`)
@@ -225,8 +225,8 @@ func testCascadePublishDuringDrain(t *testing.T, _ *suite.TestEnv) {
 	testutil.SetDraining(t, freshEnv.Kit, false)
 }
 
-// testCascadeEvalTSDuringClose — C04: EvalTS during kernel close.
-func testCascadeEvalTSDuringClose(t *testing.T, _ *suite.TestEnv) {
+// testCascadeEvalJSDuringClose — C04: EvalJS during kernel close.
+func testCascadeEvalJSDuringClose(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
@@ -237,8 +237,8 @@ func testCascadeEvalTSDuringClose(t *testing.T, _ *suite.TestEnv) {
 	// Close the kernel
 	k.Close()
 
-	// EvalTS after close should error, not panic
-	_, err = testutil.EvalTSErr(k, "__after_close_cascade.ts", `return "should not run";`)
+	// EvalJS after close should error, not panic
+	_, err = testutil.EvalJSErr(k, "__after_close_cascade.ts", `return "should not run";`)
 	assert.Error(t, err)
 }
 

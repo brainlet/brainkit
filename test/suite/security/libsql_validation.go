@@ -25,7 +25,7 @@ func testLibSQLFileURLBlocked(t *testing.T, _ *suite.TestEnv) {
 		}
 	`)
 
-	result := secEvalTS(t, freshEnv.Kit, "__get_output_sec.ts", `return globalThis.__module_result || "null";`)
+	result := secEvalJS(t, freshEnv.Kit, "__get_output_sec.ts", `return globalThis.__module_result || "null";`)
 
 	var parsed struct {
 		Blocked bool   `json:"blocked"`
@@ -53,7 +53,7 @@ func testLibSQLHttpURLNotBlocked(t *testing.T, _ *suite.TestEnv) {
 		}
 	`)
 
-	result := secEvalTS(t, freshEnv.Kit, "__get_output_http_sec.ts", `return globalThis.__module_result || "null";`)
+	result := secEvalJS(t, freshEnv.Kit, "__get_output_http_sec.ts", `return globalThis.__module_result || "null";`)
 
 	var parsed struct {
 		Code    string `json:"code"`

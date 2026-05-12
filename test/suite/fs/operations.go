@@ -10,12 +10,12 @@ import (
 )
 
 func testWriteReadRoundtrip(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_fs_wr.ts", `fs.writeFileSync("test.txt", "hello fs"); return fs.readFileSync("test.txt", "utf8");`)
+	result := testutil.EvalJS(t, env.Kit, "__test_fs_wr.ts", `fs.writeFileSync("test.txt", "hello fs"); return fs.readFileSync("test.txt", "utf8");`)
 	assert.Equal(t, "hello fs", result)
 }
 
 func testWriteOverwrite(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_fs_ow.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_fs_ow.ts", `
 		fs.writeFileSync("overwrite.txt", "v1");
 		fs.writeFileSync("overwrite.txt", "v2");
 		return fs.readFileSync("overwrite.txt", "utf8");
@@ -24,7 +24,7 @@ func testWriteOverwrite(t *testing.T, env *suite.TestEnv) {
 }
 
 func testMkdirRecursive(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_fs_mkdir.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_fs_mkdir.ts", `
 		fs.mkdirSync("a/b/c", {recursive: true});
 		fs.writeFileSync("a/b/c/deep.txt", "deep");
 		return fs.readFileSync("a/b/c/deep.txt", "utf8");
@@ -33,7 +33,7 @@ func testMkdirRecursive(t *testing.T, env *suite.TestEnv) {
 }
 
 func testStatFile(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_fs_stat.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_fs_stat.ts", `
 		fs.writeFileSync("stat-target.txt", "12345");
 		var s = fs.statSync("stat-target.txt");
 		return JSON.stringify({size: s.size, isDir: s.isDirectory()});
@@ -48,7 +48,7 @@ func testStatFile(t *testing.T, env *suite.TestEnv) {
 }
 
 func testStatDirectory(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_fs_statdir.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_fs_statdir.ts", `
 		fs.mkdirSync("stat-dir-fs", {recursive: true});
 		var s = fs.statSync("stat-dir-fs");
 		return JSON.stringify({isDir: s.isDirectory()});
@@ -61,7 +61,7 @@ func testStatDirectory(t *testing.T, env *suite.TestEnv) {
 }
 
 func testDelete(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_fs_del.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_fs_del.ts", `
 		fs.writeFileSync("delete-me.txt", "x");
 		fs.unlinkSync("delete-me.txt");
 		try { fs.readFileSync("delete-me.txt", "utf8"); return "SHOULD_FAIL"; }
@@ -71,7 +71,7 @@ func testDelete(t *testing.T, env *suite.TestEnv) {
 }
 
 func testDeleteNotFound(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_fs_delnf.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_fs_delnf.ts", `
 		try { fs.unlinkSync("ghost.txt"); return "SHOULD_FAIL"; }
 		catch(e) { return e.code || "error"; }
 	`)
@@ -79,7 +79,7 @@ func testDeleteNotFound(t *testing.T, env *suite.TestEnv) {
 }
 
 func testReadNotFound(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_fs_readnf.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_fs_readnf.ts", `
 		try { fs.readFileSync("nope.txt", "utf8"); return "SHOULD_FAIL"; }
 		catch(e) { return e.code || "error"; }
 	`)
@@ -87,7 +87,7 @@ func testReadNotFound(t *testing.T, env *suite.TestEnv) {
 }
 
 func testPathTraversalRejected(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_fs_traversal.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_fs_traversal.ts", `
 		try { fs.readFileSync("../../etc/passwd"); return "SHOULD_FAIL"; }
 		catch(e) { return e.code || "error"; }
 	`)
@@ -95,20 +95,22 @@ func testPathTraversalRejected(t *testing.T, env *suite.TestEnv) {
 }
 
 func testLargeFileWrite(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_fs_large.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_fs_large.ts", `
 		var big = "";
 		for (var i = 0; i < 1024*1024; i++) big += "x";
 		fs.writeFileSync("big-file.txt", big);
 		var s = fs.statSync("big-file.txt");
 		return JSON.stringify({size: s.size});
 	`)
-	var stat struct{ Size int64 `json:"size"` }
+	var stat struct {
+		Size int64 `json:"size"`
+	}
 	json.Unmarshal([]byte(result), &stat)
 	assert.Equal(t, int64(1024*1024), stat.Size)
 }
 
 func testFSListWithPattern(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_fs_list.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_fs_list.ts", `
 		fs.mkdirSync("listdir", {recursive: true});
 		fs.writeFileSync("listdir/a.txt", "a");
 		fs.writeFileSync("listdir/b.json", "{}");
@@ -134,7 +136,7 @@ func testFSFromTS(t *testing.T, env *suite.TestEnv) {
 	`)
 	assert.NoError(t, err)
 
-	result := testutil.EvalTS(t, env.Kit, "__fs_ts.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__fs_ts.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});

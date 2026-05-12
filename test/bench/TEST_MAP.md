@@ -12,8 +12,8 @@ Top-level file with self-contained benchmarks that create their own kernel via `
 |-----------|-----------------|
 | BenchmarkDeploy_1KB | Deploy + teardown cycle for a 1KB .ts handler |
 | BenchmarkDeploy_10KB | Deploy + teardown cycle for a 10KB .ts handler (500 padding lines) |
-| BenchmarkEvalTS_Trivial | EvalTS round-trip for `return "ok"` |
-| BenchmarkEvalTS_JSONParse | EvalTS round-trip for JSON.parse + stringify of 1KB payload |
+| BenchmarkEvalJS_Trivial | EvalJS round-trip for `return "ok"` |
+| BenchmarkEvalJS_JSONParse | EvalJS round-trip for JSON.parse + stringify of 1KB payload |
 | BenchmarkBusRoundtrip | Full bus round-trip: protocol.SendToService -> subscribe -> receive reply |
 | BenchmarkToolCall | Tool call round-trip: Publish ToolCallMsg -> subscribe ToolCallResp |
 | BenchmarkPumpThroughput | Message pump throughput: protocol.SendToService -> subscribe -> receive |
@@ -47,8 +47,8 @@ Domain benchmarks for JS evaluation. Entry: `BenchmarkEval` in `eval_bench_test.
 
 | Sub-benchmark | What it measures |
 |--------------|-----------------|
-| trivial | EvalTS overhead for minimal expression |
-| json_parse | EvalTS with JSON.parse + stringify of 1KB payload |
+| trivial | EvalJS overhead for minimal expression |
+| json_parse | EvalJS with JSON.parse + stringify of 1KB payload |
 
 ## Cross-references
 

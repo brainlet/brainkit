@@ -170,7 +170,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("cascade_deploy_with_broken_store", func(t *testing.T) { testCascadeDeployWithBrokenStore(t, env) })
 		t.Run("cascade_corrupted_store", func(t *testing.T) { testCascadeCorruptedStore(t, env) })
 		t.Run("cascade_publish_during_drain", func(t *testing.T) { testCascadePublishDuringDrain(t, env) })
-		t.Run("cascade_eval_ts_during_close", func(t *testing.T) { testCascadeEvalTSDuringClose(t, env) })
+		t.Run("cascade_eval_ts_during_close", func(t *testing.T) { testCascadeEvalJSDuringClose(t, env) })
 		t.Run("cascade_secret_rotate_plugin_fails", func(t *testing.T) { testCascadeSecretRotatePluginFails(t, env) })
 		t.Run("cascade_retry_exhausted", func(t *testing.T) { testCascadeRetryExhausted(t, env) })
 		t.Run("cascade_handler_throw_no_reply_to", func(t *testing.T) { testCascadeHandlerThrowNoReplyTo(t, env) })
@@ -194,7 +194,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		// surface_matrix.go — ported from adversarial/surface_matrix_test.go
 		t.Run("surface_go_sdk", func(t *testing.T) { testSurfaceGoSDK(t, env) })
 		t.Run("surface_ts_deployed", func(t *testing.T) { testSurfaceTSDeployed(t, env) })
-		t.Run("surface_evalts", func(t *testing.T) { testSurfaceEvalTS(t, env) })
+		t.Run("surface_evalts", func(t *testing.T) { testSurfaceEvalJS(t, env) })
 		t.Run("surface_error_consistency", func(t *testing.T) { testSurfaceErrorConsistency(t, env) })
 
 		// transport_matrix.go — ported from transport/matrix_test.go

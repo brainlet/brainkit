@@ -65,7 +65,7 @@ func testTransportMatrixToolsResolve(t *testing.T, env *suite.TestEnv) {
 // testTransportMatrixFSWriteRead — fs write+read roundtrip.
 // Ported from transport/matrix_test.go:TestBackendMatrix/fs_write_read.
 func testTransportMatrixFSWriteRead(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_matrix_fs.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_matrix_fs.ts", `
 		fs.writeFileSync("matrix-test-suite.txt", "backend:memory");
 		return fs.readFileSync("matrix-test-suite.txt", "utf8");
 	`)
@@ -75,7 +75,7 @@ func testTransportMatrixFSWriteRead(t *testing.T, env *suite.TestEnv) {
 // testTransportMatrixFSMkdirListStatDelete — fs mkdir, list, stat, delete.
 // Ported from transport/matrix_test.go:TestBackendMatrix/fs_mkdir_list_stat_delete.
 func testTransportMatrixFSMkdirListStatDelete(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_matrix_fsdir.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_matrix_fsdir.ts", `
 		fs.mkdirSync("matrix-dir-suite", {recursive: true});
 		fs.writeFileSync("matrix-dir-suite/a.txt", "a");
 		var files = fs.readdirSync("matrix-dir-suite");

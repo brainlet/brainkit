@@ -6,14 +6,24 @@
 
 ## transport/
 
-All 4 backends run the same 14 suite domains. Each test creates an Infra with a single transport backend and calls every domain's `Run(t, env)`.
+All 4 backends run the same 14 suite domains. Each backend/domain shard lives
+in its own package so `go test ./... -timeout=600s` gives every shard its own
+package timeout budget instead of one budget for the full transport matrix.
 
-| File | Test Function | Backend | Needs Podman | Suite Domains |
-|------|--------------|---------|--------------|---------------|
-| embedded_test.go | TestTransport_Embedded | embedded | no | bus, deploy, tools, agents, scheduling, health, secrets, registry, mcp, workflows, tracing, fs, persistence, gateway |
-| nats_test.go | TestTransport_NATS | nats | yes | bus, deploy, tools, agents, scheduling, health, secrets, registry, mcp, workflows, tracing, fs, persistence, gateway |
-| amqp_test.go | TestTransport_AMQP | amqp | yes | bus, deploy, tools, agents, scheduling, health, secrets, registry, mcp, workflows, tracing, fs, persistence, gateway |
-| redis_test.go | TestTransport_Redis | redis | yes | bus, deploy, tools, agents, scheduling, health, secrets, registry, mcp, workflows, tracing, fs, persistence, gateway |
+The shared domain list lives in
+`transport/internal/transportcampaign/run.go`. Backend shard packages should
+only select infrastructure and call that runner. Use the backend-specific Make
+targets (`make test-campaigns-transport-nats`,
+`make test-campaigns-transport-amqp`,
+`make test-campaigns-transport-redis`,
+`make test-campaigns-transport-embedded`) or
+`make test-campaigns-transport`.
+
+| Shard Package | Test Suffix | Needs Podman | Suite Domains |
+|------|--------------|--------------|---------------|
+| `<backend>/core` | `_Core` | yes except embedded | bus, tools, agents, health, secrets, registry |
+| `<backend>/runtime` | `_Runtime` | yes except embedded | deploy, scheduling, workflows, fs, persistence |
+| `<backend>/integrations` | `_Integrations` | yes except embedded | mcp, tracing, gateway |
 
 ## storage/
 
@@ -83,6 +93,6 @@ Fullstack campaigns test production-realistic backend combinations. Each runs mu
 
 - Each transport campaign calls suite domains: bus, deploy, tools, agents, scheduling, health, secrets, registry, mcp, workflows, tracing, fs, persistence, gateway
 - Storage/vector campaigns call `fixtures.RunMatching()` to run TS fixture subsets
-- Auth campaigns use raw `EvalTS` with inline store code (no suite domains)
+- Auth campaigns use raw `EvalJS` with inline store code (no suite domains)
 - Crosskit and plugins campaigns call `cross.Run()` for multi-node verification
 - Fullstack campaigns combine transport + storage + optional vector/persistence + suite domains

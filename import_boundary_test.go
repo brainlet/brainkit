@@ -442,12 +442,14 @@ func TestEvalModuleConsumesNarrowEvalRuntime(t *testing.T) {
 	}
 }
 
-func TestEvalTSDoesNotOwnPackageBundling(t *testing.T) {
+func TestEvalJSDoesNotOwnPackageBundling(t *testing.T) {
 	bannedDocs := []string{
 		"KitEvalMsg.Mode` is whitelisted to `script`, `ts`, `module`. `ts` transpiles via esbuild",
-		"EvalTS bundles",
-		"EvalTS runs esbuild",
+		"KitEvalMsg.Mode` is whitelisted to `script`, `js`, `module`. `js` transpiles",
+		"EvalJS bundles",
+		"EvalJS runs esbuild",
 		"kit.eval` TypeScript uses esbuild",
+		"kit.eval` JavaScript uses esbuild",
 	}
 	var violations []string
 	for _, root := range []string{"docs", "README.md"} {
@@ -494,7 +496,61 @@ func TestEvalTSDoesNotOwnPackageBundling(t *testing.T) {
 		}
 	}
 	if len(violations) > 0 {
-		t.Fatalf("EvalTS/kit.eval docs must not claim package/file bundling ownership; package bundling belongs to modules/packages:\n%s", strings.Join(violations, "\n"))
+		t.Fatalf("EvalJS/kit.eval docs must not claim package/file bundling ownership; package bundling belongs to modules/packages:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
+func TestRuntimeProfileDocsStayExplicit(t *testing.T) {
+	required := map[string][]string{
+		"README.md": {
+			"standard.ArtifactRuntimeSet()",
+			"Only normalized JavaScript artifacts",
+			"A logical source name may still end in `.ts`",
+		},
+		filepath.Join("docs", "README.md"): {
+			"presets/standard/artifactruntime.Set()",
+			"normalized JavaScript artifacts only",
+			"package normalization, runtime handoff, and SES Compartment evaluation",
+		},
+		filepath.Join("docs", "guides", "go-sdk.md"): {
+			"Brainkit has two separate questions",
+			"standard.ArtifactRuntimeSet()",
+			"runtimecap.ArtifactDeployer",
+			"examples/artifact-runtime",
+		},
+		filepath.Join("docs", "concepts", "deployment-pipeline.md"): {
+			"The profile choice is explicit",
+			"Logical source names may still end in `.ts`",
+			"standard.PackageSet()",
+			"packageclient.Deploy",
+		},
+		filepath.Join("docs", "concepts", "architecture.md"): {
+			"standard.ArtifactRuntimeSet()",
+			"runtimecap.ArtifactDeployer",
+			"rejects raw TypeScript syntax",
+			"examples/artifact-runtime/main.go",
+		},
+		filepath.Join("examples", "README.md"): {
+			"[artifact-runtime]",
+			"standard.ArtifactRuntimeSet()",
+			"raw TypeScript syntax is not transpiled",
+		},
+	}
+	var missing []string
+	for file, phrases := range required {
+		body, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		text := string(body)
+		for _, phrase := range phrases {
+			if !strings.Contains(text, phrase) {
+				missing = append(missing, file+": "+phrase)
+			}
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("runtime profile docs must keep full-runtime/package/artifact-runtime choice explicit:\n%s", strings.Join(missing, "\n"))
 	}
 }
 
@@ -518,9 +574,9 @@ func TestJSTestRuntimeIsNarrowModuleCapability(t *testing.T) {
 		}
 		for _, forbidden := range []string{
 			"CapabilitySourceDeployer",
-			"CapabilityTSRunner",
+			"CapabilityJSRunner",
 			"brainkit.core.source_deployer",
-			"brainkit.core.ts_runner",
+			"brainkit.core.js_runner",
 		} {
 			if strings.Contains(text, forbidden) {
 				t.Fatalf("%s must not expose broad source/eval runtime capability %q", file, forbidden)
@@ -1286,6 +1342,27 @@ func TestStandardProfilesStayScoped(t *testing.T) {
 			t.Fatalf("%s standard profile pulled out-of-scope deps:\n%s", pkg, strings.Join(violations, "\n"))
 		}
 	}
+	checkExactDeps := func(pkg string, forbidden ...string) {
+		t.Helper()
+		out, err := exec.Command("go", "list", "-deps", pkg).CombinedOutput()
+		if err != nil {
+			t.Fatalf("go list -deps %s: %v\n%s", pkg, err, out)
+		}
+		deps := strings.Split(strings.TrimSpace(string(out)), "\n")
+		depSet := map[string]bool{}
+		for _, dep := range deps {
+			depSet[strings.TrimSpace(dep)] = true
+		}
+		var violations []string
+		for _, forbiddenDep := range forbidden {
+			if depSet[forbiddenDep] {
+				violations = append(violations, forbiddenDep)
+			}
+		}
+		if len(violations) > 0 {
+			t.Fatalf("%s standard profile pulled exact out-of-scope deps:\n%s", pkg, strings.Join(violations, "\n"))
+		}
+	}
 
 	coreForbidden := []string{
 		"github.com/brainlet/brainkit/modules/audit",
@@ -1342,6 +1419,48 @@ func TestStandardProfilesStayScoped(t *testing.T) {
 		"github.com/evanw/esbuild",
 		"github.com/mark3labs/mcp-go",
 		"modernc.org/sqlite",
+	)
+	checkDeps("./presets/standard/artifactruntime",
+		"github.com/brainlet/brainkit/modules/audit",
+		"github.com/brainlet/brainkit/modules/gateway",
+		"github.com/brainlet/brainkit/modules/harness",
+		"github.com/brainlet/brainkit/modules/mcp",
+		"github.com/brainlet/brainkit/modules/packages",
+		"github.com/brainlet/brainkit/modules/packages/bundlers",
+		"github.com/brainlet/brainkit/modules/plugins",
+		"github.com/brainlet/brainkit/modules/probes",
+		"github.com/brainlet/brainkit/modules/schedules",
+		"github.com/brainlet/brainkit/modules/testing",
+		"github.com/brainlet/brainkit/modules/tracing",
+		"github.com/brainlet/brainkit/modules/workflow",
+		"github.com/evanw/esbuild",
+		"github.com/brainlet/brainkit/vendor_typescript",
+		"github.com/mark3labs/mcp-go",
+		"modernc.org/sqlite",
+	)
+	checkExactDeps("./presets/standard/artifactruntime",
+		"github.com/brainlet/brainkit/modules/jsruntime",
+	)
+	checkDeps("./server/standard/artifactruntime",
+		"github.com/brainlet/brainkit/modules/audit",
+		"github.com/brainlet/brainkit/modules/gateway",
+		"github.com/brainlet/brainkit/modules/harness",
+		"github.com/brainlet/brainkit/modules/mcp",
+		"github.com/brainlet/brainkit/modules/packages",
+		"github.com/brainlet/brainkit/modules/packages/bundlers",
+		"github.com/brainlet/brainkit/modules/plugins",
+		"github.com/brainlet/brainkit/modules/probes",
+		"github.com/brainlet/brainkit/modules/schedules",
+		"github.com/brainlet/brainkit/modules/testing",
+		"github.com/brainlet/brainkit/modules/tracing",
+		"github.com/brainlet/brainkit/modules/workflow",
+		"github.com/evanw/esbuild",
+		"github.com/brainlet/brainkit/vendor_typescript",
+		"github.com/mark3labs/mcp-go",
+		"modernc.org/sqlite",
+	)
+	checkExactDeps("./server/standard/artifactruntime",
+		"github.com/brainlet/brainkit/modules/jsruntime",
 	)
 	checkDeps("./presets/standard/packages",
 		"github.com/brainlet/brainkit/modules/audit",
@@ -2331,10 +2450,10 @@ func TestJSRuntimeCapabilityContractsStayModuleOwned(t *testing.T) {
 		t.Fatalf("read internal/jsruntime/enable.go: %v", err)
 	}
 	enableText := string(enableBody)
-	if !strings.Contains(enableText, "func Enable(ctx context.Context, host runtimecap.EnableHost) error") {
+	if !strings.Contains(enableText, "func Enable(ctx context.Context, host runtimecap.EnableHost") {
 		t.Fatalf("internal/jsruntime.Enable must accept runtimecap.EnableHost, not the broader runtimecap.Host")
 	}
-	if strings.Contains(enableText, "func Enable(ctx context.Context, host runtimecap.Host) error") {
+	if strings.Contains(enableText, "func Enable(ctx context.Context, host runtimecap.Host") {
 		t.Fatalf("internal/jsruntime.Enable must not require runtimecap.Host access before runtime activation")
 	}
 	for _, decl := range enableParsed.Decls {

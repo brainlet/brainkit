@@ -24,7 +24,10 @@ That Kit is the runtime. It is the only top-level object. A Kit:
   enabled or the `jsruntime` module is mounted ahead of JS-dependent modules.
   Deployed `.ts` services, JS agents, JS tools, and workflows share the same
   JS heap. Isolation is per-Compartment, not per-OS-process. A zero-value Kit
-  can run as a lighter control plane without starting QuickJS.
+  can run as a lighter control plane without starting QuickJS. The default
+  `modules/jsruntime` accepts raw `.ts` source and transpiles it before
+  evaluation; `modules/jsruntime/artifact` is the normalized-JS-only runtime
+  variant for binaries that do not want to link the TypeScript source preparer.
 - Owns **one message router** (the bus). Every subsystem — Go, JS,
   plugins, gateway handlers — speaks to every other subsystem by
   publishing messages. There is no separate RPC layer.
@@ -130,11 +133,11 @@ module set is:
 | audit | stable | Persistent audit log query/stats/prune commands. |
 | control | stable | Drain, peer, and module lifecycle commands. |
 | discovery | beta | Static or bus-announced peer discovery. |
-| eval | beta | `kit.eval` over the JS/TS runtime. |
+| eval | beta | `kit.eval` over the JavaScript runtime. |
 | gateway | stable | HTTP/SSE/WS/Webhook edge on top of typed topics. |
 | harness | WIP | Experimental multi-mode JS harness. |
 | health | stable | `kit.health` bus snapshot. |
-| jsruntime | beta | Embedded JS/TS runtime activation lease. |
+| jsruntime | beta | Embedded JavaScript runtime activation lease. |
 | mcp | stable | MCP stdio/HTTP servers as tool sources. |
 | messaging | stable | Nested request/reply bridge through shared caller. |
 | metrics | stable | Runtime metrics snapshot. |
@@ -213,6 +216,12 @@ Compartment and exposes every
 `bus.on(topic, …)` at `ts.<pkg>.<topic>`. Any subsequent Kit call to that topic
 enters the Compartment, runs the JS handler, and replies through the bus. See
 [deployment-pipeline.md](deployment-pipeline.md).
+
+When a product already owns the build pipeline, mount
+`standard.ArtifactRuntimeSet()` and deploy normalized JavaScript through a
+module that consumes `runtimecap.ArtifactDeployer`. That profile still supports
+`.ts` logical source names for `ts.<source>.<topic>` routing, but it rejects raw TypeScript syntax because runtime-side TypeScript preparation is deliberately absent.
+See `examples/artifact-runtime/main.go`.
 
 ## Providers, Storages, Vectors, Secrets
 

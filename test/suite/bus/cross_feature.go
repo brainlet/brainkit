@@ -33,7 +33,7 @@ func testCrossDeployCallsGoTool(t *testing.T, env *suite.TestEnv) {
 		output({toolResult: result, calledDuringDeploy: true});
 	`)
 
-	result := testutil.EvalTS(t, env.Kit, "__cg_adv.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__cg_adv.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});
@@ -61,7 +61,7 @@ func testCrossTSToolCallsAnotherTSTool(t *testing.T, env *suite.TestEnv) {
 		output(result);
 	`)
 
-	result := testutil.EvalTS(t, env.Kit, "__ab_adv.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__ab_adv.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});

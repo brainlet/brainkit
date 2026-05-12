@@ -1,4 +1,4 @@
-.PHONY: all brainkit install deps deps-go deps-npm deps-root deps-root-save deps-root-check deps-modules build generate test test-v test-compile test-suite test-full test-all test-campaigns-transport test-campaigns-transport-embedded test-campaigns-transport-nats test-campaigns-transport-amqp test-campaigns-transport-redis test-campaigns-transport-external bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples clean podman-init podman-start podman-up podman-launchd-up podman-launchd-down podman-link-socket podman-verify podman-down podman-status podman-reset podman-nuke podman-ensure type-check
+.PHONY: all brainkit install deps deps-go deps-npm deps-root deps-root-save deps-root-check deps-profiles deps-profile-check deps-modules build generate test test-v test-compile test-suite test-full test-all test-campaigns-transport test-campaigns-transport-embedded test-campaigns-transport-nats test-campaigns-transport-amqp test-campaigns-transport-redis test-campaigns-transport-external bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples examples-smoke examples-smoke-compile examples-smoke-offline examples-smoke-live examples-smoke-server examples-smoke-external examples-smoke-all clean podman-init podman-start podman-up podman-launchd-up podman-launchd-down podman-link-socket podman-verify podman-down podman-status podman-reset podman-nuke podman-ensure type-check
 
 PODMAN_MACHINE ?= brainkit
 PODMAN_CPUS ?= 4
@@ -12,6 +12,7 @@ TEST_ALL_TIMEOUT ?= 1800s
 TEST_TRANSPORT_TIMEOUT ?= 1200s
 ROOT_DEPS_MANIFEST ?= api/brainkit-root.deps
 ROOT_DEPS_CMD = go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' . | sed '/^$$/d' | sort -u
+PROFILE_DEPS_PACKAGES ?= . ./server ./server/configfile ./server/standard ./server/standard/runtime ./server/standard/artifactruntime ./server/standard/packages ./presets/standard/core ./presets/standard/runtime ./presets/standard/artifactruntime ./presets/standard/packages ./modules/jsruntime ./modules/jsruntime/artifact ./modules/packages ./modules/packages/bundlers/esbuild ./modules/packages/source ./modules/packages/client ./modules/packages/scaffold
 
 # Default: build the CLI binary
 all: brainkit
@@ -49,6 +50,17 @@ deps-root-check:
 	$(ROOT_DEPS_CMD) > $$tmp; \
 	diff -u $(ROOT_DEPS_MANIFEST) $$tmp; \
 	rm -f $$tmp
+
+# Print dependency counts for public/profile package surfaces.
+deps-profiles:
+	@for pkg in $(PROFILE_DEPS_PACKAGES); do \
+		count=$$(go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' $$pkg | sed '/^$$/d' | sort -u | wc -l | tr -d ' '); \
+		printf '%-42s %s\n' $$pkg $$count; \
+	done
+
+# Check profile dependency budgets and boundary docs.
+deps-profile-check:
+	go test . -run 'TestDependencyProfileBudgetsStayBounded|TestRootDependencyManifest|TestRootImportBoundary|TestStandardProfilesStayScoped|TestPackageBuilderStaysOptional|TestConfigFilePackageBootStaysOptional|TestRuntimeProfileDocsStayExplicit' -count=1 -timeout=240s
 
 # List nested Go modules so module-boundary drift is visible.
 deps-modules:
@@ -107,30 +119,30 @@ test-full: podman-ensure test-compile test-suite
 test-all: podman-ensure
 	go test -p $(TEST_SUITE_P) ./... -count=1 -timeout=$(TEST_ALL_TIMEOUT)
 
-# Run the heavy transport campaign as backend-specific commands so each
-# backend gets its own timeout budget and failures are easier to isolate.
+# Run the heavy transport campaign as backend/domain-shard packages so each
+# shard gets its own timeout budget and failures are easier to isolate.
 test-campaigns-transport: podman-ensure
-	go test ./test/campaigns/transport -run '^TestTransport_Embedded$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
-	go test ./test/campaigns/transport -run '^TestTransport_NATS$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
-	go test ./test/campaigns/transport -run '^TestTransport_AMQP$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
-	go test ./test/campaigns/transport -run '^TestTransport_Redis$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test -p 1 ./test/campaigns/transport/embedded/... -run '^TestTransport_Embedded_' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test -p 1 ./test/campaigns/transport/nats/... -run '^TestTransport_NATS_' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test -p 1 ./test/campaigns/transport/amqp/... -run '^TestTransport_AMQP_' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test -p 1 ./test/campaigns/transport/redis/... -run '^TestTransport_Redis_' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
 
 test-campaigns-transport-embedded:
-	go test ./test/campaigns/transport -run '^TestTransport_Embedded$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test -p 1 ./test/campaigns/transport/embedded/... -run '^TestTransport_Embedded_' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
 
 test-campaigns-transport-nats: podman-ensure
-	go test ./test/campaigns/transport -run '^TestTransport_NATS$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test -p 1 ./test/campaigns/transport/nats/... -run '^TestTransport_NATS_' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
 
 test-campaigns-transport-amqp: podman-ensure
-	go test ./test/campaigns/transport -run '^TestTransport_AMQP$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test -p 1 ./test/campaigns/transport/amqp/... -run '^TestTransport_AMQP_' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
 
 test-campaigns-transport-redis: podman-ensure
-	go test ./test/campaigns/transport -run '^TestTransport_Redis$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test -p 1 ./test/campaigns/transport/redis/... -run '^TestTransport_Redis_' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
 
 test-campaigns-transport-external: podman-ensure
-	go test ./test/campaigns/transport -run '^TestTransport_NATS$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
-	go test ./test/campaigns/transport -run '^TestTransport_AMQP$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
-	go test ./test/campaigns/transport -run '^TestTransport_Redis$$' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test -p 1 ./test/campaigns/transport/nats/... -run '^TestTransport_NATS_' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test -p 1 ./test/campaigns/transport/amqp/... -run '^TestTransport_AMQP_' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
+	go test -p 1 ./test/campaigns/transport/redis/... -run '^TestTransport_Redis_' -count=1 -timeout=$(TEST_TRANSPORT_TIMEOUT)
 
 # Run tests with verbose output
 test-v: podman-ensure
@@ -189,6 +201,7 @@ examples:
 	go build -o bin/agent-forge     ./examples/agent-forge
 	go build -o bin/agent-spawner   ./examples/agent-spawner
 	go build -o bin/agent-stream    ./examples/agent-stream
+	go build -o bin/artifact-runtime ./examples/artifact-runtime
 	go build -o bin/ai-chat         ./examples/ai-chat
 	go build -o bin/cross-kit       ./examples/cross-kit
 	go build -o bin/custom-scorer   ./examples/custom-scorer
@@ -220,6 +233,29 @@ examples:
 	go build -o bin/workspace-agent ./examples/workspace-agent
 	cd examples/plugin-author && go build -o ../../bin/plugin-author .
 	@echo "All examples built into bin/"
+
+# Tiered example smoke checks. The default target avoids paid/provider and
+# external-service work; use examples-smoke-all for the full matrix.
+examples-smoke:
+	scripts/examples-smoke.sh default
+
+examples-smoke-compile:
+	scripts/examples-smoke.sh compile
+
+examples-smoke-offline:
+	scripts/examples-smoke.sh offline
+
+examples-smoke-live:
+	scripts/examples-smoke.sh live
+
+examples-smoke-server:
+	scripts/examples-smoke.sh server
+
+examples-smoke-external: podman-ensure
+	DOCKER_HOST=unix://$(PODMAN_SOCKET) scripts/examples-smoke.sh external
+
+examples-smoke-all: podman-ensure
+	DOCKER_HOST=unix://$(PODMAN_SOCKET) scripts/examples-smoke.sh all
 
 # Clean generated bundles, node_modules, and binaries
 clean:

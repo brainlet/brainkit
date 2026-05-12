@@ -52,7 +52,7 @@ func testPumpScheduleLatency(t *testing.T, env *suite.TestEnv) {
 func testPumpResponsiveAfterIdle(t *testing.T, env *suite.TestEnv) {
 	time.Sleep(500 * time.Millisecond)
 
-	result := testutil.EvalTS(t, env.Kit, "__idle_test.ts", `return "alive"`)
+	result := testutil.EvalJS(t, env.Kit, "__idle_test.ts", `return "alive"`)
 	assert.Equal(t, "alive", result)
 }
 

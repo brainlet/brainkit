@@ -287,21 +287,21 @@ func (k *Kernel) evalDomain(ctx context.Context, req any, filename, code string)
 		globalThis.__pending_req = %s;
 		%s
 	`, string(reqJSON), code)
-	resultJSON, err := k.EvalTS(ctx, filename, wrappedCode)
+	resultJSON, err := k.EvalJS(ctx, filename, wrappedCode)
 	if err != nil {
 		return nil, err
 	}
 	return json.RawMessage(resultJSON), nil
 }
 
-// EvalTS runs direct .ts-style snippets with brainkit infrastructure imports
+// EvalJS runs direct JavaScript snippets with brainkit infrastructure imports
 // destructured. Package/file-graph bundling is intentionally owned by
 // modules/packages before deploy handoff.
-func (k *Kernel) EvalTS(ctx context.Context, filename, code string) (string, error) {
+func (k *Kernel) EvalJS(ctx context.Context, filename, code string) (string, error) {
 	if k.jsRuntime == nil {
 		return "", &sdkerrors.NotConfiguredError{Feature: "js runtime"}
 	}
-	return k.jsRuntime.EvalTS(ctx, filename, code)
+	return k.jsRuntime.EvalJS(ctx, filename, code)
 }
 
 // EvalModule runs code as an ES module with import { ... } from "kit".

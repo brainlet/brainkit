@@ -163,7 +163,7 @@ func testStorageAddMemoryThenDeployUses(t *testing.T, _ *suite.TestEnv) {
 	testutil.Deploy(t, env.Kit, "mem-stor-test.ts", code)
 	defer testutil.Teardown(t, env.Kit, "mem-stor-test.ts")
 
-	result := testutil.EvalTS(t, env.Kit, "__check_mem_stor.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__check_mem_stor.ts", `
 		return globalThis.__module_result || "null";
 	`)
 	if result == "null" || result == "" {

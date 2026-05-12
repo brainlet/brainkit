@@ -64,7 +64,7 @@ type Config struct {
     ErrorHandler    func(error)                 // non-fatal errors
 
     MaxConcurrency  int                         // 0 = unlimited concurrent bus handlers
-    JSRuntime       bool                        // enable embedded JS/TS deploy/eval runtime
+    JSRuntime       bool                        // enable embedded JavaScript deploy/eval runtime
     MaxStackSize    int                         // QuickJS stack bytes; default 1 MiB
     RetryPolicies   map[string]RetryPolicy      // per-topic retry (§10.1)
 
@@ -227,7 +227,7 @@ Configured modules are mounted in slice order after the router starts. Modules r
 | gateway | `gateway.New(gateway.Config{Listen, Timeout, CORS, RateLimit, Stream, Middleware, NoHealth, NoBusAPI, Logger, Tracer})` | stable | HTTP: `/healthz`, `/readyz`, `POST /api/bus`, `POST /api/stream`, user routes |
 | health | `health.New()` | stable | `kit.health` |
 | harness | `harness.NewModule(harness.Config{Harness HarnessConfig})` | wip | Display/harness adapter (in flux) |
-| jsruntime | `jsruntime.New()` | beta | Embedded JS/TS runtime capabilities |
+| jsruntime | `jsruntime.New()` | beta | Embedded JavaScript runtime capabilities |
 | mcp | `mcp.New(map[string]mcp.ServerConfig{})` | stable | `mcp.listTools`, `mcp.callTool`; auto-registers MCP tools |
 | messaging | `messaging.New()` | stable | `kit.send` |
 | metrics | `metrics.New()` | stable | `metrics.get` |

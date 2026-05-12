@@ -14,7 +14,7 @@ import (
 func (k *Kernel) initProviders(cfg types.KernelConfig, bridgeURLs map[string]string) error {
 	host, err := providerhost.NewManager(cfg, providerhost.Hooks{
 		HasJSRuntime:    k.HasJSRuntime,
-		EvalTS:          k.EvalTS,
+		EvalJS:          k.EvalJS,
 		CallJS:          k.CallJS,
 		ShutdownContext: k.shutdownCtx,
 	})

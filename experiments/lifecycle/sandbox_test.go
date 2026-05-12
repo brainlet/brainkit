@@ -16,7 +16,7 @@ import (
 
 // ═══════════════════════════════════════════════════════════════
 // Test 1: Do const/let in IIFE already scope properly?
-// (This is what EvalTS does today)
+// (This is what EvalJS does today)
 // ═══════════════════════════════════════════════════════════════
 
 func TestSandbox_IIFEScoping(t *testing.T) {
@@ -373,10 +373,18 @@ func TestSandbox_TransparentDeploy(t *testing.T) {
 	aAgent := evalStr(ctx, `fileA.scope.myAgent.name`)
 	bAgent := evalStr(ctx, `fileB.scope.myAgent.name`)
 
-	if aUrl != "https://a.com" { t.Fatalf("A url: %s", aUrl) }
-	if bUrl != "https://b.com" { t.Fatalf("B url: %s", bUrl) }
-	if aAgent != "agent-a" { t.Fatalf("A agent: %s", aAgent) }
-	if bAgent != "agent-b" { t.Fatalf("B agent: %s", bAgent) }
+	if aUrl != "https://a.com" {
+		t.Fatalf("A url: %s", aUrl)
+	}
+	if bUrl != "https://b.com" {
+		t.Fatalf("B url: %s", bUrl)
+	}
+	if aAgent != "agent-a" {
+		t.Fatalf("A agent: %s", aAgent)
+	}
+	if bAgent != "agent-b" {
+		t.Fatalf("B agent: %s", bAgent)
+	}
 
 	// globalThis is clean
 	if evalStr(ctx, `typeof globalThis.config`) != "undefined" {

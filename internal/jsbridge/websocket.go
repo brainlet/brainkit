@@ -8,9 +8,10 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
-	"github.com/coder/websocket"
 	quickjs "github.com/buke/quickjs-go"
+	"github.com/coder/websocket"
 )
 
 // WebSocketPolyfill provides `globalThis.WebSocket` shaped to
@@ -29,15 +30,17 @@ import (
 type WebSocketPolyfill struct {
 	bridge *Bridge
 
-	mu      sync.Mutex
-	nextID  uint64
-	conns   map[uint64]*wsConn
+	mu     sync.Mutex
+	nextID uint64
+	conns  map[uint64]*wsConn
 }
 
 type wsConn struct {
 	conn   *websocket.Conn
 	cancel context.CancelFunc
 }
+
+const webSocketSendTimeout = 10 * time.Second
 
 // WebSocketPoly creates a WebSocket client polyfill.
 func WebSocketPoly() *WebSocketPolyfill {
@@ -87,43 +90,44 @@ func (p *WebSocketPolyfill) Setup(ctx *quickjs.Context) error {
 		}
 
 		handle := atomic.AddUint64(&polyfill.nextID, 1)
-		dialCtx, cancel := context.WithCancel(context.Background())
+		dialCtx, cancel := context.WithCancel(polyfill.bridge.GoContext())
+		entry := &wsConn{cancel: cancel}
+		polyfill.mu.Lock()
+		polyfill.conns[handle] = entry
+		polyfill.mu.Unlock()
 
-		polyfill.bridge.Go(func(goCtx context.Context) {
-			// Cancel dial if bridge drains.
-			go func() {
-				select {
-				case <-goCtx.Done():
-					cancel()
-				case <-dialCtx.Done():
-				}
-			}()
+		if !polyfill.bridge.TryGo(func(_ context.Context) {
+			defer cancel()
 			conn, _, err := websocket.Dial(dialCtx, url, &websocket.DialOptions{
 				Subprotocols: protocols,
 				HTTPHeader:   hdr,
 			})
 			if err != nil {
-				fireWSEvent(qctx, handle, "error", err.Error(), false)
+				polyfill.deleteConn(handle, entry)
+				if dialCtx.Err() == nil {
+					fireWSEvent(qctx, handle, "error", err.Error(), false)
+				}
 				fireWSEvent(qctx, handle, "close", err.Error(), false)
-				cancel()
 				return
 			}
 			// Unlimited read — realtime voice payloads can be big.
 			conn.SetReadLimit(-1)
 			polyfill.mu.Lock()
-			polyfill.conns[handle] = &wsConn{conn: conn, cancel: cancel}
+			if polyfill.conns[handle] != entry {
+				polyfill.mu.Unlock()
+				_ = conn.Close(websocket.StatusNormalClosure, "closed before open")
+				return
+			}
+			entry.conn = conn
 			polyfill.mu.Unlock()
 			fireWSEvent(qctx, handle, "open", "", false)
 
 			for {
 				typ, data, readErr := conn.Read(dialCtx)
 				if readErr != nil {
-					polyfill.mu.Lock()
-					delete(polyfill.conns, handle)
-					polyfill.mu.Unlock()
+					polyfill.deleteConn(handle, entry)
 					reason := readErr.Error()
 					fireWSEvent(qctx, handle, "close", reason, false)
-					cancel()
 					return
 				}
 				if typ == websocket.MessageBinary {
@@ -133,7 +137,10 @@ func (p *WebSocketPolyfill) Setup(ctx *quickjs.Context) error {
 					fireWSEvent(qctx, handle, "message", string(data), false)
 				}
 			}
-		})
+		}) {
+			polyfill.deleteConn(handle, entry)
+			cancel()
+		}
 
 		return qctx.NewInt64(int64(handle))
 	}))
@@ -150,7 +157,7 @@ func (p *WebSocketPolyfill) Setup(ctx *quickjs.Context) error {
 		polyfill.mu.Lock()
 		c := polyfill.conns[handle]
 		polyfill.mu.Unlock()
-		if c == nil {
+		if c == nil || c.conn == nil {
 			return qctx.NewBool(false)
 		}
 
@@ -171,7 +178,7 @@ func (p *WebSocketPolyfill) Setup(ctx *quickjs.Context) error {
 		// Short write timeout — realtime should push fast. If
 		// a send hangs, drop the connection rather than wedge
 		// the JS side.
-		sendCtx, cancel := context.WithCancel(context.Background())
+		sendCtx, cancel := newWebSocketSendContext(polyfill.bridge.GoContext())
 		defer cancel()
 		if err := c.conn.Write(sendCtx, msgType, raw); err != nil {
 			return qctx.NewBool(false)
@@ -198,13 +205,31 @@ func (p *WebSocketPolyfill) Setup(ctx *quickjs.Context) error {
 		delete(polyfill.conns, handle)
 		polyfill.mu.Unlock()
 		if c != nil {
-			_ = c.conn.Close(code, reason)
 			c.cancel()
+			if c.conn != nil {
+				_ = c.conn.Close(code, reason)
+			}
 		}
 		return qctx.NewUndefined()
 	}))
 
 	return evalJS(ctx, websocketJS)
+}
+
+func (p *WebSocketPolyfill) deleteConn(handle uint64, expected *wsConn) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if expected != nil && p.conns[handle] != expected {
+		return
+	}
+	delete(p.conns, handle)
+}
+
+func newWebSocketSendContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(parent, webSocketSendTimeout)
 }
 
 func fireWSEvent(qctx *quickjs.Context, handle uint64, kind, payload string, binary bool) {

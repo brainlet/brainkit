@@ -9,14 +9,14 @@ import (
 )
 
 type recordingEvalRuntime struct {
-	tsSource     string
+	jsSource     string
 	moduleSource string
 	scriptSource string
 }
 
-func (r *recordingEvalRuntime) EvalTS(_ context.Context, source, _ string) (string, error) {
-	r.tsSource = source
-	return "ts", nil
+func (r *recordingEvalRuntime) EvalJS(_ context.Context, source, _ string) (string, error) {
+	r.jsSource = source
+	return "js", nil
 }
 
 func (r *recordingEvalRuntime) EvalModule(_ context.Context, source, _ string) (string, error) {
@@ -34,12 +34,12 @@ func TestEvalDispatchesThroughNarrowEvalRuntime(t *testing.T) {
 	m := &Module{runtime: rt}
 	ctx := context.Background()
 
-	resp, err := m.Eval(ctx, evalmsg.KitEvalMsg{Mode: "ts", Source: "snippet.ts", Code: `return "ts";`})
-	if err != nil || resp.Result != "ts" {
-		t.Fatalf("ts eval = %#v, %v", resp, err)
+	resp, err := m.Eval(ctx, evalmsg.KitEvalMsg{Mode: "js", Source: "snippet.js", Code: `return "js";`})
+	if err != nil || resp.Result != "js" {
+		t.Fatalf("js eval = %#v, %v", resp, err)
 	}
-	if rt.tsSource != "snippet.ts" {
-		t.Fatalf("ts source = %q, want snippet.ts", rt.tsSource)
+	if rt.jsSource != "snippet.js" {
+		t.Fatalf("js source = %q, want snippet.js", rt.jsSource)
 	}
 
 	resp, err = m.Eval(ctx, evalmsg.KitEvalMsg{Mode: "module", Source: "mod.ts", Code: `export {};`})
@@ -54,7 +54,31 @@ func TestEvalDispatchesThroughNarrowEvalRuntime(t *testing.T) {
 	if err != nil || resp.Result != "script" {
 		t.Fatalf("script eval = %#v, %v", resp, err)
 	}
-	if !strings.HasPrefix(rt.scriptSource, "__cli_eval_") || !strings.HasSuffix(rt.scriptSource, ".ts") {
-		t.Fatalf("script source = %q, want generated __cli_eval_*.ts", rt.scriptSource)
+	if !strings.HasPrefix(rt.scriptSource, "__cli_eval_") || !strings.HasSuffix(rt.scriptSource, ".js") {
+		t.Fatalf("script source = %q, want generated __cli_eval_*.js", rt.scriptSource)
+	}
+
+	resp, err = m.Eval(ctx, evalmsg.KitEvalMsg{Mode: "script", Source: "typed-snippet.ts", Code: `output("script");`})
+	if err != nil || resp.Result != "script" {
+		t.Fatalf("script eval with source = %#v, %v", resp, err)
+	}
+	if rt.scriptSource != "typed-snippet.ts" {
+		t.Fatalf("script source = %q, want explicit .ts source", rt.scriptSource)
+	}
+}
+
+func TestEvalInfersScriptForExplicitTSSource(t *testing.T) {
+	rt := &recordingEvalRuntime{}
+	m := &Module{runtime: rt}
+
+	resp, err := m.Eval(context.Background(), evalmsg.KitEvalMsg{Source: "typed-snippet.ts", Code: `output("typed");`})
+	if err != nil || resp.Result != "script" {
+		t.Fatalf("inferred script eval = %#v, %v", resp, err)
+	}
+	if rt.scriptSource != "typed-snippet.ts" {
+		t.Fatalf("script source = %q, want explicit .ts source", rt.scriptSource)
+	}
+	if rt.jsSource != "" {
+		t.Fatalf("js source = %q, want script path for explicit .ts source", rt.jsSource)
 	}
 }

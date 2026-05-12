@@ -130,11 +130,11 @@ func testGCZeroLeakSESRuntime(t *testing.T, env *suite.TestEnv) {
 	t.Cleanup(func() { k.Close() })
 
 	// Exercise the runtime
-	result := testutil.EvalTS(t, k, "__gc_stress_test.ts", `
+	result := testutil.EvalJS(t, k, "__gc_stress_test.ts", `
 		bus.emit("gc.stress.test", { msg: "hello" });
 		return JSON.stringify({ tools: tools.list().length, ns: kit.namespace });
 	`)
-	t.Logf("EvalTS result: %s", result)
+	t.Logf("EvalJS result: %s", result)
 
 	if err := k.Close(); err != nil {
 		t.Fatalf("Close: %v", err)

@@ -288,6 +288,79 @@ func TestPluginWSConnClosesLateSubscriptionsAfterCleanup(t *testing.T) {
 	}
 }
 
+func TestPluginWSServerCleanupConnectionClosesEventSubscriptions(t *testing.T) {
+	var stopped atomic.Int32
+	var closed atomic.Int32
+	server := &pluginWSServer{}
+	pc := &pluginWSConn{
+		name:    "demo",
+		pending: map[string]chan pluginws.ToolResult{},
+		subs: []pluginSubscriptionHandle{pluginTestSubscriptionHandle{
+			stop:  func() { stopped.Add(1) },
+			close: func(context.Context) error { closed.Add(1); return nil },
+		}},
+	}
+
+	server.cleanupConnection(pc, "plugin disconnected")
+	if got := stopped.Load(); got != 1 {
+		t.Fatalf("subscription stops = %d, want 1", got)
+	}
+	if got := closed.Load(); got != 1 {
+		t.Fatalf("subscription closes = %d, want 1", got)
+	}
+	if got := server.debugSnapshot().Subscriptions; got != 0 {
+		t.Fatalf("debug subscriptions after cleanup = %d, want 0", got)
+	}
+}
+
+func TestPluginWSServerCleanupConnectionRetainsTimedOutEventSubscriptions(t *testing.T) {
+	oldTimeout := pluginSubscriptionCloseTimeout
+	pluginSubscriptionCloseTimeout = 10 * time.Millisecond
+	t.Cleanup(func() { pluginSubscriptionCloseTimeout = oldTimeout })
+
+	release := make(chan struct{})
+	var stopped atomic.Int32
+	server := &pluginWSServer{}
+	pc := &pluginWSConn{
+		name:    "demo",
+		pending: map[string]chan pluginws.ToolResult{},
+		subs: []pluginSubscriptionHandle{pluginTestSubscriptionHandle{
+			stop: func() { stopped.Add(1) },
+			close: func(ctx context.Context) error {
+				select {
+				case <-release:
+					return nil
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			},
+		}},
+	}
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+
+	server.cleanupConnection(pc, "plugin disconnected")
+	if got := stopped.Load(); got != 1 {
+		t.Fatalf("subscription stops = %d, want 1", got)
+	}
+	if got := server.debugSnapshot().Subscriptions; got != 1 {
+		t.Fatalf("timed-out subscription must be retained, got %d", got)
+	}
+
+	close(release)
+	if err := server.CloseContext(context.Background()); err != nil {
+		t.Fatalf("retry close server: %v", err)
+	}
+	if got := server.debugSnapshot().Subscriptions; got != 0 {
+		t.Fatalf("debug subscriptions after retry = %d, want 0", got)
+	}
+}
+
 func TestPluginWSServerCloseContextRetainsEventSubscriptionsWhenCloseTimesOut(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})

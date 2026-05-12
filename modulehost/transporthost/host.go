@@ -345,6 +345,16 @@ func (h *Host) SubscribeRawFanOut(ctx context.Context, topic string, handler fun
 	return h.remote.SubscribeRawFanOut(ctx, topic, handler)
 }
 
+// SubscribeRawFanOutHandle subscribes using the fan-out subscriber and returns
+// a context-aware close handle for lifecycle-owned subscriptions.
+func (h *Host) SubscribeRawFanOutHandle(ctx context.Context, topic string, handler func(sdk.Message)) (bkmodule.Handle, error) {
+	handle, err := h.remote.SubscribeRawFanOutHandle(ctx, topic, handler)
+	if err != nil {
+		return nil, err
+	}
+	return bkmodule.HandleFunc(handle.CloseContext), nil
+}
+
 // PublishReply publishes directly to an already resolved reply topic.
 func (h *Host) PublishReply(ctx context.Context, replyTo, correlationID string, payload json.RawMessage, done bool, envelope bool) error {
 	if replyTo == "" {

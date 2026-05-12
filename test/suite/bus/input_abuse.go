@@ -10,7 +10,7 @@ import (
 
 // testInputAbuseBusEmptyTopic — empty topic should error, not panic.
 func testInputAbuseBusEmptyTopic(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__empty_topic_adv.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__empty_topic_adv.ts", `
 		var caught = "none";
 		try { bus.publish("", {}); }
 		catch(e) { caught = e.code || e.message; }
@@ -21,7 +21,7 @@ func testInputAbuseBusEmptyTopic(t *testing.T, env *suite.TestEnv) {
 
 // testInputAbuseBusLargePayload — 100KB payload should be handled cleanly.
 func testInputAbuseBusLargePayload(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__big_payload_adv.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__big_payload_adv.ts", `
 		var big = { data: "x".repeat(100000) };
 		var r = bus.publish("incoming.big-adv", big);
 		return r === undefined ? "ok" : "fail";
@@ -31,7 +31,7 @@ func testInputAbuseBusLargePayload(t *testing.T, env *suite.TestEnv) {
 
 // testInputAbuseBusDeeplyNestedJSON — deeply nested object should be handled cleanly.
 func testInputAbuseBusDeeplyNestedJSON(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__nested_adv.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__nested_adv.ts", `
 		var obj = {};
 		var curr = obj;
 		for (var i = 0; i < 50; i++) {
@@ -47,7 +47,7 @@ func testInputAbuseBusDeeplyNestedJSON(t *testing.T, env *suite.TestEnv) {
 
 // testInputAbuseBusSubscribeEmptyTopic — subscribe to empty topic should not panic.
 func testInputAbuseBusSubscribeEmptyTopic(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__sub_empty_adv.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__sub_empty_adv.ts", `
 		var caught = "none";
 		try { bus.subscribe("", function() {}); }
 		catch(e) { caught = "error"; }

@@ -22,7 +22,7 @@ func (k *Kernel) Alive(ctx context.Context) bool {
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	result, err := k.EvalTS(checkCtx, "__alive.ts", `return "ok"`)
+	result, err := k.EvalJS(checkCtx, "__alive.ts", `return "ok"`)
 	return err == nil && result == "ok"
 }
 
@@ -130,7 +130,7 @@ func (k *Kernel) checkRuntime(ctx context.Context) types.HealthCheck {
 	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	result, err := k.EvalTS(checkCtx, "__health_check.ts", `return "ok"`)
+	result, err := k.EvalJS(checkCtx, "__health_check.ts", `return "ok"`)
 	if err != nil || result != "ok" {
 		errMsg := ""
 		if err != nil {

@@ -121,7 +121,7 @@ func testErrorContractErrorsAsAllTypes(t *testing.T, _ *suite.TestEnv) {
 // testErrorContractJSBridgeValidationErrorMissingArgs — JS bridge returns VALIDATION_ERROR for missing args.
 func testErrorContractJSBridgeValidationErrorMissingArgs(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	result := testutil.EvalTS(t, env.Kit, "__val_test_adv.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__val_test_adv.ts", `
 		var caught = "none";
 		try { __go_brainkit_bus_schedule("every 1s"); }
 		catch(e) { caught = e.code || "NO_CODE"; }
@@ -140,7 +140,7 @@ func testErrorContractJSBridgeNotConfiguredSecrets(t *testing.T, _ *suite.TestEn
 	require.NoError(t, err)
 	defer k.Close()
 
-	result := testutil.EvalTS(t, k, "__secret_default_adv.ts", `
+	result := testutil.EvalJS(t, k, "__secret_default_adv.ts", `
 		var val = secrets.get("NONEXISTENT_KEY_12345_ADV");
 		return val === "" ? "empty" : "unexpected:" + val;
 	`)

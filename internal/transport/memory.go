@@ -104,10 +104,9 @@ func (b *memoryBroker) Subscribe(ctx context.Context, topic string) (<-chan *Mes
 		}
 	}
 
-	go func() {
-		<-ctx.Done()
+	sub.watchCancel(context.AfterFunc(ctx, func() {
 		b.unsubscribe(topic, sub)
-	}()
+	}))
 
 	return sub.ch, nil
 }
@@ -148,11 +147,24 @@ func (b *memoryBroker) Close() error {
 }
 
 type memorySubscription struct {
-	ctx context.Context
-	ch  chan *Message
+	ctx             context.Context
+	ch              chan *Message
+	stopCancelWatch func() bool
 
 	mu     sync.Mutex
 	closed bool
+}
+
+func (s *memorySubscription) watchCancel(stop func() bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		if stop != nil {
+			stop()
+		}
+		return
+	}
+	s.stopCancelWatch = stop
 }
 
 func (s *memorySubscription) deliver(msg *Message) bool {
@@ -171,10 +183,16 @@ func (s *memorySubscription) deliver(msg *Message) bool {
 
 func (s *memorySubscription) close() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.closed {
+		s.mu.Unlock()
 		return
 	}
 	s.closed = true
+	stopCancelWatch := s.stopCancelWatch
+	s.stopCancelWatch = nil
 	close(s.ch)
+	s.mu.Unlock()
+	if stopCancelWatch != nil {
+		stopCancelWatch()
+	}
 }

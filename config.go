@@ -13,8 +13,8 @@ import (
 //
 // All fields are optional with sensible defaults. The zero value creates a
 // standalone in-memory control-plane runtime with no persistence. The embedded
-// JS/TS runtime starts only when JSRuntime is true or a mounted module requests
-// it.
+// JavaScript runtime starts only when JSRuntime is true or a mounted module
+// requests it.
 type Config struct {
 	// ClusterID identifies the logical group of runtimes. Default: "default".
 	// All runtimes on the same transport with the same ClusterID discover each other.
@@ -83,8 +83,8 @@ type Config struct {
 	// MaxConcurrency limits concurrent bus handler invocations. 0 = unlimited.
 	MaxConcurrency int
 
-	// JSRuntime enables the embedded JS/TS runtime. It is required for Deploy,
-	// EvalTS/EvalModule, package deployment, workflow commands, harnesses, and
+	// JSRuntime enables the embedded JavaScript runtime. It is required for Deploy,
+	// EvalJS/EvalModule, package deployment, workflow commands, harnesses, and
 	// JS-backed storage/vector probes. Zero-value Config keeps the core control
 	// plane light. JS-dependent modules such as eval, packages, testing,
 	// workflow, and harness declare a jsruntime dependency, but they do not

@@ -21,7 +21,6 @@ import (
 	"github.com/brainlet/brainkit/modulecap/runtime"
 	"github.com/brainlet/brainkit/modulehost/resourcehost"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
-	typescript "github.com/brainlet/brainkit/vendor_typescript"
 )
 
 type DeploymentManager struct {
@@ -41,6 +40,7 @@ type DeploymentManager struct {
 	agentCleanup    func(id string)       // called on agent unregister
 	subCleanup      func(id string)       // called on subscription cancel
 	scheduleCleanup func(id string) error // called on schedule cancel
+	sourcePreparer  SourcePreparer
 
 	// currentSource is the .ts file currently being evaluated. Read
 	// from arbitrary goroutines (tracing spans, audit source
@@ -61,6 +61,7 @@ type DeploymentManagerConfig struct {
 	AgentCleanup    func(id string)
 	SubCleanup      func(id string)
 	ScheduleCleanup func(id string) error
+	SourcePreparer  SourcePreparer
 }
 
 func NewDeploymentManager(cfg DeploymentManagerConfig) *DeploymentManager {
@@ -77,6 +78,7 @@ func NewDeploymentManager(cfg DeploymentManagerConfig) *DeploymentManager {
 		agentCleanup:    cfg.AgentCleanup,
 		subCleanup:      cfg.SubCleanup,
 		scheduleCleanup: cfg.ScheduleCleanup,
+		sourcePreparer:  cfg.SourcePreparer,
 	}
 }
 
@@ -222,7 +224,7 @@ func (m *DeploymentManager) teardownLocked(ctx context.Context, source string, d
 	removed, err := m.TeardownFile(source)
 	teardownErr := err
 
-	if _, err := m.EvalTS(ctx, "__teardown_compartment.ts", fmt.Sprintf(
+	if _, err := m.EvalJS(ctx, "__teardown_compartment.ts", fmt.Sprintf(
 		`delete globalThis.%s[%q]; return "ok";`, js.JSCompartments, source)); err != nil {
 		m.logger.Warn("teardown: failed to drop compartment", slog.String("source", source), slog.String("error", err.Error()))
 		teardownErr = errors.Join(teardownErr, fmt.Errorf("teardown compartment %q: %w", source, err))
@@ -295,11 +297,18 @@ func (m *DeploymentManager) prepareDeployCode(source, code string, cfg types.Dep
 	if cfg.EffectiveArtifactKind() == types.DeployArtifactNormalizedJS || !strings.HasSuffix(source, ".ts") {
 		return code, nil
 	}
-	js, err := typescript.Transpile(code, typescript.TranspileOptions{FileName: source})
+	if m.sourcePreparer == nil {
+		return "", &sdkerrors.DeployError{
+			Source: source,
+			Phase:  "transpile",
+			Cause:  fmt.Errorf("typescript source deployment is disabled for this runtime; deploy a normalized JavaScript artifact or mount the TypeScript-enabled jsruntime module"),
+		}
+	}
+	jsCode, err := m.sourcePreparer(source, code)
 	if err != nil {
 		return "", &sdkerrors.DeployError{Source: source, Phase: "transpile", Cause: err}
 	}
-	return stripESImports(js), nil
+	return stripESImports(jsCode), nil
 }
 
 func (m *DeploymentManager) evaluateInCompartment(ctx context.Context, source, code string) error {
@@ -314,10 +323,10 @@ func (m *DeploymentManager) evaluateInCompartment(ctx context.Context, source, c
 		return "ok";
 	`, source, js.JSCompartments, source, code)
 
-	_, err := m.EvalTS(ctx, "__deploy_"+source, evalCode)
+	_, err := m.EvalJS(ctx, "__deploy_"+source, evalCode)
 	if err != nil {
 		m.TeardownFile(source)
-		m.EvalTS(ctx, "__deploy_cleanup.ts", fmt.Sprintf(
+		m.EvalJS(ctx, "__deploy_cleanup.ts", fmt.Sprintf(
 			`delete globalThis.%s[%q]; return "ok";`, js.JSCompartments, source))
 		return &sdkerrors.DeployError{Source: source, Phase: "eval", Cause: err}
 	}
@@ -377,7 +386,7 @@ func (m *DeploymentManager) persistenceError(ctx context.Context, operation, sou
 	})
 }
 
-func (m *DeploymentManager) EvalTS(ctx context.Context, filename, code string) (string, error) {
+func (m *DeploymentManager) EvalJS(ctx context.Context, filename, code string) (string, error) {
 	wrapped := fmt.Sprintf(`(async () => {
 		return await globalThis.__kitRunWithSource(%q, async () => {
 			const { bus, kit, model, provider, storage, vectorStore, registry, tools, fs, mcp, output, secrets } = globalThis.__kit;
@@ -515,7 +524,7 @@ func (m *DeploymentManager) sweepJSRefs(entries []resourcehost.Entry) error {
 	`, string(keysJSON), string(subIDsJSON))
 	sweepCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := m.EvalTS(sweepCtx, "__sweep_refs.ts", code); err != nil {
+	if _, err := m.EvalJS(sweepCtx, "__sweep_refs.ts", code); err != nil {
 		m.logger.Warn("sweepJSRefs: JS eval failed", slog.String("error", err.Error()))
 		return fmt.Errorf("sweep JS refs: %w", err)
 	}

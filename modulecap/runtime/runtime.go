@@ -17,7 +17,7 @@ import (
 	"github.com/brainlet/brainkit/sdk"
 )
 
-// DeploymentInfo describes a deployed JS/TS source and its tracked resources.
+// DeploymentInfo describes a deployed JavaScript source and its tracked resources.
 type DeploymentInfo struct {
 	Source    string               `json:"source"`
 	CreatedAt time.Time            `json:"createdAt"`
@@ -45,9 +45,9 @@ type DebugSnapshotter interface {
 	JSRuntimeDebugSnapshot() DebugSnapshot
 }
 
-// SourceDeployer handles lifecycle of raw .ts/.js source deployments. Callers
-// that already own bundling/normalization should consume ArtifactDeployer
-// instead.
+// SourceDeployer handles lifecycle of raw source deployments. Runtime
+// activation may install a source preparer for direct `.ts` deploys; package
+// graph bundling belongs to package tooling before this boundary.
 type SourceDeployer interface {
 	Deploy(ctx context.Context, source, code string, opts ...types.DeployOption) ([]types.ResourceInfo, error)
 	Teardown(ctx context.Context, source string) (int, error)
@@ -62,17 +62,17 @@ type ArtifactDeployer interface {
 	ListDeployments() []DeploymentInfo
 }
 
-// TSRunner evaluates direct JS/TS snippets in the active runtime. It is not a
+// JSRunner evaluates direct JavaScript snippets in the active runtime. It is not a
 // package/file-graph bundler; package normalization belongs to the package
 // builder registered for modules/packages or to tooling before deploy handoff.
-type TSRunner interface {
-	EvalTS(ctx context.Context, source, code string) (string, error)
+type JSRunner interface {
+	EvalJS(ctx context.Context, source, code string) (string, error)
 }
 
 // DirectEvaluator evaluates direct snippets and modules without exposing raw
 // deploy/teardown to command modules.
 type DirectEvaluator interface {
-	TSRunner
+	JSRunner
 	EvalModule(ctx context.Context, source, code string) (string, error)
 }
 
@@ -82,7 +82,7 @@ type ScriptEvaluator interface {
 	EvalScript(ctx context.Context, source, code string) (string, error)
 }
 
-// EvalRuntime is the module-facing JS/TS eval surface. It is narrower than
+// EvalRuntime is the module-facing JavaScript eval surface. It is narrower than
 // Host so eval consumers cannot reach the runtime activation/kernel adapter or
 // raw deploy/teardown primitives.
 type EvalRuntime interface {
@@ -91,12 +91,10 @@ type EvalRuntime interface {
 }
 
 // TestRuntime is the explicit dev/test runtime surface consumed by
-// modules/testing. It keeps raw source deploy and direct TS evaluation out of
-// the general module capability list while still letting the test runner deploy
-// fixture source and already-bundled test artifacts.
+// modules/testing. Test code is normalized by the test/package tooling before
+// crossing into runtime.
 type TestRuntime interface {
-	EvalTS(ctx context.Context, source, code string) (string, error)
-	DeploySource(ctx context.Context, source, code string) ([]types.ResourceInfo, error)
+	EvalJS(ctx context.Context, source, code string) (string, error)
 	DeployArtifact(ctx context.Context, source, code string) ([]types.ResourceInfo, error)
 	Teardown(ctx context.Context, source string) (int, error)
 }
@@ -106,11 +104,11 @@ type JSEvaluator interface {
 	EvalOnJSThread(filename, code string) (string, error)
 }
 
-// Attachment is the engine-facing surface implemented by the optional JS/TS
+// Attachment is the engine-facing surface implemented by the optional JavaScript
 // runtime package.
 type Attachment interface {
 	SourceDeployer
-	TSRunner
+	JSRunner
 	EvalModule(ctx context.Context, source, code string) (string, error)
 	ListResources(resourceType ...string) ([]types.ResourceInfo, error)
 	ResourcesFrom(filename string) ([]types.ResourceInfo, error)
@@ -132,11 +130,11 @@ type Attachment interface {
 	SetDeployOrderSeed(seed int32)
 }
 
-// Access is the runtime-facing surface exposed after the JS/TS runtime is
+// Access is the runtime-facing surface exposed after the JavaScript runtime is
 // attached.
 type Access interface {
 	SourceDeployer
-	TSRunner
+	JSRunner
 	EvalModule(ctx context.Context, source, code string) (string, error)
 	CallJS(ctx context.Context, fn string, args any) (json.RawMessage, error)
 	// HarnessRuntime returns the optional harness adapter as an opaque value.
@@ -227,7 +225,7 @@ type ScheduleHost interface {
 }
 
 // EnableHost is the kernel surface required to activate and run the optional
-// JS/TS runtime. It intentionally excludes Access: runtime access becomes
+// JavaScript runtime. It intentionally excludes Access: runtime access becomes
 // available only after activation attaches a runtime to the kernel.
 type EnableHost interface {
 	ActivationHost

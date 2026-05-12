@@ -76,7 +76,7 @@ func testJSBridge(t *testing.T, _ *suite.TestEnv) {
 
 	callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "js-test-token", Value: "tok_abc123"})
 
-	result := testutil.EvalTS(t, env.Kit, "__test_secret.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_secret.ts", `
 		var val = secrets.get("js-test-token");
 		return val;
 	`)

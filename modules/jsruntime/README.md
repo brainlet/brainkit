@@ -1,14 +1,20 @@
 # modules/jsruntime - beta
 
-Activation lease for the embedded JS/TS runtime. Mounting this module enables
+Activation lease for the embedded JavaScript runtime. Mounting this module enables
 the QuickJS/Ses runtime and provides the runtime capabilities consumed by eval,
 packages, testing, workflow, harness, and JS-backed storage/vector paths.
 
 ## Runtime surface
 
-Enables package deployment, TypeScript evaluation, JS request dispatch,
-harness execution, and JS runtime presence checks through explicit core
-capabilities.
+Enables JavaScript deployment/evaluation, JS request dispatch, harness
+execution, and JS runtime presence checks through explicit core capabilities.
+Raw `.ts` source deploys are transpiled to JavaScript by this module before
+runtime evaluation. Package/file-graph normalization is still owned by
+package/test tooling before artifact handoff.
+
+For a runtime profile that does not link the TypeScript source preparer, use
+`modules/jsruntime/artifact` or `presets/standard/artifactruntime`; that
+variant accepts normalized JavaScript artifacts and rejects raw `.ts` deploys.
 
 ## Capabilities
 
@@ -26,7 +32,7 @@ capabilities.
 
 ## Runtime resources
 
-- `runtime:jsruntime.heap` - the embedded JS/TS runtime activation lease.
+- `runtime:jsruntime.heap` - the embedded JavaScript runtime activation lease.
 
 ## Hot unmount
 

@@ -921,9 +921,11 @@ func (gw *Gateway) cleanExpiredSessions() {
 	}
 	gw.sessionsMu.Unlock()
 	for _, id := range expiredIDs {
-		if err := gw.closeStreamSession(context.Background(), id, "expired"); err != nil {
+		closeCtx, cancel := context.WithTimeout(context.Background(), streamSessionCloseTimeout)
+		if err := gw.closeStreamSession(closeCtx, id, "expired"); err != nil {
 			gw.logger.Warn("close expired stream session", slog.String("session", id), slog.String("error", err.Error()))
 		}
+		cancel()
 	}
 }
 
@@ -945,20 +947,34 @@ func (gw *Gateway) closeStreamSession(ctx context.Context, id, reason string) er
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	gw.sessionsMu.Lock()
-	defer gw.sessionsMu.Unlock()
+	gw.sessionsMu.RLock()
 	session := gw.sessions[id]
+	gw.sessionsMu.RUnlock()
 	if session == nil {
 		return nil
 	}
-	if session.unsub != nil {
-		if err := session.unsub.Close(ctx); err != nil {
+
+	session.closeMu.Lock()
+	defer session.closeMu.Unlock()
+
+	session.mu.RLock()
+	unsub := session.unsub
+	session.mu.RUnlock()
+	if unsub != nil {
+		if err := unsub.Close(ctx); err != nil {
 			return err
 		}
+		session.mu.Lock()
 		session.unsub = nil
+		session.mu.Unlock()
 	}
 	session.terminate(reason)
-	delete(gw.sessions, id)
+
+	gw.sessionsMu.Lock()
+	if gw.sessions[id] == session {
+		delete(gw.sessions, id)
+	}
+	gw.sessionsMu.Unlock()
 	return nil
 }
 
@@ -994,10 +1010,10 @@ func (gw *Gateway) streamSessionDebugCounts() (sessions, terminal, subscriptions
 		if session == nil {
 			continue
 		}
+		session.mu.RLock()
 		if session.unsub != nil {
 			subscriptions++
 		}
-		session.mu.RLock()
 		if session.terminal {
 			terminal++
 		}

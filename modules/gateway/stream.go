@@ -26,6 +26,7 @@ type streamSession struct {
 	replyTo       string // bus topic for this stream
 	correlationID string
 
+	closeMu    sync.Mutex
 	mu         syncx.RWMutex
 	buffer     []bufferedEvent // append-only replay buffer for reconnection
 	nextID     int             // sequential SSE id counter
@@ -41,6 +42,8 @@ type streamSession struct {
 
 	config StreamConfig
 }
+
+const streamSessionCloseTimeout = 10 * time.Second
 
 type bufferedEvent struct {
 	id   int    // SSE id
@@ -502,9 +505,11 @@ func (gw *Gateway) handleStream(w http.ResponseWriter, r *http.Request, matched 
 
 	pubCtx := transport.WithPublishMeta(r.Context(), reqID, replyTo)
 	if _, err := gw.rt.PublishRaw(pubCtx, matched.Topic, payload); err != nil {
-		if closeErr := gw.closeStreamSession(context.Background(), session.id, "publish_failed"); closeErr != nil {
+		closeCtx, cancel := context.WithTimeout(context.Background(), streamSessionCloseTimeout)
+		if closeErr := gw.closeStreamSession(closeCtx, session.id, "publish_failed"); closeErr != nil {
 			gw.logger.Warn("close failed stream session", "session", session.id, "error", closeErr.Error())
 		}
+		cancel()
 		http.Error(w, "publish failed", http.StatusBadGateway)
 		return
 	}

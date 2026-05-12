@@ -105,7 +105,7 @@ func testProviderAddThenResolveFromTS(t *testing.T, _ *suite.TestEnv) {
 	testutil.Deploy(t, env.Kit, "resolve-prov-test.ts", code)
 	defer testutil.Teardown(t, env.Kit, "resolve-prov-test.ts")
 
-	result := testutil.EvalTS(t, env.Kit, "__check_resolve.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__check_resolve.ts", `
 		const r = globalThis.__module_result;
 		return r || "null";
 	`)

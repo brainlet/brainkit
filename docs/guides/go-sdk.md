@@ -66,10 +66,33 @@ fields:
 | `LogHandler` | `func(LogEntry)` | Tagged log stream from `.ts` and the runtime. |
 | `ErrorHandler` | `func(error)` | Non-fatal error sink. |
 | `MaxConcurrency` | `int` | Concurrent bus handler cap. 0 = unlimited. |
-| `JSRuntime` | `bool` | Requests the embedded JS/TS runtime for deploy/eval/workflow/harness paths. Zero-value Kit leaves it off; import `modules/jsruntime` or `presets/standard` so the request can be satisfied. |
+| `JSRuntime` | `bool` | Requests the embedded JavaScript runtime for deploy/eval/workflow/harness paths. Zero-value Kit leaves it off; import `modules/jsruntime` or `presets/standard` so the request can be satisfied. |
 | `MaxStackSize` | `int` | QuickJS stack bytes. Default 1 MB. |
 | `RetryPolicies` | `map[string]RetryPolicy` | Topic glob → retry config. |
 | `Modules` | `[]module.Module` | Opt-in subsystems. |
+
+## Runtime Profiles
+
+Brainkit has two separate questions that are easy to conflate:
+
+- Should this Kit start the embedded JS runtime?
+- Should this process own TypeScript/package source preparation?
+
+Use the smallest standard profile that answers those questions:
+
+| Profile | Includes | Use when |
+|---|---|---|
+| `standard.CoreSet()` | Core command/control modules only. | Go-only runtimes, tools, registry/secrets/health surfaces. |
+| `standard.RuntimeSet()` | Default JS runtime + `kit.eval`. | Runtime/eval consumers that do not expose `package.deploy`. Raw `.ts` source deploys on the runtime path are transpiled before evaluation. |
+| `standard.ArtifactRuntimeSet()` | Artifact-only JS runtime + `kit.eval`. | You already build JavaScript outside Brainkit and want to avoid linking runtime TypeScript preparation. Deploy only normalized JavaScript artifacts through `brainkit.core.artifact_deployer`; raw TypeScript syntax is rejected. |
+| `standard.PackageSet()` | Default JS runtime, `kit.eval`, `modules/packages`, and the standard esbuild package builder. | Normal app `.ts` deployment through `packageclient.Deploy`. |
+| `standard.CommandSet()` | Core command modules plus package deployment. | A batteries-included embedded Kit command surface. |
+
+Artifact runtime is not a `.js` filename requirement. The runtime may keep a
+`.ts` logical source name for persistence and `ts.<source>.<topic>` routing,
+but the code crossing that boundary must already be normalized JavaScript. See
+[`examples/artifact-runtime`](../../examples/artifact-runtime/) for a minimal
+module that consumes only the artifact deployer capability.
 
 ## Runtime Admin Modules
 
@@ -316,6 +339,10 @@ standard source package builder. Custom Kit assemblies that mount
 usually `_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"`.
 Caller-side deploy helpers are in
 `github.com/brainlet/brainkit/modules/packages/client`.
+
+If you do not want Brainkit to own TypeScript/package preparation, mount
+`standard.ArtifactRuntimeSet()` instead and hand normalized JavaScript to a
+module that consumes `runtimecap.ArtifactDeployer`.
 
 ```go
 // Inline — handy for tests and demos.

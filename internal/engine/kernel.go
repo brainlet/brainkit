@@ -157,7 +157,7 @@ func (k *Kernel) nextDeployOrder() int {
 	return k.jsRuntime.NextDeployOrder()
 }
 
-// HasJSRuntime reports whether this kernel owns the embedded JS/TS runtime.
+// HasJSRuntime reports whether this kernel owns the embedded JavaScript runtime.
 func (k *Kernel) HasJSRuntime() bool {
 	return k != nil && k.jsRuntime != nil
 }
@@ -247,7 +247,9 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 
 	// If DeferRouterStart: caller (Node) registers all bindings and starts the router
 
-	kernel.runtimeHost = runtimehost.New(kernel, logger, kernel.transportHost.SubscribeRawFanOut)
+	kernel.runtimeHost = runtimehost.New(kernel, logger, func(ctx context.Context, topic string, handler func(sdk.Message)) (runtimehost.PropagationHandle, error) {
+		return kernel.transportHost.SubscribeRawFanOutHandle(ctx, topic, handler)
+	})
 	kernel.initPersistence(cfg)
 
 	if cleanup := kernel.initAudit(cfg); cleanup != nil {

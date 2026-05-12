@@ -15,7 +15,7 @@ import (
 // Endowment gap tests — verify that declared APIs are actually
 // reachable inside a deployed .ts Compartment. Each test deploys
 // a probe that typeof-checks specific symbols and writes the
-// results to output(), which the test reads via EvalTS.
+// results to output(), which the test reads via EvalJS.
 
 // testEndowmentToolsAvailable checks that `tools.list`, `tools.call`,
 // `tools.resolve`, and `tool()` are defined inside a deployment — both
@@ -51,7 +51,7 @@ func testEndowmentToolsAvailable(t *testing.T, env *suite.TestEnv) {
 	testutil.Deploy(t, env.Kit, source, code)
 	t.Cleanup(func() { testutil.Teardown(t, env.Kit, source) })
 
-	raw := testutil.EvalTS(t, env.Kit, "__read_endow_tools.ts", `return globalThis.__module_result || "null"`)
+	raw := testutil.EvalJS(t, env.Kit, "__read_endow_tools.ts", `return globalThis.__module_result || "null"`)
 	var checks map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &checks))
 
@@ -86,7 +86,7 @@ func testEndowmentBusCancelSurface(t *testing.T, env *suite.TestEnv) {
 	testutil.Deploy(t, env.Kit, source, code)
 	t.Cleanup(func() { testutil.Teardown(t, env.Kit, source) })
 
-	raw := testutil.EvalTS(t, env.Kit, "__read_endow_cancel.ts", `return globalThis.__module_result || "null"`)
+	raw := testutil.EvalJS(t, env.Kit, "__read_endow_cancel.ts", `return globalThis.__module_result || "null"`)
 	var checks map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &checks))
 
@@ -110,7 +110,7 @@ func testEndowmentWebSocketAndSetImmediate(t *testing.T, env *suite.TestEnv) {
 	testutil.Deploy(t, env.Kit, source, code)
 	t.Cleanup(func() { testutil.Teardown(t, env.Kit, source) })
 
-	raw := testutil.EvalTS(t, env.Kit, "__read_endow_ws.ts", `return globalThis.__module_result || "null"`)
+	raw := testutil.EvalJS(t, env.Kit, "__read_endow_ws.ts", `return globalThis.__module_result || "null"`)
 	var checks map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &checks))
 

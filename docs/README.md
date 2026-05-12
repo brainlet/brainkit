@@ -14,10 +14,10 @@ This directory is the reference. The five files in `llm/` are dense, API-only pa
 - **Transports**: `brainkit.Memory()` (default, zero-value) is linked by the root package. Import backend-specific packages such as `transports/embeddednats`, `transports/nats`, `transports/amqp`, or `transports/redis` for network transports. The aggregate `transports` package still exists, but it links every network backend. Topic sanitisers vary per backend; the Go surface is uniform.
 - **Providers**: 12 built-in constructors (OpenAI, Anthropic, Google, Mistral, Groq, DeepSeek, XAI, Cohere, Perplexity, TogetherAI, Fireworks, Cerebras). `WithBaseURL(...)` / `WithHeaders(...)` options on every one.
 - **Storage & vectors**: 5 storage constructors (SQLite, Postgres, MongoDB, Upstash, InMemory) and 3 vector constructors (SQLite, PgVector, MongoDB). Registered as a named pool the runtime can look up by name.
-- **Modules**: 24 shipped module packages composed via `Config.Modules`. `presets/standard/core.Set()` mounts the light command/control plane; `presets/standard/runtime.Set()` adds JS runtime/eval without source-package builders; `presets/standard/packages.Set()` adds package deployment plus the standard esbuild package builder; `presets/standard.CommandSet()` remains the aggregate command/runtime set. Additional modules own resource-heavy or integration-specific surfaces such as `gateway`, `mcp`, `plugins`, `schedules`, `audit`, `tracing`, `probes`, `discovery`, `topology`, `workflow`, `testing`, and `harness`.
+- **Modules**: 24 shipped module packages composed via `Config.Modules`. `presets/standard/core.Set()` mounts the light command/control plane; `presets/standard/runtime.Set()` adds JS runtime/eval without source-package builders; `presets/standard/artifactruntime.Set()` adds JS runtime/eval for normalized JavaScript artifacts only; `presets/standard/packages.Set()` adds package deployment plus the standard esbuild package builder; `presets/standard.CommandSet()` remains the aggregate command/runtime set. Additional modules own resource-heavy or integration-specific surfaces such as `gateway`, `mcp`, `plugins`, `schedules`, `audit`, `tracing`, `probes`, `discovery`, `topology`, `workflow`, `testing`, and `harness`.
 - **server**: thin HTTP wrapper (`server.New`) for bringing a Kit up behind an HTTP gateway. `server/configfile` reads YAML with `$VAR` / `${VAR}` expansion; import named `server/standard/...` profiles for built-in YAML module names, `server/configfile/transportbackends/...` for YAML transport backends, `server/configfile/storebackends/...` for KitStore backends, and `server/configfile/packageboot` for top-level `packages:` auto-deploy. `server/standard/full` is the all-module catalog; `server/quickstart` holds the batteries-included preset. Not required — embed the Kit directly from Go in any long-running process.
 
-See `concepts/architecture.md` for the full diagram and `concepts/deployment-pipeline.md` for the transpile → strip-imports → SES-lockdown path.
+See `concepts/architecture.md` for the full diagram and `concepts/deployment-pipeline.md` for package normalization, runtime handoff, and SES Compartment evaluation.
 
 ---
 
@@ -153,10 +153,9 @@ Minimal in-process Kit with a Memory transport and a single deployment:
 kit, _ := brainkit.New(brainkit.Config{
     Namespace: "demo",
     Transport: brainkit.Memory(),        // default — zero value also works
-    JSRuntime: true,                      // enable JS/TS deploy/eval runtime
     FSRoot:    os.TempDir(),
     Providers: []brainkit.ProviderConfig{brainkit.OpenAI(os.Getenv("OPENAI_API_KEY"))},
-    Modules:   standard.CommandSet(),     // package.deploy, tools.*, health, eval, ...
+    Modules:   standard.CommandSet(),     // JS runtime, package.deploy, tools.*, health, eval, ...
 })
 defer kit.Close()
 

@@ -5,11 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
 	evalmod "github.com/brainlet/brainkit/modules/eval"
 	"github.com/brainlet/brainkit/modules/eval/evalmsg"
 	jsruntimemod "github.com/brainlet/brainkit/modules/jsruntime"
 	"github.com/brainlet/brainkit/presets/standard"
+	artifactruntimepreset "github.com/brainlet/brainkit/presets/standard/artifactruntime"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/stretchr/testify/require"
@@ -23,7 +25,7 @@ func TestZeroConfigStartsLightCoreWithoutJSRuntime(t *testing.T) {
 	require.False(t, k.kernel.HasJSRuntime())
 	require.True(t, k.Alive(context.Background()))
 
-	_, err = k.kernel.EvalTS(context.Background(), "__disabled.ts", `return "ok"`)
+	_, err = k.kernel.EvalJS(context.Background(), "__disabled.ts", `return "ok"`)
 	require.ErrorAs(t, err, new(*sdkerrors.NotConfiguredError))
 	require.False(t, k.hasCommand("kit.eval"))
 }
@@ -57,7 +59,7 @@ func TestJSRuntimeExplicitlyEnablesEvalRuntime(t *testing.T) {
 	defer k.Close()
 
 	require.True(t, k.kernel.HasJSRuntime())
-	result, err := k.kernel.EvalTS(context.Background(), "__enabled.ts", `return "ok"`)
+	result, err := k.kernel.EvalJS(context.Background(), "__enabled.ts", `return "ok"`)
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
 }
@@ -93,9 +95,58 @@ func TestStandardCommandSetAutoEnablesJSRuntime(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	result, err := k.kernel.EvalTS(ctx, "__standard.ts", `return "ok"`)
+	result, err := k.kernel.EvalJS(ctx, "__standard.ts", `return "ok"`)
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
+}
+
+func TestArtifactRuntimeRejectsRawTSAndAcceptsNormalizedArtifacts(t *testing.T) {
+	k, err := New(Config{Transport: Memory(), Modules: artifactruntimepreset.Set()})
+	require.NoError(t, err)
+	defer k.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	require.True(t, k.kernel.HasJSRuntime())
+	_, err = k.kernel.Deploy(ctx, "raw-types.ts", `
+interface Config {
+  value: string;
+}
+const cfg: Config = { value: "raw" };
+output(cfg);`)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "typescript source deployment is disabled")
+
+	_, err = k.kernel.Deploy(ctx, "artifact.ts", `output({ value: "artifact" });`, types.WithNormalizedJS())
+	require.NoError(t, err)
+
+	got, err := k.kernel.EvalJS(ctx, "__artifact_result.js", `return globalThis.__module_result;`)
+	require.NoError(t, err)
+	require.Equal(t, `{"value":"artifact"}`, got)
+}
+
+func TestTypeScriptRuntimeTranspilesRawTSSource(t *testing.T) {
+	k, err := New(Config{Transport: Memory(), Modules: []bkmodule.Module{jsruntimemod.New()}})
+	require.NoError(t, err)
+	defer k.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = k.kernel.Deploy(ctx, "raw-types.ts", `
+interface Config {
+  value: string;
+}
+type Result = { value: string };
+const cfg: Config = { value: "typed" };
+const result: Result = { value: cfg.value };
+output(result);`)
+	require.NoError(t, err)
+
+	got, err := k.kernel.EvalJS(ctx, "__typed_result.js", `return globalThis.__module_result;`)
+	require.NoError(t, err)
+	require.Equal(t, `{"value":"typed"}`, got)
 }
 
 func TestStandardCommandModulesUnmountCleanly(t *testing.T) {
@@ -134,13 +185,13 @@ func TestJSRuntimeCanHotMountAfterKitStart(t *testing.T) {
 	require.NoError(t, k.Mount(ctx, jsruntimemod.New()))
 	require.True(t, k.kernel.HasJSRuntime())
 
-	result, err := k.kernel.EvalTS(ctx, "__hot_runtime.ts", `return "hot"`)
+	result, err := k.kernel.EvalJS(ctx, "__hot_runtime.ts", `return "hot"`)
 	require.NoError(t, err)
 	require.Equal(t, "hot", result)
 
 	require.NoError(t, k.Mount(ctx, evalmod.New()))
 	resp, err := Call[evalmsg.KitEvalMsg, evalmsg.KitEvalResp](k, ctx, evalmsg.KitEvalMsg{
-		Mode:   "ts",
+		Mode:   "js",
 		Source: "__hot_eval.ts",
 		Code:   `return "eval"`,
 	})
@@ -158,7 +209,7 @@ func TestJSRuntimeCanHotUnmountAndRemount(t *testing.T) {
 
 	require.NoError(t, k.Mount(ctx, jsruntimemod.New()))
 	require.True(t, k.kernel.HasJSRuntime())
-	result, err := k.kernel.EvalTS(ctx, "__hot_unmount_before.ts", `return "before"`)
+	result, err := k.kernel.EvalJS(ctx, "__hot_unmount_before.ts", `return "before"`)
 	require.NoError(t, err)
 	require.Equal(t, "before", result)
 
@@ -169,13 +220,13 @@ func TestJSRuntimeCanHotUnmountAndRemount(t *testing.T) {
 
 	require.NoError(t, k.Unmount(ctx, "jsruntime"))
 	require.False(t, k.kernel.HasJSRuntime())
-	_, err = k.kernel.EvalTS(ctx, "__hot_unmount_after.ts", `return "after"`)
+	_, err = k.kernel.EvalJS(ctx, "__hot_unmount_after.ts", `return "after"`)
 	require.ErrorAs(t, err, new(*sdkerrors.NotConfiguredError))
 
 	require.NoError(t, k.Mount(ctx, jsruntimemod.New()))
 	require.True(t, k.kernel.HasJSRuntime())
 	require.Empty(t, k.kernel.ListDeployments())
-	result, err = k.kernel.EvalTS(ctx, "__hot_unmount_remount.ts", `return "remount"`)
+	result, err = k.kernel.EvalJS(ctx, "__hot_unmount_remount.ts", `return "remount"`)
 	require.NoError(t, err)
 	require.Equal(t, "remount", result)
 }

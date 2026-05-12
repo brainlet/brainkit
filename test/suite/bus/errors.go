@@ -17,7 +17,7 @@ import (
 )
 
 func testPublishToCommandTopic(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__cmd_topic.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__cmd_topic.ts", `
 		var caught = "none";
 		try { __go_brainkit_bus_send("tools.call", JSON.stringify({})); }
 		catch(e) { caught = e.code || e.message || "error"; }
@@ -27,7 +27,7 @@ func testPublishToCommandTopic(t *testing.T, env *suite.TestEnv) {
 }
 
 func testEmitToCommandTopic(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__emit_cmd.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__emit_cmd.ts", `
 		var caught = "none";
 		try { bus.emit("tools.call", {}); }
 		catch(e) { caught = "error"; }
@@ -78,7 +78,7 @@ func testReplyWithoutReplyTo(t *testing.T, env *suite.TestEnv) {
 }
 
 func testSendToNonexistentService(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__sendto_ghost.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__sendto_ghost.ts", `
 		var r = bus.sendTo("ghost-service.ts", "ask", {});
 		return r === undefined ? "published" : "fail";
 	`)
@@ -136,7 +136,7 @@ func testMultipleReplies(t *testing.T, env *suite.TestEnv) {
 }
 
 func testSubscribeUnsubscribe(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__sub_unsub.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__sub_unsub.ts", `
 		var received = 0;
 		var subId = bus.subscribe("events.count-test", function() { received++; });
 		bus.emit("events.count-test", {});
@@ -157,7 +157,7 @@ func testDeploymentNamespace(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	result := testutil.EvalTS(t, env.Kit, "__ns_result.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__ns_result.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});

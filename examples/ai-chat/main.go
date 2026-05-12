@@ -15,19 +15,19 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/examples/internal/exampleenv"
 	"github.com/brainlet/brainkit/modules/packages/client"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 )
 
 func main() {
+	exampleenv.LoadRootDotEnv()
 	provider := flag.String("provider", "openai", "provider name (openai, anthropic, google, …)")
 	modelID := flag.String("model", "gpt-4o-mini", "model identifier passed to model(provider, modelID)")
 	prompt := flag.String("prompt", "Say hello to world. One sentence only.", "prompt to send to the model")
@@ -50,7 +50,7 @@ func main() {
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
 		Providers: []brainkit.ProviderConfig{providerCfg},
-		Modules:   []bkmodule.Module{packages.New()},
+		Modules:   standard.PackageSet(),
 	})
 	if err != nil {
 		log.Fatalf("new kit: %v", err)

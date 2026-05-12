@@ -57,7 +57,7 @@ func (r *Runtime) evalJSCall(ctx context.Context, fn string, args any) (json.Raw
 		return nil, fmt.Errorf("callJS %s: marshal args: %w", fn, err)
 	}
 	code := fmt.Sprintf("return JSON.stringify(await %s(JSON.parse(%q)))", fn, string(argsJSON))
-	result, err := r.EvalTS(ctx, "__dispatch__.ts", code)
+	result, err := r.EvalJS(ctx, "__dispatch__.ts", code)
 	if err != nil {
 		return nil, err
 	}

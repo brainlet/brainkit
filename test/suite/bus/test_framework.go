@@ -29,7 +29,7 @@ func runJSTestFile(t *testing.T, k *brainkit.Kit, code string) []jsTestResult {
 
 	testutil.EvalModule(t, k, "__test_file.ts", code)
 
-	resultJSON := testutil.EvalTS(t, k, "__run_tests.ts", `
+	resultJSON := testutil.EvalJS(t, k, "__run_tests.ts", `
 		var r = await globalThis.__runTests();
 		return r;
 	`)

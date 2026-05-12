@@ -37,12 +37,12 @@ func testNoModuleThrowsNotConfigured(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Use kit.eval in "ts" mode to invoke bus.schedule in the runtime — the
+	// Use kit.eval in "js" mode to invoke bus.schedule in the runtime — the
 	// response envelope carries the bridge-thrown error when no handler is
 	// attached.
 	pr, err := protocol.Publish(k, ctx, evalmsg.KitEvalMsg{
-		Source: "no-sched-module.ts",
-		Mode:   "ts",
+		Source: "no-sched-module.js",
+		Mode:   "js",
 		Code:   `bus.schedule("every 100ms", "tick", {});`,
 	})
 	require.NoError(t, err)

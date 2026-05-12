@@ -84,10 +84,9 @@ require (
 replace (
 	github.com/brainlet/brainkit => %s
 	github.com/brainlet/brainkit/sdk => %s/sdk
-	github.com/brainlet/brainkit/vendor_typescript => %s/vendor_typescript
 	github.com/brainlet/brainkit/vendor_quickjs => %s/vendor_quickjs
 )
-`, projectRoot, projectRoot, projectRoot, projectRoot)
+`, projectRoot, projectRoot, projectRoot)
 	require.NoError(t, os.WriteFile(filepath.Join(pluginDir, "go.mod"), []byte(goModContent), 0644))
 
 	tidy := exec.Command("go", "mod", "tidy")

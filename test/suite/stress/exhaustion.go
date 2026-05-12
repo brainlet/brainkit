@@ -186,8 +186,8 @@ func testExhaustionOutputBomb(t *testing.T, env *suite.TestEnv) {
 	assert.NoError(t, err, "kit should survive 10MB output")
 }
 
-// Attack: many concurrent EvalTS from Go side
-func testExhaustionConcurrentEvalTS(t *testing.T, env *suite.TestEnv) {
+// Attack: many concurrent EvalJS from Go side
+func testExhaustionConcurrentEvalJS(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipped in short mode")
 	}
@@ -202,7 +202,7 @@ func testExhaustionConcurrentEvalTS(t *testing.T, env *suite.TestEnv) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			_, err := testutil.EvalTSErr(tk, fmt.Sprintf("__stress_concurrent_%d.ts", n),
+			_, err := testutil.EvalJSErr(tk, fmt.Sprintf("__stress_concurrent_%d.ts", n),
 				fmt.Sprintf(`return "result-%d";`, n))
 			if err != nil {
 				mu.Lock()
@@ -213,9 +213,9 @@ func testExhaustionConcurrentEvalTS(t *testing.T, env *suite.TestEnv) {
 	}
 	wg.Wait()
 
-	t.Logf("100 concurrent EvalTS: %d errors", errors)
+	t.Logf("100 concurrent EvalJS: %d errors", errors)
 	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
-	assert.NoError(t, err, "kit should survive 100 concurrent EvalTS")
+	assert.NoError(t, err, "kit should survive 100 concurrent EvalJS")
 }
 
 // Attack: deploy code that creates enormous JSON via bus.publish
@@ -341,7 +341,7 @@ func testExhaustionPumpStarvation(t *testing.T, env *suite.TestEnv) {
 
 	err := testutil.DeployErr(tk, "after-stress-starve.ts", `output("still works");`)
 	if err == nil {
-		result, _ := testutil.EvalTSErr(tk, "__stress_after.ts", `return String(globalThis.__module_result || "");`)
+		result, _ := testutil.EvalJSErr(tk, "__stress_after.ts", `return String(globalThis.__module_result || "");`)
 		assert.Equal(t, "still works", result)
 	}
 
@@ -392,8 +392,8 @@ func testExhaustionPersistenceBomb(t *testing.T, env *suite.TestEnv) {
 	assert.Equal(t, 100, len(deps), "all 100 deployments should be restored")
 }
 
-// testEvalTSInfiniteLoop — deploy while(true){}, then close kit, verify no hang.
-func testEvalTSInfiniteLoop(t *testing.T, _ *suite.TestEnv) {
+// testEvalJSInfiniteLoop — deploy while(true){}, then close kit, verify no hang.
+func testEvalJSInfiniteLoop(t *testing.T, _ *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipped in short mode")
 	}

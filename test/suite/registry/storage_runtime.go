@@ -67,7 +67,7 @@ func testStorageRuntimeRemoveNonexistent(t *testing.T, env *suite.TestEnv) {
 
 // testStorageRuntimeURLForNonexistent — resolving nonexistent storage returns empty via JS bridge.
 func testStorageRuntimeURLForNonexistent(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__reg_url_nonexist.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__reg_url_nonexist.ts", `
 		var resolved = registry.has("storage", "ghost-storage-reg-adv");
 		return JSON.stringify({ exists: resolved });
 	`)
@@ -89,7 +89,7 @@ func testStorageRuntimeSQLiteAdd(t *testing.T, env *suite.TestEnv) {
 	require.True(t, resp.Added, "SQLite storage should be added")
 
 	// Verify it's registered
-	result := testutil.EvalTS(t, env.Kit, "__reg_sqlite_check.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__reg_sqlite_check.ts", `
 		return JSON.stringify({ has: registry.has("storage", "sqlite-runtime-reg-adv") });
 	`)
 	assert.Contains(t, result, `"has":true`)
@@ -121,7 +121,7 @@ func testStorageRuntimeListResources(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, found, "res-tool-reg-adv should appear in tool.list")
 }
 
-// testStorageRuntimeResourcesFromSource — track resources by deployment source via EvalTS.
+// testStorageRuntimeResourcesFromSource — track resources by deployment source via EvalJS.
 func testStorageRuntimeResourcesFromSource(t *testing.T, env *suite.TestEnv) {
 	testutil.Deploy(t, env.Kit, "source-track-reg-adv.ts", `
 		const t = createTool({id: "tracked-tool-reg-adv", description: "test", execute: async () => ({})});
@@ -159,7 +159,7 @@ func testStorageRuntimeKernelMultipleStorages(t *testing.T, _ *suite.TestEnv) {
 	defer k.Close()
 
 	// Both registered in provider registry — verify via JS bridge
-	result := testutil.EvalTS(t, k, "__check_storages_reg_adv.ts", `
+	result := testutil.EvalJS(t, k, "__check_storages_reg_adv.ts", `
 		var hasMem = registry.has("storage", "mem");
 		var hasSqlite = registry.has("storage", "sqlite");
 		return JSON.stringify({mem: hasMem, sqlite: hasSqlite});

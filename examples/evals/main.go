@@ -21,16 +21,15 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/examples/internal/exampleenv"
 	"github.com/brainlet/brainkit/modules/packages/client"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -50,6 +49,7 @@ type evalResult struct {
 }
 
 func main() {
+	exampleenv.LoadRootDotEnv()
 	checkOnly := flag.Bool("check", false, "compare run result to baseline.json and exit 1 on regression")
 	save := flag.Bool("save", false, "write run result to latest.json for later inspection")
 	flag.Parse()
@@ -69,7 +69,7 @@ func run(key string, save, check bool) error {
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
-		Modules:   []bkmodule.Module{packages.New()},
+		Modules:   standard.PackageSet(),
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
