@@ -38,7 +38,7 @@ type KitStore interface {
 	Close() error
 }
 
-// PersistedDeployment is the on-disk format for a JS/TS deployment.
+// PersistedDeployment is the on-disk format for a JavaScript deployment.
 type PersistedDeployment struct {
 	Source       string             `json:"source"`
 	Code         string             `json:"code"`

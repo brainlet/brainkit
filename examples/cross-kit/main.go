@@ -17,16 +17,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/modules/topology"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/transports/nats"
 	natsserver "github.com/nats-io/nats-server/v2/server"
@@ -53,6 +52,7 @@ func run() error {
 		CallerID:  "analytics-prod",
 		Transport: nats.New(natsURL),
 		FSRoot:    ".",
+		Modules:   standard.PackageSet(),
 	})
 	if err != nil {
 		return fmt.Errorf("target kit: %w", err)
@@ -77,7 +77,7 @@ func run() error {
 		CallerID:  "orchestrator",
 		Transport: nats.New(natsURL),
 		FSRoot:    ".",
-		Modules: []bkmodule.Module{packages.New(),
+		Modules: []bkmodule.Module{
 			topology.NewModule(topology.Config{
 				Peers: []topology.Peer{
 					{Name: "analytics", Namespace: "analytics-prod"},

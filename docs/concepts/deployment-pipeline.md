@@ -45,7 +45,9 @@ resp, err := packageclient.Deploy(ctx, kit, pkg)
 `Manifest + Files` (inline). The handler owns source preparation through
 the registered package builder. The standard package profiles import
 `modules/packages/bundlers/esbuild`; the narrower runtime profiles mount only
-JS runtime/eval and can omit package source deployment entirely. A custom binary
+JS runtime/eval and can omit package source deployment entirely. The
+artifact-only runtime profile also omits runtime-side TypeScript source
+preparation and accepts only normalized JavaScript artifacts. A custom binary
 that mounts `packages.New()` without a builder rejects source package deploys
 with an explicit configuration error. See
 `modules/packages/packagemsg/package_messages.go`.
@@ -102,20 +104,34 @@ file graph. Brainkit's standard builder is
 
 ### 2. Artifact normalization
 
-The package module, not the JS runtime core, owns TypeScript and file
-graph preparation. Types, interfaces, generics, and `import type` lines
-are stripped by bundling. External imports such as `kit`, `ai`, and
-`agent` are removed from the artifact because those symbols are injected
-as Compartment endowments.
+The package module owns package TypeScript and file-graph preparation. Types,
+interfaces, generics, and `import type` lines are stripped by bundling.
+External imports such as `kit`, `ai`, and `agent` are removed from the
+artifact because those symbols are injected as Compartment endowments.
 
 ### 3. Runtime handoff
 
 The runtime may keep a `.ts` logical source name for addressing and
 persistence, but package artifacts enter the runtime as normalized
-JavaScript. Direct eval/dev paths may still use `EvalTS`; package deploy
-does not rely on runtime-side TypeScript preparation. Persistence stores the
-artifact kind explicitly so package or tooling-produced JavaScript is restored
-without being prepared as raw TypeScript later.
+JavaScript. Direct eval/dev paths use `EvalJS` for JavaScript snippets only;
+package deploy does not rely on runtime-side TypeScript preparation. Raw
+source deploys through the default `modules/jsruntime` path still transpile
+`.ts` source before evaluation; artifact-only runtime profiles reject raw `.ts`
+source unless the caller marks it as normalized JavaScript.
+Persistence stores the artifact kind explicitly so package or tooling-produced
+JavaScript is restored without being prepared as raw TypeScript later.
+
+The profile choice is explicit:
+
+| Profile | Runtime handoff |
+| --- | --- |
+| `standard.RuntimeSet()` | JS runtime/eval only. Runtime-side raw `.ts` source deploys are allowed and transpiled. No package builder or `package.deploy` command is mounted. |
+| `standard.ArtifactRuntimeSet()` | JS runtime/eval only. Deploy only normalized JavaScript artifacts through `brainkit.core.artifact_deployer`. Raw TypeScript syntax is rejected. Logical source names may still end in `.ts` for routing and persistence when the artifact is marked normalized. |
+| `standard.PackageSet()` | Adds `modules/packages` and the standard esbuild package builder. This is the normal `packageclient.Deploy` path for app `.ts` files. |
+| `standard.CommandSet()` | Adds the core command surface around package deployment for embedded app runtimes. |
+
+For a minimal artifact-only example, see
+`examples/artifact-runtime/main.go`.
 
 ### 4. Compartment + endowments
 

@@ -40,7 +40,7 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 		`)
 
 	// Verify output from generate
-	result := testutil.EvalTS(t, env.Kit, "__read_ai_agent_adv.ts", `return globalThis.__module_result || "null"`)
+	result := testutil.EvalJS(t, env.Kit, "__read_ai_agent_adv.ts", `return globalThis.__module_result || "null"`)
 
 	var parsed map[string]any
 	require.NoError(t, json.Unmarshal([]byte(result), &parsed))

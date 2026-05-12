@@ -50,9 +50,9 @@ func testWSEchoConnect(t *testing.T, env *suite.TestEnv) {
 	wsURL := "ws://" + strings.TrimPrefix(srv.URL, "http://")
 
 	// Drive the jsbridge WebSocket polyfill from inside the kernel.
-	// EvalTS runs without the deploy transpiler, but globalThis.WebSocket
+	// EvalJS runs without the deploy transpiler, but globalThis.WebSocket
 	// is installed by internal/jsbridge/websocket.go.
-	out := testutil.EvalTS(t, env.Kit, "voice-realtime-ws-echo.ts", `
+	out := testutil.EvalJS(t, env.Kit, "voice-realtime-ws-echo.ts", `
 		if (typeof WebSocket !== "function") throw new Error("WebSocket polyfill missing");
 		const want = "brainkit-realtime-echo-" + Date.now();
 		const ws = new WebSocket(`+"`"+wsURL+"`"+`);

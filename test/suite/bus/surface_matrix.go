@@ -47,7 +47,7 @@ func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
 	})
 
 	t.Run("fs.write+read", func(t *testing.T) {
-		result := testutil.EvalTS(t, env.Kit, "__test_surface.ts", `
+		result := testutil.EvalJS(t, env.Kit, "__test_surface.ts", `
 			fs.writeFileSync("go-surf-suite.txt", "from go");
 			return fs.readFileSync("go-surf-suite.txt", "utf8");
 		`)
@@ -151,16 +151,16 @@ func testSurfaceTSDeployed(t *testing.T, env *suite.TestEnv) {
 				return
 			}
 
-			result := testutil.EvalTS(t, env.Kit, "__get_result_suite.ts", `return String(globalThis.__module_result || "");`)
+			result := testutil.EvalJS(t, env.Kit, "__get_result_suite.ts", `return String(globalThis.__module_result || "");`)
 			assert.Contains(t, result, tc.expect, "%s: expected %q in result", tc.name, tc.expect)
 		})
 	}
 }
 
-// ── Surface matrix: EvalTS surface ──────────────────────────────────────
+// ── Surface matrix: EvalJS surface ──────────────────────────────────────
 
-// testSurfaceEvalTS — operations via direct EvalTS (global scope).
-func testSurfaceEvalTS(t *testing.T, env *suite.TestEnv) {
+// testSurfaceEvalJS — operations via direct EvalJS (global scope).
+func testSurfaceEvalJS(t *testing.T, env *suite.TestEnv) {
 	cases := []struct {
 		name   string
 		code   string
@@ -179,7 +179,7 @@ func testSurfaceEvalTS(t *testing.T, env *suite.TestEnv) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := testutil.EvalTS(t, env.Kit, fmt.Sprintf("__eval_suite_%s.ts", tc.name), tc.code)
+			result := testutil.EvalJS(t, env.Kit, fmt.Sprintf("__eval_suite_%s.ts", tc.name), tc.code)
 			assert.Contains(t, result, tc.expect)
 		})
 	}
@@ -203,12 +203,12 @@ func testSurfaceErrorConsistency(t *testing.T, env *suite.TestEnv) {
 			output(caught);
 		`)
 
-		result := testutil.EvalTS(t, env.Kit, "__err_result_suite.ts", `return String(globalThis.__module_result || "");`)
+		result := testutil.EvalJS(t, env.Kit, "__err_result_suite.ts", `return String(globalThis.__module_result || "");`)
 		assert.Contains(t, result, "ghost-tool-consistency-suite", "error should mention the tool name")
 	})
 
 	t.Run("NOT_FOUND/evalts", func(t *testing.T) {
-		result := testutil.EvalTS(t, env.Kit, "__err_eval_suite.ts", `
+		result := testutil.EvalJS(t, env.Kit, "__err_eval_suite.ts", `
 			var caught = "none";
 			try { __go_brainkit_request("tools.call", JSON.stringify({name:"ghost-tool-consistency-suite"})); }
 			catch(e) { caught = e.code || "NO_CODE"; }
@@ -224,7 +224,7 @@ func testSurfaceErrorConsistency(t *testing.T, env *suite.TestEnv) {
 	})
 
 	t.Run("VALIDATION_ERROR/evalts", func(t *testing.T) {
-		result := testutil.EvalTS(t, env.Kit, "__val_eval_suite.ts", `
+		result := testutil.EvalJS(t, env.Kit, "__val_eval_suite.ts", `
 			var caught = "none";
 			try { __go_brainkit_request("secrets.set", JSON.stringify({name:"",value:"v"})); }
 			catch(e) { caught = e.code || "NO_CODE"; }

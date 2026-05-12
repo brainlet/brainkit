@@ -69,7 +69,7 @@ func testStorageUpgrade(t *testing.T, _ *suite.TestEnv) {
 	require.Equal(t, "suspended", resp.Status, "should suspend")
 	require.NotEmpty(t, resp.RunID)
 
-	result, err := testutil.EvalTSErr(k, "__check_storage.ts", `
+	result, err := testutil.EvalJSErr(k, "__check_storage.ts", `
 		var store = globalThis.__kit_store_holder.store;
 		var wfStore = await store.getStore("workflows");
 		var snapshot = await wfStore.loadWorkflowSnapshot({

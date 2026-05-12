@@ -15,7 +15,7 @@
 | testDelete | Sets a secret, deletes via SecretsDeleteMsg, verifies deleted=true, gets it, verifies empty value |
 | testList | Sets 2 secrets, lists via SecretsListMsg, verifies 2 entries with non-empty names |
 | testRotate | Sets a secret, rotates via SecretsRotateMsg, verifies rotated=true and version=2, gets it, verifies new value |
-| testJSBridge | Sets a secret via bus, reads it from EvalTS using secrets.get(), verifies the value matches |
+| testJSBridge | Sets a secret via bus, reads it from EvalJS using secrets.get(), verifies the value matches |
 | testAuditEvents | Subscribes to secrets.stored event, sets a secret, verifies the audit event contains the secret name and version |
 | testConcurrentAccess | Sets a secret, spawns 10 goroutines that all read it simultaneously, verifies all get the correct value without race |
 | testDevModeNoEncryption | Creates kernel without secret key (dev mode), sets and gets a secret, verifies it works without encryption |

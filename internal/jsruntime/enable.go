@@ -16,19 +16,20 @@ import (
 	"github.com/brainlet/brainkit/modulehost/providerhost"
 )
 
-// Runtime owns the optional embedded JS/TS runtime for a Kernel.
+// Runtime owns the optional embedded JavaScript runtime for a Kernel.
 type Runtime struct {
-	core          runtimecap.CoreHost
-	registry      runtimecap.RegistryHost
-	toolAgents    runtimecap.ToolAgentHost
-	storage       runtimecap.StorageHost
-	bus           runtimecap.BusHost
-	handlers      runtimecap.HandlerHost
-	schedules     runtimecap.ScheduleHost
-	cfg           types.KernelConfig
-	bridge        *jsbridge.Bridge
-	agents        *agentembed.Sandbox
-	deploymentMgr *DeploymentManager
+	core           runtimecap.CoreHost
+	registry       runtimecap.RegistryHost
+	toolAgents     runtimecap.ToolAgentHost
+	storage        runtimecap.StorageHost
+	bus            runtimecap.BusHost
+	handlers       runtimecap.HandlerHost
+	schedules      runtimecap.ScheduleHost
+	cfg            types.KernelConfig
+	bridge         *jsbridge.Bridge
+	agents         *agentembed.Sandbox
+	deploymentMgr  *DeploymentManager
+	sourcePreparer SourcePreparer
 
 	mu         sync.Mutex
 	closeMu    sync.Mutex
@@ -39,6 +40,24 @@ type Runtime struct {
 	bridgeSubs map[string]func()
 }
 
+// SourcePreparer converts raw source into JavaScript before runtime deploy.
+// It is optional so artifact-only runtime profiles can avoid linking a
+// TypeScript compiler.
+type SourcePreparer func(source, code string) (string, error)
+
+type enableConfig struct {
+	sourcePreparer SourcePreparer
+}
+
+// EnableOption configures runtime activation.
+type EnableOption func(*enableConfig)
+
+// WithSourcePreparer installs a raw-source preparation hook used for `.ts`
+// deployments before JS evaluation.
+func WithSourcePreparer(preparer SourcePreparer) EnableOption {
+	return func(cfg *enableConfig) { cfg.sourcePreparer = preparer }
+}
+
 type runtimeCloseMode int
 
 const (
@@ -46,10 +65,10 @@ const (
 	runtimeCloseModeShutdown
 )
 
-// Enable starts the embedded JS/TS runtime for a light Kernel. It is
+// Enable starts the embedded JavaScript runtime for a light Kernel. It is
 // idempotent and can be called during construction or from a hot-mounted
 // jsruntime module.
-func Enable(ctx context.Context, host runtimecap.EnableHost) error {
+func Enable(ctx context.Context, host runtimecap.EnableHost, opts ...EnableOption) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -57,6 +76,12 @@ func Enable(ctx context.Context, host runtimecap.EnableHost) error {
 	}
 	if host.HasJSRuntime() {
 		return nil
+	}
+	var enableCfg enableConfig
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&enableCfg)
+		}
 	}
 
 	cfg := host.RuntimeConfig()
@@ -110,17 +135,18 @@ func Enable(ctx context.Context, host runtimecap.EnableHost) error {
 	}
 
 	runtime := &Runtime{
-		core:       host,
-		registry:   host,
-		toolAgents: host,
-		storage:    host,
-		bus:        host,
-		handlers:   host,
-		schedules:  host,
-		cfg:        cfg,
-		bridge:     agentSandbox.Bridge(),
-		agents:     agentSandbox,
-		bridgeSubs: map[string]func(){},
+		core:           host,
+		registry:       host,
+		toolAgents:     host,
+		storage:        host,
+		bus:            host,
+		handlers:       host,
+		schedules:      host,
+		cfg:            cfg,
+		bridge:         agentSandbox.Bridge(),
+		agents:         agentSandbox,
+		sourcePreparer: enableCfg.sourcePreparer,
+		bridgeSubs:     map[string]func(){},
 	}
 	toolEvaluatorLease, err := host.LeaseToolEvaluator(ctx, runtime.bridge)
 	if err != nil {
@@ -182,12 +208,13 @@ func Enable(ctx context.Context, host runtimecap.EnableHost) error {
 
 func (r *Runtime) newDeploymentManager(cfg types.KernelConfig) *DeploymentManager {
 	return NewDeploymentManager(DeploymentManagerConfig{
-		Bridge:       r.bridge,
-		Agents:       r.agents,
-		Tracer:       r.core.Tracer(),
-		Store:        cfg.Store,
-		ErrorHandler: cfg.ErrorHandler,
-		Logger:       r.core.Logger(),
+		Bridge:         r.bridge,
+		Agents:         r.agents,
+		Tracer:         r.core.Tracer(),
+		Store:          cfg.Store,
+		ErrorHandler:   cfg.ErrorHandler,
+		Logger:         r.core.Logger(),
+		SourcePreparer: r.sourcePreparer,
 		ToolCleanup: func(id string) {
 			r.toolAgents.ToolsDomain().Unregister(context.Background(), id)
 		},
@@ -221,8 +248,8 @@ func (r *Runtime) ListDeployments() []runtimecap.DeploymentInfo {
 	return r.deploymentMgr.ListDeployments()
 }
 
-func (r *Runtime) EvalTS(ctx context.Context, source, code string) (string, error) {
-	return r.deploymentMgr.EvalTS(ctx, source, code)
+func (r *Runtime) EvalJS(ctx context.Context, source, code string) (string, error) {
+	return r.deploymentMgr.EvalJS(ctx, source, code)
 }
 
 func (r *Runtime) EvalModule(ctx context.Context, source, code string) (string, error) {

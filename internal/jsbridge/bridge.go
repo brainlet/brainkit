@@ -495,7 +495,7 @@ func (b *Bridge) evalAsync(file string, code string, module bool) (result *quick
 // ProcessScheduledJobs drains the QuickJS job queue, executing any pending
 // Schedule'd callbacks AND JS microtasks (Promise continuations).
 // Safe to call from any goroutine — acquires the bridge mutex.
-// Skips if an EvalTS/EvalAsync is already active (those process jobs
+// Skips if an EvalJS/EvalAsync is already active (those process jobs
 // via the Await loop). This enables deployed .ts services to receive
 // bus messages asynchronously — handlers can await fetch, generateText, etc.
 //

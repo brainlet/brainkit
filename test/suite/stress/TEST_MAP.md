@@ -15,7 +15,7 @@
 | testGCMultipleKernelCleanClose | Creates and closes 5 kernels sequentially, verifies all close cleanly |
 | testGCTenKernelCleanClose | Creates and closes 10 kernels sequentially, verifies all close cleanly |
 | testGCZeroLeakQuickJSMemory | Creates raw QuickJS runtime, allocates JS objects, closes context + RunGC, logs allocation counts before/after to verify memory freed |
-| testGCZeroLeakSESRuntime | Creates full brainkit kernel (SES + Mastra bundle), exercises EvalTS, closes, verifies clean shutdown with no errors |
+| testGCZeroLeakSESRuntime | Creates full brainkit kernel (SES + Mastra bundle), exercises EvalJS, closes, verifies clean shutdown with no errors |
 
 
 | Function | Purpose |
@@ -32,7 +32,7 @@
 |----------|---------|
 | testParallelDeploy | Deploys 10 services from 10 goroutines simultaneously, verifies all 10 appear in ListDeployments |
 | testParallelPublish | Deploys echo handler, sends 10 messages from 10 goroutines, verifies all 10 get responses |
-| testParallelEvalTS | Runs 10 EvalTS calls from 10 goroutines, each returning unique JSON, verifies all results match expected |
+| testParallelEvalJS | Runs 10 EvalJS calls from 10 goroutines, each returning unique JSON, verifies all results match expected |
 | testDeployDuringHandler | Triggers a slow (500ms) handler, deploys another service concurrently, verifies no deadlock within 10s |
 | testTeardownDuringHandler | Triggers a slow (300ms) handler, tears down the deployment concurrently, verifies no deadlock within 10s |
 | testDeployTeardownRaceOnSameSource | Deploys a service, concurrently teardown + redeploy on the same source, verifies both complete without deadlock |
@@ -50,7 +50,7 @@
 | testConcurrencyMassDeployTeardown | Deploys 10 services simultaneously, tears down all 10 simultaneously, verifies none remain |
 | testConcurrencyScheduleUnscheduleRace | 20 goroutines each schedule + immediately unschedule, verifies all cancelled and list is empty |
 | testConcurrencyCloseDuringHandlers | Deploys slow handler, sends it a message, calls Close 50ms later, verifies Close succeeds |
-| testConcurrencyParallelEvalTS | 5 goroutines run EvalTS simultaneously, verifies all return correct unique results |
+| testConcurrencyParallelEvalJS | 5 goroutines run EvalJS simultaneously, verifies all return correct unique results |
 | testConcurrencyStorageAddRemoveRace | 20 pairs of concurrent AddStorage + RemoveStorage on same name, verifies no panic |
 | testConcurrencyMetricsDuringChurn | Background deploy/teardown loop, foreground reads Metrics() 50 times, verifies PumpCycles >= 0 |
 | testConcurrencySharedSQLiteStore | Two kernels sharing same SQLite store, each deploys 5 services concurrently, verifies both alive |
@@ -63,10 +63,10 @@
 | test100DeploysSimultaneously | 100 goroutines each deploy a unique .ts, verifies most succeed and kernel stays alive, tears down all |
 | test1000BusPublishes | 100 goroutines each publish 10 raw messages (1000 total), verifies majority delivered, kernel alive |
 | testSecretRotationDuringReads | Sets secret, 50 goroutines read continuously, 1 goroutine rotates 10 times, verifies no panic and reads > 0 |
-| testDeployWhileEvalTS | Concurrent EvalTS x20 + deploy/teardown x20, verifies kernel alive |
+| testDeployWhileEvalJS | Concurrent EvalJS x20 + deploy/teardown x20, verifies kernel alive |
 | testToolCallsUnderLoad | 100 concurrent tool calls to "echo", verifies majority succeed under load |
 | testScheduleStorm | Creates 50 schedules all firing in 200ms, verifies majority fire within 3s |
-| testMultiSurfaceSimultaneous | Go SDK tool calls + .ts handler messages + EvalTS all running concurrently (20 each), verifies kernel alive |
+| testMultiSurfaceSimultaneous | Go SDK tool calls + .ts handler messages + EvalJS all running concurrently (20 each), verifies kernel alive |
 
 ### exhaustion.go — Resource exhaustion attacks (16 tests)
 
@@ -79,7 +79,7 @@
 | testExhaustionFetchBomb | Deploys .ts doing 100 fetch() calls to localhost:1 (fails fast), verifies kernel survives |
 | testExhaustionLifecycleChurn | 100 sequential deploy/teardown cycles on same source with different code, verifies no deployments remain |
 | testExhaustionOutputBomb | Deploys .ts calling output() with 10MB string, verifies kernel survives |
-| testExhaustionConcurrentEvalTS | 100 goroutines run EvalTS simultaneously, verifies kernel survives |
+| testExhaustionConcurrentEvalJS | 100 goroutines run EvalJS simultaneously, verifies kernel survives |
 | testExhaustionLargePayloadViaJS | Deploys .ts publishing 5MB JSON via bus.publish, verifies kernel survives |
 | testExhaustionTimerBomb | Deploys .ts creating 10,000 setTimeout(fn, 1) calls, verifies kernel survives after 2s |
 | testExhaustionSecretValueBomb | Stores a 10MB secret value, verifies kernel survives |
@@ -87,7 +87,7 @@
 | testExhaustionFilesystemFill | Deploys .ts writing 100x 1MB files, verifies kernel survives |
 | testExhaustionPumpStarvation | Deploys .ts with setTimeout(fn, 0) loop x50000, waits 3s, deploys another service, verifies it still works |
 | testExhaustionPersistenceBomb | Deploys 100 services with persistence, closes, reopens, verifies all 100 restored |
-| testEvalTSInfiniteLoop | Deploys while(true){}, calls Close from goroutine, verifies Close completes within 15s (JS interrupted) |
+| testEvalJSInfiniteLoop | Deploys while(true){}, calls Close from goroutine, verifies Close completes within 15s (JS interrupted) |
 
 ### e2e_stress.go — E2E stress scenarios (2 tests)
 

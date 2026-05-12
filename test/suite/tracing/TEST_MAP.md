@@ -11,7 +11,7 @@
 
 | Function | Purpose |
 |----------|---------|
-| testCommandRequestCreatesSpan | Runs tools.list via EvalTS, queries MemoryTraceStore, verifies at least one trace was recorded |
+| testCommandRequestCreatesSpan | Runs tools.list via EvalJS, queries MemoryTraceStore, verifies at least one trace was recorded |
 | testHandlerCreatesSpan | Deploys .ts handler, sends it a message, queries traces, verifies traces with root spans exist |
 | testQueryViaBus | Manually creates a span, publishes TraceListMsg via bus, verifies traces returned in response |
 | testNoStoreNoOp | Creates minimal kernel (no trace store), publishes ToolListMsg, verifies response arrives (tracing is transparent no-op) |

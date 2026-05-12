@@ -27,7 +27,7 @@
 
 | Function | Purpose |
 |----------|---------|
-| testStorageUpgrade | Deploys suspending workflow with SQLite storage, starts (suspends), verifies snapshot is persisted by reading store internals via EvalTS |
+| testStorageUpgrade | Deploys suspending workflow with SQLite storage, starts (suspends), verifies snapshot is persisted by reading store internals via EvalJS |
 | testStatusFromStorage | Deploys fast workflow with SQLite storage, starts (success), queries status, verifies "success" from storage |
 | testRuns | Deploys workflow that suspends conditionally, starts 2 runs (one succeeds, one suspends), queries WorkflowRunsMsg, verifies total=2 and filtered suspended=1 |
 | testStartAsyncEvent | Starts workflow via WorkflowStartAsyncMsg (non-blocking), subscribes to workflow.completed.{runID} event, verifies completion event fires with correct status |

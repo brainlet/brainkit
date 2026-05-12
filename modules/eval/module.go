@@ -14,7 +14,7 @@ import (
 )
 
 // Module exposes kit.eval. Construct via New and include in
-// brainkit.Config.Modules when the runtime should expose JS/TS eval over the
+// brainkit.Config.Modules when the runtime should expose JavaScript eval over the
 // bus.
 type Module struct {
 	runtime runtimecap.EvalRuntime
@@ -72,7 +72,7 @@ func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "eval",
 		Status:  bkmodule.StatusBeta,
-		Summary: "JS/TS eval bus command (kit.eval).",
+		Summary: "JavaScript eval bus command (kit.eval).",
 		Requires: []string{
 			"jsruntime",
 		},
@@ -88,27 +88,27 @@ func (Factory) Describe() bkmodule.Descriptor {
 func init() { bkmodule.Register("eval", Factory{}) }
 
 // Eval handles kit.eval. Mode dispatch is:
-// script deploys a temporary module and reads globalThis.__module_result; ts
-// evaluates in the current runtime context; module evaluates as an ES module.
+// script deploys a temporary module and reads globalThis.__module_result; js
+// evaluates JavaScript in the current runtime context; module evaluates as an ES module.
 func (m *Module) Eval(ctx context.Context, req evalmsg.KitEvalMsg) (*evalmsg.KitEvalResp, error) {
 	if m.runtime == nil {
 		return nil, fmt.Errorf("eval: runtime is not configured")
 	}
 	mode := req.Mode
 	if mode == "" {
-		if strings.HasSuffix(req.Source, ".ts") {
-			mode = "ts"
+		if strings.HasSuffix(req.Source, ".js") {
+			mode = "js"
 		} else {
 			mode = "script"
 		}
 	}
 	switch mode {
-	case "ts":
+	case "js":
 		source := req.Source
 		if source == "" {
-			source = "__eval_ts.ts"
+			source = "__eval_js.js"
 		}
-		result, err := m.runtime.EvalTS(ctx, source, req.Code)
+		result, err := m.runtime.EvalJS(ctx, source, req.Code)
 		if err != nil {
 			return nil, err
 		}
@@ -116,7 +116,7 @@ func (m *Module) Eval(ctx context.Context, req evalmsg.KitEvalMsg) (*evalmsg.Kit
 	case "module":
 		source := req.Source
 		if source == "" {
-			source = "__eval_module.ts"
+			source = "__eval_module.js"
 		}
 		result, err := m.runtime.EvalModule(ctx, source, req.Code)
 		if err != nil {
@@ -124,13 +124,16 @@ func (m *Module) Eval(ctx context.Context, req evalmsg.KitEvalMsg) (*evalmsg.Kit
 		}
 		return &evalmsg.KitEvalResp{Result: result}, nil
 	case "script":
-		source := "__cli_eval_" + uuid.NewString() + ".ts"
+		source := req.Source
+		if source == "" {
+			source = "__cli_eval_" + uuid.NewString() + ".js"
+		}
 		result, err := m.runtime.EvalScript(ctx, source, req.Code)
 		if err != nil {
 			return nil, err
 		}
 		return &evalmsg.KitEvalResp{Result: result}, nil
 	default:
-		return nil, &sdkerrors.ValidationError{Field: "mode", Message: "unknown eval mode: " + mode + " (want script|ts|module)"}
+		return nil, &sdkerrors.ValidationError{Field: "mode", Message: "unknown eval mode: " + mode + " (want script|js|module)"}
 	}
 }

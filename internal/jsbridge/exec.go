@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/brainlet/brainkit/internal/syncx"
 
@@ -18,12 +19,14 @@ import (
 
 // spawnedProcess tracks a spawned child process for streaming reads and stdin writes.
 type spawnedProcess struct {
-	cmd       *exec.Cmd
-	lines     chan string
-	linesDone chan struct{}
-	waitErr   chan error
-	stdinPipe io.WriteCloser // stdin pipe for writing to the process
-	chunks    chan string    // raw stdout chunks (for LSP/JSON-RPC)
+	cmd            *exec.Cmd
+	lines          chan string
+	linesDone      chan struct{}
+	waitErr        chan error
+	stdinPipe      io.WriteCloser // stdin pipe for writing to the process
+	stdoutPipe     io.ReadCloser
+	closePipesOnce sync.Once
+	chunks         chan string // raw stdout chunks (for LSP/JSON-RPC)
 }
 
 // ExecPolyfill provides child_process.exec and child_process.spawn.
@@ -82,6 +85,38 @@ func (p *ExecPolyfill) goContext() context.Context {
 	return context.Background()
 }
 
+func (p *spawnedProcess) closePipes() {
+	if p == nil {
+		return
+	}
+	p.closePipesOnce.Do(func() {
+		if p.stdinPipe != nil {
+			_ = p.stdinPipe.Close()
+		}
+		if p.stdoutPipe != nil {
+			_ = p.stdoutPipe.Close()
+		}
+	})
+}
+
+func (p *ExecPolyfill) cleanupSpawnedProcesses() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	procs := make([]*spawnedProcess, 0, len(p.procs))
+	for id, proc := range p.procs {
+		procs = append(procs, proc)
+		delete(p.procs, id)
+	}
+	p.mu.Unlock()
+
+	for _, proc := range procs {
+		killCommandTree(proc.cmd)
+		proc.closePipes()
+	}
+}
+
 func watchCommandContext(ctx context.Context, cmd *exec.Cmd) func() {
 	done := make(chan struct{})
 	go func() {
@@ -105,6 +140,10 @@ func runWatchedCommand(ctx context.Context, cmd *exec.Cmd) error {
 }
 
 func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
+	if p.bridge != nil {
+		context.AfterFunc(p.bridge.GoContext(), p.cleanupSpawnedProcesses)
+	}
+
 	// Async exec: shell command runs in a separate goroutine.
 	// The bridge is NOT held during command execution.
 	ctx.Globals().Set("__go_exec", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
@@ -215,12 +254,13 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 		}
 
 		proc := &spawnedProcess{
-			cmd:       cmd,
-			lines:     make(chan string, 256),
-			linesDone: make(chan struct{}),
-			waitErr:   make(chan error, 1),
-			stdinPipe: stdinPipe,
-			chunks:    make(chan string, 256),
+			cmd:        cmd,
+			lines:      make(chan string, 256),
+			linesDone:  make(chan struct{}),
+			waitErr:    make(chan error, 1),
+			stdinPipe:  stdinPipe,
+			stdoutPipe: stdoutPipe,
+			chunks:     make(chan string, 256),
 		}
 		startIO := make(chan struct{})
 		abortIO := make(chan struct{})
@@ -290,13 +330,13 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 		})
 		if !readerStarted || !waitStarted {
 			close(abortIO)
-			_ = stdinPipe.Close()
+			proc.closePipes()
 			return ctx.ThrowError(context.Canceled)
 		}
 
 		if err := cmd.Start(); err != nil {
 			close(abortIO)
-			_ = stdinPipe.Close()
+			proc.closePipes()
 			return ctx.ThrowError(fmt.Errorf("spawn: start: %w", err))
 		}
 		stopKill = watchCommandContext(cmdCtx, cmd)
@@ -462,9 +502,7 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 		}
 
 		killCommandTree(proc.cmd)
-		if proc.stdinPipe != nil {
-			_ = proc.stdinPipe.Close()
-		}
+		proc.closePipes()
 		p.mu.Lock()
 		delete(p.procs, id)
 		p.mu.Unlock()

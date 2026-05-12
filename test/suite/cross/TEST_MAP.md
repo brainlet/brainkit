@@ -24,7 +24,7 @@
 |----------|---------|
 | testPluginInProcessListTools | Creates a Node, lists tools, asserts the "echo" tool is visible from the plugin surface |
 | testPluginInProcessCallTool | Creates a Node, calls "add" tool with a=100 b=200, asserts sum=300 |
-| testPluginInProcessFSWriteRead | Creates kernel, writes/reads a file via EvalTS, asserts roundtrip match |
+| testPluginInProcessFSWriteRead | Creates kernel, writes/reads a file via EvalJS, asserts roundtrip match |
 | testPluginInProcessDeployTeardown | Creates a Node, deploys .ts with tool, asserts Deployed=true, then tears down |
 | testPluginInProcessAsyncSubscribe | Creates a Node, publishes ToolListMsg, subscribes to replyTo, asserts response arrives |
 | testPluginSubprocessEcho | Builds subprocess plugin, starts Node with NATS, calls "echo" tool, verifies echoed message and plugin name (requires Podman) |

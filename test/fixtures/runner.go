@@ -255,7 +255,7 @@ func (r *Runner) runFixture(t *testing.T, fix fixtureEntry, hasAI, hasPodman boo
 	}
 
 	// 6. Read output
-	raw := testutil.EvalTS(t, k, "__read_output.ts",
+	raw := testutil.EvalJS(t, k, "__read_output.ts",
 		`return typeof globalThis.__module_result !== "undefined" ? globalThis.__module_result : ""`)
 
 	if raw == "" {

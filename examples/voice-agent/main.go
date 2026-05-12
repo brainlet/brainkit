@@ -24,7 +24,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"path/filepath"
@@ -32,9 +31,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/audio/local"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/examples/internal/exampleenv"
 	"github.com/brainlet/brainkit/modules/packages/client"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -47,6 +46,7 @@ type reply struct {
 }
 
 func main() {
+	exampleenv.LoadRootDotEnv()
 	outDir := flag.String("out", "./voice-agent-out", "directory for generated audio files (survives the run so you can play back)")
 	question := flag.String("question", "What is the capital of France? One short sentence.", "the question synthesized to audio then transcribed + answered")
 	play := flag.Bool("play", true, "play the synthesized audio through the desktop speakers via brainkit/audio/local")
@@ -113,7 +113,7 @@ func run(outRaw, question string, play bool) error {
 		Transport: brainkit.Memory(),
 		FSRoot:    wsRoot,
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
-		Modules:   []bkmodule.Module{packages.New()},
+		Modules:   standard.PackageSet(),
 	}
 	if play {
 		// Wire desktop playback. Without this, .ts code calling

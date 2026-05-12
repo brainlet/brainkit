@@ -61,7 +61,7 @@ func testPluginInProcessFSWriteRead(t *testing.T, env *suite.TestEnv) {
 	fsCtx, fsCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer fsCancel()
 
-	result := testutil.EvalTS(t, tk, "__test-cross.ts", `
+	result := testutil.EvalJS(t, tk, "__test-cross.ts", `
 		fs.writeFileSync("plugin-data.json", '{"status":"ok"}');
 		return fs.readFileSync("plugin-data.json", "utf8");
 	`)

@@ -19,12 +19,25 @@ Campaigns call `suite.Run()` — they never have their own assertions. The test 
 The Infra builder starts each container type once. `Storage("postgres")` + `Vector("pgvector")` reuse the same Postgres container. Don't start containers manually.
 
 ### Transport-sensitive domains
-These 14 domains should appear in every transport campaign: bus, deploy, tools, agents, scheduling, health, secrets, registry, mcp, workflows, tracing, fs, persistence, gateway.
+These 14 domains must be covered for every transport backend, split by shard:
+
+- core: bus, tools, agents, health, secrets, registry
+- runtime: deploy, scheduling, workflows, fs, persistence
+- integrations: mcp, tracing, gateway
 
 ### After editing
 1. `go vet ./test/campaigns/<category>/`
-2. With Podman: `go test ./test/campaigns/<category>/ -count=1 -timeout 300s`
-3. Update TEST_MAP.md
+2. With Podman, use the category Make target when one exists. Transport
+   campaigns are intentionally backend/shard packages because each backend
+   runs a large matrix and each shard needs its own package timeout budget:
+   `make test-campaigns-transport-nats`,
+   `make test-campaigns-transport-amqp`,
+   `make test-campaigns-transport-redis`, or
+   `make test-campaigns-transport`.
+3. For non-transport campaign packages, run
+   `go test ./test/campaigns/<category>/ -count=1 -timeout=900s` unless the
+   category README/Makefile gives a more specific gate.
+4. Update TEST_MAP.md
 
 ## How campaigns work
 
@@ -44,8 +57,11 @@ The Infra builder manages containers (lazy startup, shared across tests) and con
 ## Adding a new transport backend
 
 1. Add container startup logic in `infra.go`
-2. Create `test/campaigns/transport/<backend>_test.go`
-3. Call all transport-sensitive suite domains
+2. Create shard tests under:
+   `test/campaigns/transport/<backend>/core`,
+   `test/campaigns/transport/<backend>/runtime`, and
+   `test/campaigns/transport/<backend>/integrations`
+3. Call `transportcampaign.RunBackendShard(t, "<backend>", <Shard>)`
 
 ## Adding a new storage/vector backend
 
@@ -55,7 +71,7 @@ The Infra builder manages containers (lazy startup, shared across tests) and con
 
 ## Categories
 
-- `transport/` — 5 backends (nats, amqp, redis, sqlite, postgres). Runs 14 suite domains on each.
+- `transport/` — 4 backends (embedded, nats, amqp, redis). Runs 14 suite domains on each through core/runtime/integrations shards.
 - `storage/` — 3 backends (postgres, mongodb, libsql). Runs TS fixtures.
 - `vector/` — 3 backends (pgvector, mongodb, libsql). Runs TS fixtures.
 - `auth/` — Auth method matrix (postgres SCRAM/MD5/trust, mongodb SCRAM, libsql, upstash).

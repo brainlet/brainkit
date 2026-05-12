@@ -28,7 +28,7 @@
 | testDrainTimeoutForcesClose | Sets very short drain timeout, deploys service, calls GracefulShutdown, verifies close completes |
 | testCloseStillWorks | Calls kernel.Close() directly (no drain), verifies it succeeds |
 | testMessagesDroppedDuringDrain | Sets draining, publishes, verifies messages are dropped (no handler response) |
-| testEvalTSWorksDuringDrain | Sets draining, calls EvalTS, verifies it still works (drain only affects bus handlers) |
+| testEvalJSWorksDuringDrain | Sets draining, calls EvalJS, verifies it still works (drain only affects bus handlers) |
 
 ### metrics.go — Kernel metrics
 

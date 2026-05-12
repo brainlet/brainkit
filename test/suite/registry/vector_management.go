@@ -92,7 +92,7 @@ func testVectorAddThenResolveFromTS(t *testing.T, _ *suite.TestEnv) {
 	testutil.Deploy(t, env.Kit, "vec-resolve-test.ts", code)
 	defer testutil.Teardown(t, env.Kit, "vec-resolve-test.ts")
 
-	result := testutil.EvalTS(t, env.Kit, "__check_vec.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__check_vec.ts", `
 		return globalThis.__module_result || "null";
 	`)
 	if result == "null" || result == "" {

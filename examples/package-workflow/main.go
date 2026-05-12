@@ -28,17 +28,15 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
 	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/modules/packages/scaffold"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -117,7 +115,7 @@ func run(out string, keep bool) error {
 		Namespace: "package-workflow-demo",
 		Transport: brainkit.Memory(),
 		FSRoot:    filepath.Dir(out),
-		Modules:   []bkmodule.Module{packages.New()},
+		Modules:   standard.PackageSet(),
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

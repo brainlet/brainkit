@@ -22,7 +22,7 @@ import (
 // factories and for refreshing provider credentials inside the JS runtime.
 type Hooks struct {
 	HasJSRuntime    func() bool
-	EvalTS          func(context.Context, string, string) (string, error)
+	EvalJS          func(context.Context, string, string) (string, error)
 	CallJS          func(context.Context, string, any) (json.RawMessage, error)
 	ShutdownContext context.Context
 }
@@ -32,7 +32,7 @@ type Manager struct {
 	mu                 sync.Mutex
 	providers          *provreg.ProviderRegistry
 	hasJSRuntime       func() bool
-	evalTS             func(context.Context, string, string) (string, error)
+	evalJS             func(context.Context, string, string) (string, error)
 	callJS             func(context.Context, string, any) (json.RawMessage, error)
 	ctx                context.Context
 	cancel             context.CancelFunc
@@ -70,7 +70,7 @@ func NewManager(cfg types.KernelConfig, hooks Hooks) (*Manager, error) {
 	manager := &Manager{
 		providers:          providers,
 		hasJSRuntime:       hooks.HasJSRuntime,
-		evalTS:             hooks.EvalTS,
+		evalJS:             hooks.EvalJS,
 		callJS:             hooks.CallJS,
 		ctx:                ctx,
 		cancel:             cancel,
@@ -206,7 +206,7 @@ func (m *Manager) ProbeVectorStoreContext(ctx context.Context, name string) prov
 		m.providers.UpdateProbeResult("vectorStore", name, false, time.Since(start), err)
 		return provreg.ProbeResult{Error: err, Latency: time.Since(start)}
 	}
-	result, err := m.evalTS(ctx, "__probe_vectorstore.ts", fmt.Sprintf(`
+	result, err := m.evalJS(ctx, "__probe_vectorstore.ts", fmt.Sprintf(`
 		try {
 			var vs = vectorStore(%q);
 			await vs.listIndexes();
@@ -261,7 +261,7 @@ func (m *Manager) ProbeStorageContext(ctx context.Context, name string) provreg.
 		m.providers.UpdateProbeResult("storage", name, false, time.Since(start), err)
 		return provreg.ProbeResult{Error: err, Latency: time.Since(start)}
 	}
-	result, err := m.evalTS(ctx, "__probe_storage.ts", fmt.Sprintf(`
+	result, err := m.evalJS(ctx, "__probe_storage.ts", fmt.Sprintf(`
 		try {
 			var s = storage(%q);
 			if (s && typeof s.listThreads === "function") {
@@ -455,7 +455,7 @@ func (m *Manager) operationContext(ctx context.Context) (context.Context, func()
 }
 
 func (m *Manager) runtimeReady() bool {
-	return m != nil && m.hasJSRuntime != nil && m.hasJSRuntime() && m.evalTS != nil
+	return m != nil && m.hasJSRuntime != nil && m.hasJSRuntime() && m.evalJS != nil
 }
 
 func (m *Manager) jsCallReady() bool {

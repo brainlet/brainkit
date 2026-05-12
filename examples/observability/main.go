@@ -13,7 +13,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"path/filepath"
@@ -24,11 +23,10 @@ import (
 	"github.com/brainlet/brainkit/modules/audit"
 	"github.com/brainlet/brainkit/modules/audit/auditmsg"
 	auditsqlite "github.com/brainlet/brainkit/modules/audit/stores/sqlite"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
 	"github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/modules/tracing"
 	"github.com/brainlet/brainkit/modules/tracing/tracingmsg"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 
 	_ "modernc.org/sqlite"
@@ -66,10 +64,10 @@ func run() error {
 		Transport:       brainkit.Memory(),
 		FSRoot:          tmp,
 		TraceSampleRate: 1.0,
-		Modules: []bkmodule.Module{packages.New(),
+		Modules: append(standard.PackageSet(),
 			audit.NewModule(audit.Config{Store: auditStore}),
 			tracing.New(tracing.Config{Store: traceStore}),
-		},
+		),
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

@@ -24,7 +24,6 @@ import (
 	"embed"
 	"flag"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"io/fs"
 	"log"
 	"os"
@@ -33,16 +32,17 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/audio/local"
+	"github.com/brainlet/brainkit/examples/internal/exampleenv"
 	"github.com/brainlet/brainkit/modules/gateway"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
 	"github.com/brainlet/brainkit/modules/packages/client"
+	"github.com/brainlet/brainkit/presets/standard"
 )
 
 //go:embed web
 var webFS embed.FS
 
 func main() {
+	exampleenv.LoadRootDotEnv()
 	addr := flag.String("addr", "127.0.0.1:8787", "listen address for the browser page + /ws/voice endpoint")
 	flag.Parse()
 	if err := run(*addr); err != nil {
@@ -84,7 +84,7 @@ func run(addr string) error {
 		// local sink is here so future .ts additions (status
 		// pings, alerts) have a zero-config path.
 		Audio:   local.New(),
-		Modules: []bkmodule.Module{packages.New(), gw},
+		Modules: append(standard.PackageSet(), gw),
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

@@ -1,12 +1,12 @@
 # modules/eval - beta
 
-JS/TS evaluation command for a Kit with the embedded runtime mounted.
+JavaScript evaluation command for a Kit with the embedded runtime mounted.
 
 ## Bus commands
 
 - `kit.eval` - evaluate source in one of three modes:
   - `script`: deploy a temporary script and read `globalThis.__module_result`.
-  - `ts`: evaluate TypeScript in the current runtime context.
+  - `js`: evaluate JavaScript in the current runtime context.
   - `module`: evaluate an ES module with imports.
 
 ## Capabilities

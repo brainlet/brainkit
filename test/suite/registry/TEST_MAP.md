@@ -13,9 +13,9 @@
 |----------|---------|
 | testGoSideRegisterAndList | Creates kernel with OpenAI provider + PgVector + InMemory storage, verifies ListAIProviders/ListVectorStores/ListStorages return correct entries with types and capabilities |
 | testGoSideRuntimeRegisterUnregister | Starts empty kernel, registers Anthropic provider + Qdrant vector at runtime, verifies they appear in lists, unregisters both, verifies lists are empty |
-| testJSBridgeHas | Calls registry.has("provider", "openai") and registry.has("provider", "anthropic") from EvalTS, verifies true/false |
-| testJSBridgeList | Creates kernel with 2 AI providers, calls registry.list("provider") from EvalTS, verifies count=2 and both names present |
-| testJSBridgeResolve | Calls provider("openai") from EvalTS to resolve a provider instance, verifies resolved=true |
+| testJSBridgeHas | Calls registry.has("provider", "openai") and registry.has("provider", "anthropic") from EvalJS, verifies true/false |
+| testJSBridgeList | Creates kernel with 2 AI providers, calls registry.list("provider") from EvalJS, verifies count=2 and both names present |
+| testJSBridgeResolve | Calls provider("openai") from EvalJS to resolve a provider instance, verifies resolved=true |
 | testJSDynamicProviderRegisterUsableByModel | Registers a custom OpenAI-compatible provider from JS, verifies public resolve redacts credentials while model()/provider() receive the unredacted runtime config |
 | testJSDynamicProviderRegisterPropagatesValidation | Calls JS registry.register("provider", "", ...) and verifies Go registration validation crosses the JS bridge |
 | testSecretRotateRefreshesJSProviderCache | Primes the JS provider cache, rotates `OPENAI_API_KEY`, verifies provider cache is rebuilt from the unredacted registry config while public resolve remains redacted |
@@ -55,8 +55,8 @@
 
 | Function | Purpose |
 |----------|---------|
-| testInputAbuseEmptyProviderName | Calls kit.register("tool", "", {}) from EvalTS, verifies "required" error |
-| testInputAbuseDuplicateRegister | Registers same tool name twice via kit.register from EvalTS, verifies no panic (overwrite or error) |
+| testInputAbuseEmptyProviderName | Calls kit.register("tool", "", {}) from EvalJS, verifies "required" error |
+| testInputAbuseDuplicateRegister | Registers same tool name twice via kit.register from EvalJS, verifies no panic (overwrite or error) |
 | testInputAbuseInvalidConfig | Calls kit.register("banana", ...) with invalid type, verifies "invalid type" error |
 | testInputAbuseMissingType | Calls kit.register("", ...) with empty type, verifies error response |
 

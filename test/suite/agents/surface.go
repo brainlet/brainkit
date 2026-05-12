@@ -32,7 +32,7 @@ func testSurfaceGenerateTextReal(t *testing.T, env *suite.TestEnv) {
 			});
 		`)
 
-	result := testutil.EvalTS(t, env.Kit, "__read_ai_gen_adv.ts", `return globalThis.__module_result || "null"`)
+	result := testutil.EvalJS(t, env.Kit, "__read_ai_gen_adv.ts", `return globalThis.__module_result || "null"`)
 
 	var parsed map[string]any
 	require.NoError(t, json.Unmarshal([]byte(result), &parsed))
@@ -66,7 +66,7 @@ func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {
 			});
 		`)
 
-	result := testutil.EvalTS(t, env.Kit, "__read_surface_gen_adv.ts", `return globalThis.__module_result || "null"`)
+	result := testutil.EvalJS(t, env.Kit, "__read_surface_gen_adv.ts", `return globalThis.__module_result || "null"`)
 
 	var parsed map[string]any
 	require.NoError(t, json.Unmarshal([]byte(result), &parsed))
@@ -133,7 +133,7 @@ func testSurfaceAgentWithTool(t *testing.T, env *suite.TestEnv) {
 	}
 	require.NoError(t, deployErr, "deploy should succeed after retries")
 
-	result := testutil.EvalTS(t, env.Kit, "__read_surface_tool_adv.ts", `return globalThis.__module_result || "null"`)
+	result := testutil.EvalJS(t, env.Kit, "__read_surface_tool_adv.ts", `return globalThis.__module_result || "null"`)
 
 	var parsed map[string]any
 	require.NoError(t, json.Unmarshal([]byte(result), &parsed))

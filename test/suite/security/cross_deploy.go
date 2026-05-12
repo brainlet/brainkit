@@ -35,7 +35,7 @@ func testXDeployTeardownAnother(t *testing.T, env *suite.TestEnv) {
 		output(result);
 	`)
 
-	attackerResult, _ := secEvalTSErr(k, "__atk_td.ts", `return String(globalThis.__module_result || "");`)
+	attackerResult, _ := secEvalJSErr(k, "__atk_td.ts", `return String(globalThis.__module_result || "");`)
 
 	pr, _ := protocol.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.victim-svc-sec.ping", Payload: json.RawMessage(`{}`),
@@ -122,7 +122,7 @@ func testXDeployUnregisterAlienTool(t *testing.T, env *suite.TestEnv) {
 		output(result);
 	`)
 
-	attackerResult, _ := secEvalTSErr(k, "__thief.ts", `return String(globalThis.__module_result || "");`)
+	attackerResult, _ := secEvalJSErr(k, "__thief.ts", `return String(globalThis.__module_result || "");`)
 
 	payload, ok := secSendAndReceive(t, k, toolmsg.ToolCallMsg{Name: "valuable-tool-sec", Input: map[string]any{}}, 5*time.Second)
 	if ok && !suite.ResponseHasError(payload) {
@@ -155,7 +155,7 @@ func testXDeployStealOutput(t *testing.T, env *suite.TestEnv) {
 		output(stolen);
 	`)
 
-	result, _ := secEvalTSErr(k, "__steal.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalJSErr(k, "__steal.ts", `return String(globalThis.__module_result || "");`)
 	assert.NotContains(t, result, "sk-12345", "attacker should not see victim's output")
 }
 
@@ -219,7 +219,7 @@ func testXDeployAgentRegistrationRace(t *testing.T, env *suite.TestEnv) {
 		output(result);
 	`)
 
-	result, _ := secEvalTSErr(k, "__agent_race.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalJSErr(k, "__agent_race.ts", `return String(globalThis.__module_result || "");`)
 	t.Logf("Agent double-registration: %s", result)
 
 	pr, _ := protocol.Publish(k, ctx, agentmsg.AgentListMsg{})
@@ -348,6 +348,6 @@ func testXDeployWorkflowEscalation(t *testing.T, env *suite.TestEnv) {
 		output(result);
 	`)
 
-	result, _ := secEvalTSErr(k, "__wf_esc.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalJSErr(k, "__wf_esc.ts", `return String(globalThis.__module_result || "");`)
 	t.Logf("Workflow escalation: %s", result)
 }

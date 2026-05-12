@@ -17,7 +17,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 	b.Run("trivial", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := testutil.EvalTSErr(k, "bench.ts", `return "ok"`); err != nil {
+			if _, err := testutil.EvalJSErr(k, "bench.ts", `return "ok"`); err != nil {
 				b.Fatalf("eval: %v", err)
 			}
 		}
@@ -27,7 +27,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 		payload := `{"key":"` + strings.Repeat("x", 1000) + `"}`
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := testutil.EvalTSErr(k, "bench.ts", fmt.Sprintf(`return JSON.stringify(JSON.parse('%s'))`, payload)); err != nil {
+			if _, err := testutil.EvalJSErr(k, "bench.ts", fmt.Sprintf(`return JSON.stringify(JSON.parse('%s'))`, payload)); err != nil {
 				b.Fatalf("eval: %v", err)
 			}
 		}

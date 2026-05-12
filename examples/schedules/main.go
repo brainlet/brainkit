@@ -13,7 +13,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"path/filepath"
@@ -21,11 +20,10 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
 	"github.com/brainlet/brainkit/modules/packages/client"
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
 	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 	storesqlite "github.com/brainlet/brainkit/stores/sqlite"
 )
@@ -53,9 +51,9 @@ func run() error {
 		Transport: brainkit.Memory(),
 		FSRoot:    tmp,
 		Store:     store,
-		Modules: []bkmodule.Module{packages.New(),
+		Modules: append(standard.PackageSet(),
 			schedulesmod.NewModule(schedulesmod.Config{Store: store}),
-		},
+		),
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

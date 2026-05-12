@@ -64,7 +64,7 @@ func testTSModuleImports(t *testing.T, env *suite.TestEnv) {
 			output(checks);
 		`)
 
-	result := testutil.EvalTS(t, env.Kit, "__read_imports_adv.ts", `return globalThis.__module_result || "null"`)
+	result := testutil.EvalJS(t, env.Kit, "__read_imports_adv.ts", `return globalThis.__module_result || "null"`)
 
 	var checks map[string]bool
 	require.NoError(t, json.Unmarshal([]byte(result), &checks))
@@ -93,7 +93,7 @@ func testTSAgentEndowments(t *testing.T, env *suite.TestEnv) {
 			output(checks);
 		`)
 
-	result := testutil.EvalTS(t, env.Kit, "__read_agent_endowments.ts", `return globalThis.__module_result || "null"`)
+	result := testutil.EvalJS(t, env.Kit, "__read_agent_endowments.ts", `return globalThis.__module_result || "null"`)
 
 	var checks map[string]bool
 	require.NoError(t, json.Unmarshal([]byte(result), &checks))
@@ -117,7 +117,7 @@ func testTSAISDKEndowments(t *testing.T, env *suite.TestEnv) {
 			output(checks);
 		`)
 
-	result := testutil.EvalTS(t, env.Kit, "__read_ai_endowments.ts", `return globalThis.__module_result || "null"`)
+	result := testutil.EvalJS(t, env.Kit, "__read_ai_endowments.ts", `return globalThis.__module_result || "null"`)
 
 	var checks map[string]bool
 	require.NoError(t, json.Unmarshal([]byte(result), &checks))
@@ -189,7 +189,7 @@ func testTSDeployWithWorkflow(t *testing.T, env *suite.TestEnv) {
 			output({ status: result.status, result: result.result });
 		`)
 
-	result := testutil.EvalTS(t, env.Kit, "__read_wf_deploy.ts", `return globalThis.__module_result || "null"`)
+	result := testutil.EvalJS(t, env.Kit, "__read_wf_deploy.ts", `return globalThis.__module_result || "null"`)
 
 	var parsed map[string]any
 	require.NoError(t, json.Unmarshal([]byte(result), &parsed))
@@ -269,7 +269,7 @@ func testTSFileExtensionHandling(t *testing.T, env *suite.TestEnv) {
 	// .js should work (executed directly)
 	testutil.Deploy(t, env.Kit, "ext-js-deploy-adv.js", `output("js works");`)
 
-	result := testutil.EvalTS(t, env.Kit, "__read_ext_adv.ts", `return String(globalThis.__module_result || "");`)
+	result := testutil.EvalJS(t, env.Kit, "__read_ext_adv.ts", `return String(globalThis.__module_result || "");`)
 	assert.Equal(t, "js works", result)
 
 	testutil.Teardown(t, env.Kit, "ext-ts-deploy-adv.ts")

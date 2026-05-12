@@ -59,22 +59,22 @@ func BenchmarkDeploy_10KB(b *testing.B) {
 	}
 }
 
-func BenchmarkEvalTS_Trivial(b *testing.B) {
+func BenchmarkEvalJS_Trivial(b *testing.B) {
 	k := benchKit(b)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		testutil.EvalTSErr(k, "bench.ts", `return "ok"`)
+		testutil.EvalJSErr(k, "bench.ts", `return "ok"`)
 	}
 }
 
-func BenchmarkEvalTS_JSONParse(b *testing.B) {
+func BenchmarkEvalJS_JSONParse(b *testing.B) {
 	k := benchKit(b)
 	payload := `{"key":"` + strings.Repeat("x", 1000) + `"}`
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		testutil.EvalTSErr(k, "bench.ts", fmt.Sprintf(`return JSON.stringify(JSON.parse('%s'))`, payload))
+		testutil.EvalJSErr(k, "bench.ts", fmt.Sprintf(`return JSON.stringify(JSON.parse('%s'))`, payload))
 	}
 }
 

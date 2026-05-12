@@ -90,16 +90,12 @@ type testRuntime struct {
 	runtime runtimecap.TestRuntime
 }
 
-func (r *testRuntime) EvalTS(ctx context.Context, source, code string) (string, error) {
-	return r.runtime.EvalTS(ctx, source, code)
+func (r *testRuntime) EvalJS(ctx context.Context, source, code string) (string, error) {
+	return r.runtime.EvalJS(ctx, source, code)
 }
 
-func (r *testRuntime) Deploy(ctx context.Context, source, code string, kind braintest.DeployKind) error {
-	if kind == braintest.DeployNormalizedJS {
-		_, err := r.runtime.DeployArtifact(ctx, source, code)
-		return err
-	}
-	_, err := r.runtime.DeploySource(ctx, source, code)
+func (r *testRuntime) Deploy(ctx context.Context, source, code string) error {
+	_, err := r.runtime.DeployArtifact(ctx, source, code)
 	return err
 }
 

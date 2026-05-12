@@ -30,7 +30,7 @@ func (f *fakeJSAttachment) Deploy(context.Context, string, string, ...types.Depl
 }
 func (f *fakeJSAttachment) Teardown(context.Context, string) (int, error) { return 0, nil }
 func (f *fakeJSAttachment) ListDeployments() []runtimecap.DeploymentInfo  { return nil }
-func (f *fakeJSAttachment) EvalTS(context.Context, string, string) (string, error) {
+func (f *fakeJSAttachment) EvalJS(context.Context, string, string) (string, error) {
 	return "", nil
 }
 func (f *fakeJSAttachment) EvalModule(context.Context, string, string) (string, error) {

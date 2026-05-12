@@ -81,13 +81,13 @@ func testE2EMultiDomain(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// 1. Write input file via polyfill
-	testutil.EvalTS(t, freshEnv.Kit, "__test_multi.ts", `
+	testutil.EvalJS(t, freshEnv.Kit, "__test_multi.ts", `
 		fs.writeFileSync("input.json", '{"items":["apple","banana","cherry"]}');
 		return "ok";
 	`)
 
 	// 2. Read it back via polyfill
-	readData := testutil.EvalTS(t, freshEnv.Kit, "__test_multi_read.ts", `return fs.readFileSync("input.json", "utf8");`)
+	readData := testutil.EvalJS(t, freshEnv.Kit, "__test_multi_read.ts", `return fs.readFileSync("input.json", "utf8");`)
 
 	// 3. Process with the "echo" tool
 	pr, err := protocol.Publish(freshEnv.Kit, ctx, toolmsg.ToolCallMsg{
@@ -110,9 +110,9 @@ func testE2EMultiDomain(t *testing.T, _ *suite.TestEnv) {
 	escaped := strings.ReplaceAll(string(callResp.Result), `\`, `\\`)
 	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
 	writeCode := `fs.writeFileSync("output.json", '` + escaped + `'); return "ok";`
-	testutil.EvalTS(t, freshEnv.Kit, "__test_multi_write.ts", writeCode)
+	testutil.EvalJS(t, freshEnv.Kit, "__test_multi_write.ts", writeCode)
 
 	// 5. Read and verify output via polyfill
-	outData := testutil.EvalTS(t, freshEnv.Kit, "__test_multi_out.ts", `return fs.readFileSync("output.json", "utf8");`)
+	outData := testutil.EvalJS(t, freshEnv.Kit, "__test_multi_out.ts", `return fs.readFileSync("output.json", "utf8");`)
 	assert.Contains(t, outData, "echoed")
 }

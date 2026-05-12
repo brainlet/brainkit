@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/coder/websocket"
@@ -31,14 +32,16 @@ func (gw *Gateway) handleWebSocketAudio(w http.ResponseWriter, r *http.Request, 
 		gw.logger.Error("websocket-audio accept error", slog.String("error", err.Error()))
 		return
 	}
-	defer conn.Close(websocket.StatusNormalClosure, "")
 	// Unlimited read — audio payloads can be bigger than the
 	// default 32 KiB limit.
 	conn.SetReadLimit(-1)
 
 	sessionID := uuid.NewString()
 	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
+	defer func() {
+		cancel()
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+	}()
 
 	// Tell the .ts side we connected so it can initialize a
 	// realtime session for this client.
@@ -79,7 +82,11 @@ func (gw *Gateway) handleWebSocketAudio(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	defer func() {
-		if err := sub.Close(context.Background()); err != nil {
+		cancel()
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer closeCancel()
+		if err := sub.Close(closeCtx); err != nil {
 			gw.logger.Warn("websocket-audio unsubscribe", slog.String("error", err.Error()))
 		}
 	}()

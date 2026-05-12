@@ -25,7 +25,7 @@
 
 ## Sandboxing (18 experiments)
 
-15. **IIFE scoping** — `const`/`let` don't leak (already how EvalTS works)
+15. **IIFE scoping** — `const`/`let` don't leak (already how EvalJS works)
 16. **`with(proxy)`** — transparent sandboxing works in non-strict mode but **FAILS in strict mode**. Dead end for TypeScript/modules.
 17. **Separate QuickJS contexts** — full isolation, works with Go bridges, 20 simultaneous contexts proven. But requires Mastra bundle per context (16.5MB × N).
 18. **Context close is safe** — closing one context while others are open works fine (earlier "crash" was a test assertion bug, not a QuickJS bug)

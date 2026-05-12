@@ -106,7 +106,7 @@ func (k *Kernel) close(ctx context.Context) error {
 
 	// Shut down router first (stops processing messages)
 	if k.runtimeHost != nil {
-		collect(k.runtimeHost.Close())
+		collect(k.runtimeHost.CloseContext(ctx))
 	}
 	if k.transportHost != nil {
 		collect(k.transportHost.CloseRouter())

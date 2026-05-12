@@ -28,7 +28,7 @@ func pkgTeardown(source string) packagemsg.PackageTeardownMsg {
 // can still seed low-level reply-topic tests without making bus.publish expose
 // that routing detail.
 func testJSRawPublishBridgeReturnsReplyTo(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_bus_publish_raw.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_bus_publish_raw.ts", `
 		var result = __go_brainkit_bus_publish("test.publish.target", JSON.stringify({hello: "world"}));
 		var parsed = JSON.parse(result);
 		return JSON.stringify({
@@ -59,7 +59,7 @@ func testJSPublishFireAndForget(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	defer unsub()
 
-	result := testutil.EvalTS(t, env.Kit, "__test_bus_publish_fire.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_bus_publish_fire.ts", `
 		var r = bus.publish("test.publish.fire", {event: "happened"});
 		return String(r === undefined);
 	`)
@@ -86,7 +86,7 @@ func testJSEmitFireAndForget(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	defer unsub()
 
-	testutil.EvalTS(t, env.Kit, "__test_bus_emit.ts", `
+	testutil.EvalJS(t, env.Kit, "__test_bus_emit.ts", `
 		__go_brainkit_bus_emit("test.emit.target", JSON.stringify({event: "happened"}));
 		return "ok";
 	`)
@@ -106,7 +106,7 @@ func testJSReplyDoneFlag(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	testutil.EvalTS(t, env.Kit, "__test_reply_setup.ts", `
+	testutil.EvalJS(t, env.Kit, "__test_reply_setup.ts", `
 		var subId = __go_brainkit_subscribe("test.reply.trigger");
 		globalThis.__bus_subs[subId] = function(msg) {
 			if (msg.replyTo) {
@@ -165,7 +165,7 @@ func testJSSubscribeReceivesMetadata(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	testutil.EvalTS(t, env.Kit, "__test_sub_meta_setup.ts", `
+	testutil.EvalJS(t, env.Kit, "__test_sub_meta_setup.ts", `
 		var subId = __go_brainkit_subscribe("test.meta.topic");
 		globalThis.__bus_subs[subId] = function(msg) {
 			if (msg.replyTo) {
@@ -207,7 +207,7 @@ func testGoToJSRoundTrip(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	testutil.EvalTS(t, env.Kit, "__test_roundtrip_setup.ts", `
+	testutil.EvalJS(t, env.Kit, "__test_roundtrip_setup.ts", `
 		var subId = __go_brainkit_subscribe("test.roundtrip.ask");
 		globalThis.__bus_subs[subId] = function(msg) {
 			if (msg.replyTo) {
@@ -258,7 +258,7 @@ func testJSCallServiceUsesSharedCaller(t *testing.T, env *suite.TestEnv) {
 	`
 	testutil.Deploy(t, env.Kit, "service-caller.ts", tsCode)
 
-	result := testutil.EvalTS(t, env.Kit, "__test_call_service.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__test_call_service.ts", `
 		var resp = await bus.callService("service-caller.ts", "greet", { name: "shared" }, { timeoutMs: 5000 });
 		return JSON.stringify(resp);
 	`)

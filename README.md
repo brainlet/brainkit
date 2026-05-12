@@ -4,8 +4,9 @@
 
 brainkit is a Go library centered on one `Kit` type: a typed pub/sub bus,
 runtime registries, and opt-in modules. Mount `modules/jsruntime` when you
-want the hardened JS/TS runtime (QuickJS + SES Compartments); TypeScript
-agents then execute inside isolated Compartments with first-class access to the
+want the hardened JavaScript runtime (QuickJS + SES Compartments); TypeScript
+agents are normalized by package tooling and then execute inside isolated
+Compartments with first-class access to the
 [Mastra][mastra] framework, the AI SDK, and every Go tool you register.
 
 One binary. Zero external services in library mode. Same code path scales from
@@ -155,9 +156,20 @@ All opt-in. Enable by passing modules to `Config.Modules`; nothing runs you
 didn't ask for. The standard presets are intentionally visible code:
 `presets/standard/core.Set()` returns the light command/control plane,
 `presets/standard/runtime.Set()` adds JS runtime/eval without source-package
-builders, `presets/standard/packages.Set()` adds package deployment plus the
-standard esbuild builder, and `presets/standard.CommandSet()` keeps the
-aggregate command/runtime set.
+builders, `presets/standard/artifactruntime.Set()` adds a normalized-JS-only
+runtime/eval profile, `presets/standard/packages.Set()` adds package
+deployment plus the standard esbuild builder, and
+`presets/standard.CommandSet()` keeps the aggregate command/runtime set.
+
+Choose the smallest profile that owns the boundary you need:
+
+| Profile | Use it when | Source behavior |
+|---|---|---|
+| `standard.CoreSet()` | Go-only control plane, tools, registry, secrets, health. | No JavaScript runtime. |
+| `standard.RuntimeSet()` | You need the embedded JS runtime/eval, but not package deploy commands. | Default raw `.ts` source deploys are transpiled before evaluation. |
+| `standard.ArtifactRuntimeSet()` | Your product already builds JavaScript artifacts and wants to avoid runtime TypeScript preparation. | Only normalized JavaScript artifacts; raw TypeScript syntax is rejected. A logical source name may still end in `.ts` for `ts.<source>.<topic>` routing when the artifact is marked normalized. |
+| `standard.PackageSet()` | Normal application `.ts` deployment through `packageclient.Deploy`. | Package/file graphs are bundled to normalized JavaScript by the package builder before runtime handoff. |
+| `standard.CommandSet()` | Batteries-included command/runtime surface. | Core commands plus package deployment. |
 
 | Module | Maturity | What it adds |
 |---|---|---|
@@ -169,7 +181,7 @@ aggregate command/runtime set.
 | `modules/gateway` | stable | HTTP gateway: routes, SSE, WebSocket, static FS |
 | `modules/harness` | **wip** | Higher-level agent orchestration layer |
 | `modules/health` | stable | `kit.health` bus snapshot |
-| `modules/jsruntime` | beta | JS/TS runtime activation and runtime capabilities |
+| `modules/jsruntime` | beta | JavaScript runtime activation and runtime capabilities |
 | `modules/mcp` | stable | MCP client: external MCP servers become tools |
 | `modules/messaging` | stable | Nested request/reply bridge through the shared caller |
 | `modules/metrics` | stable | Stable runtime metrics snapshot |

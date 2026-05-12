@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/coder/websocket"
 )
@@ -139,5 +140,82 @@ func TestWebSocketForwardsHeaders(t *testing.T) {
 	defer val.Free()
 	if got := val.String(); got != "ok" {
 		t.Errorf("header forward got %q, want ok", got)
+	}
+}
+
+func TestWebSocketCloseCancelsPendingDial(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	canceled := make(chan struct{}, 1)
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.EqualFold(r.Header.Get("Upgrade"), "") {
+			return
+		}
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		select {
+		case <-r.Context().Done():
+			select {
+			case canceled <- struct{}{}:
+			default:
+			}
+		case <-release:
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	b := newTestBridge(t, Encoding(), Events(), NodeStreams(), Buffer(), Timers(), WebSocketPoly())
+	done := make(chan error, 1)
+	go func() {
+		val, err := b.EvalAsync("ws-close-pending.js", `(async function() {
+			return new Promise(function(resolve, reject) {
+				var ws = new WebSocket("`+wsURL(srv)+`");
+				setTimeout(function() { ws.close(1000, "cancel"); resolve("closed"); }, 100);
+			});
+		})()`)
+		if val != nil {
+			val.Free()
+		}
+		done <- err
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("websocket server did not receive pending dial")
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("EvalAsync: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for websocket close script")
+	}
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("ws.close did not cancel the pending websocket dial")
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		if b.DebugSnapshot().ActiveGoroutines == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for websocket pending dial goroutine")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestWebSocketSendContextHasDeadline(t *testing.T) {
+	ctx, cancel := newWebSocketSendContext(context.Background())
+	defer cancel()
+	if _, ok := ctx.Deadline(); !ok {
+		t.Fatal("websocket send context has no deadline")
 	}
 }

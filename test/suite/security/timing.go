@@ -189,7 +189,7 @@ func testTimingToolCallDuringDeploy(t *testing.T, env *suite.TestEnv) {
 		output(result);
 	`)
 
-	result, _ := secEvalTSErr(k, "__reentrant.ts", `
+	result, _ := secEvalJSErr(k, "__reentrant.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -220,7 +220,7 @@ func testTimingScheduleFiresBeforeHandlerReady(t *testing.T, env *suite.TestEnv)
 
 	time.Sleep(500 * time.Millisecond)
 
-	result, _ := secEvalTSErr(k, "__timing_h.ts", `
+	result, _ := secEvalJSErr(k, "__timing_h.ts", `
 		return "kernel-alive";
 	`)
 	assert.Equal(t, "kernel-alive", result)

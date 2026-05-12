@@ -587,7 +587,7 @@ func newRemountHarnessRuntime(t *testing.T) *remountHarnessRuntime {
 	return &remountHarnessRuntime{}
 }
 
-func (r *remountHarnessRuntime) EvalTS(context.Context, string, string) (string, error) {
+func (r *remountHarnessRuntime) EvalJS(context.Context, string, string) (string, error) {
 	return "", nil
 }
 

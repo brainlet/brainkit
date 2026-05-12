@@ -78,6 +78,67 @@ func (r *gatewayHandleRuntime) closeAttemptCount() int {
 	return r.closeAttempts
 }
 
+type gatewayBlockingStreamHandleRuntime struct {
+	gatewayTestRuntime
+	closeStarted     chan struct{}
+	closeStartedOnce sync.Once
+	releaseClose     chan struct{}
+	closeDeadline    chan bool
+}
+
+func (r *gatewayBlockingStreamHandleRuntime) SubscribeRawHandle(_ context.Context, topic string, _ func(sdk.Message)) (bkmodule.Handle, error) {
+	if topic == r.failTopic {
+		return nil, fmt.Errorf("subscribe failed")
+	}
+	return bkmodule.HandleFunc(func(ctx context.Context) error {
+		if r.closeStarted != nil {
+			r.closeStartedOnce.Do(func() { close(r.closeStarted) })
+		}
+		if r.closeDeadline != nil {
+			_, hasDeadline := ctx.Deadline()
+			select {
+			case r.closeDeadline <- hasDeadline:
+			default:
+			}
+		}
+		if r.releaseClose != nil {
+			select {
+			case <-r.releaseClose:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		r.mu.Lock()
+		r.unsubbed++
+		r.mu.Unlock()
+		return nil
+	}), nil
+}
+
+type gatewayAudioHandleRuntime struct {
+	gatewayTestRuntime
+	audioSubscribed    chan struct{}
+	audioCloseDeadline chan bool
+}
+
+func (r *gatewayAudioHandleRuntime) SubscribeRawHandle(_ context.Context, topic string, _ func(sdk.Message)) (bkmodule.Handle, error) {
+	if strings.HasPrefix(topic, "audio.out.") {
+		select {
+		case r.audioSubscribed <- struct{}{}:
+		default:
+		}
+		return bkmodule.HandleFunc(func(ctx context.Context) error {
+			_, hasDeadline := ctx.Deadline()
+			select {
+			case r.audioCloseDeadline <- hasDeadline:
+			default:
+			}
+			return nil
+		}), nil
+	}
+	return bkmodule.HandleFunc(func(context.Context) error { return nil }), nil
+}
+
 type gatewayTestCaller struct{}
 
 func (gatewayTestCaller) Call(context.Context, string, json.RawMessage, sdk.CallerConfig) (json.RawMessage, error) {
@@ -268,6 +329,65 @@ func TestStopContextRetainsStreamSessionWhenSubscriptionCloseFails(t *testing.T)
 	}
 }
 
+func TestCloseStreamSessionDoesNotHoldSessionMapLockWhileSubscriptionCloseBlocks(t *testing.T) {
+	rt := &gatewayBlockingStreamHandleRuntime{
+		closeStarted: make(chan struct{}),
+		releaseClose: make(chan struct{}),
+	}
+	gw := New(Config{Listen: "127.0.0.1:0"})
+	gw.SetRuntime(rt)
+
+	session, err := newStreamSession(gw, "reply.topic", "corr")
+	if err != nil {
+		t.Fatalf("new stream session: %v", err)
+	}
+
+	closeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- gw.closeStreamSession(closeCtx, session.id, "test")
+	}()
+
+	select {
+	case <-rt.closeStarted:
+	case <-time.After(time.Second):
+		t.Fatal("stream subscription close did not start")
+	}
+
+	snapshotDone := make(chan DebugSnapshot, 1)
+	go func() {
+		snapshotDone <- gw.DebugSnapshot()
+	}()
+	select {
+	case snapshot := <-snapshotDone:
+		if snapshot.StreamSessions != 1 || snapshot.StreamSubscriptions != 1 {
+			t.Fatalf("stream state while close is blocked = sessions %d subscriptions %d, want retained 1/1",
+				snapshot.StreamSessions, snapshot.StreamSubscriptions)
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("DebugSnapshot blocked behind stream subscription close")
+	}
+
+	close(rt.releaseClose)
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("close stream session: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stream session close did not finish after release")
+	}
+	snapshot := gw.DebugSnapshot()
+	if snapshot.StreamSessions != 0 || snapshot.StreamSubscriptions != 0 {
+		t.Fatalf("stream state after close = sessions %d subscriptions %d, want 0/0",
+			snapshot.StreamSessions, snapshot.StreamSubscriptions)
+	}
+	if got := rt.unsubscribeCount(); got != 1 {
+		t.Fatalf("stream unsubscribe count after close = %d, want 1", got)
+	}
+}
+
 func TestStopContextDrainsActiveStreamConnection(t *testing.T) {
 	rt := &gatewayTestRuntime{}
 	gw := New(Config{
@@ -346,6 +466,48 @@ func TestStopContextDrainsActiveWebSocketConnection(t *testing.T) {
 	if snapshot.Listening || snapshot.SessionSweepRunning {
 		t.Fatalf("gateway lifecycle state after websocket drain = listening %t sweep %t, want false/false",
 			snapshot.Listening, snapshot.SessionSweepRunning)
+	}
+}
+
+func TestWebSocketAudioClosesSubscriptionWithBoundedContext(t *testing.T) {
+	rt := &gatewayAudioHandleRuntime{
+		audioSubscribed:    make(chan struct{}, 1),
+		audioCloseDeadline: make(chan bool, 1),
+	}
+	gw := New(Config{Listen: "127.0.0.1:0"})
+	gw.SetRuntime(rt)
+	gw.HandleWebSocketAudio("/audio", "audio.in", "audio.out")
+
+	if err := gw.Start(); err != nil {
+		t.Fatalf("start gateway: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = gw.StopContext(ctx)
+	})
+
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), time.Second)
+	defer dialCancel()
+	conn, _, err := websocket.Dial(dialCtx, "ws://"+gw.Addr()+"/audio", nil)
+	if err != nil {
+		t.Fatalf("open websocket audio: %v", err)
+	}
+
+	select {
+	case <-rt.audioSubscribed:
+	case <-time.After(time.Second):
+		t.Fatal("websocket audio subscription was not opened")
+	}
+	_ = conn.Close(websocket.StatusNormalClosure, "")
+
+	select {
+	case hasDeadline := <-rt.audioCloseDeadline:
+		if !hasDeadline {
+			t.Fatal("websocket audio subscription close used an unbounded context")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("websocket audio subscription was not closed")
 	}
 }
 
@@ -542,5 +704,35 @@ func TestHandleStreamCleansUpSessionWhenPublishFails(t *testing.T) {
 	snapshot := gw.DebugSnapshot()
 	if snapshot.StreamSessions != 0 || snapshot.StreamSubscriptions != 0 {
 		t.Fatalf("stream lifecycle after publish failure = sessions %d subscriptions %d, want 0/0", snapshot.StreamSessions, snapshot.StreamSubscriptions)
+	}
+}
+
+func TestHandleStreamPublishFailureUsesBoundedSessionCloseContext(t *testing.T) {
+	rt := &gatewayBlockingStreamHandleRuntime{
+		gatewayTestRuntime: gatewayTestRuntime{failPublish: true},
+		closeDeadline:      make(chan bool, 1),
+	}
+	gw := New(Config{Listen: "127.0.0.1:0"})
+	gw.SetRuntime(rt)
+
+	req := httptest.NewRequest(http.MethodPost, "/stream", nil)
+	rec := httptest.NewRecorder()
+	gw.handleStream(rec, req, &route{
+		Method: http.MethodPost,
+		Path:   "/stream",
+		Topic:  "stream.topic",
+		Type:   routeStream,
+	}, nil)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadGateway)
+	}
+	select {
+	case hasDeadline := <-rt.closeDeadline:
+		if !hasDeadline {
+			t.Fatal("publish-failure stream close context had no deadline")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for stream close context deadline observation")
 	}
 }

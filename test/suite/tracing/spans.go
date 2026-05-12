@@ -70,7 +70,7 @@ func tracingEnv(t *testing.T) (*suite.TestEnv, *tracingpkg.MemoryTraceStore) {
 func testCommandRequestCreatesSpan(t *testing.T, _ *suite.TestEnv) {
 	env, store := tracingEnv(t)
 
-	result := testutil.EvalTS(t, env.Kit, "__trace_test.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__trace_test.ts", `
 		var list = tools.list();
 		return JSON.stringify(list);
 	`)

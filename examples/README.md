@@ -3,11 +3,24 @@
 Tiny, focused demos. Each example is self-contained — `go run` it
 from the repo root.
 
+Examples that need provider credentials load the nearest `.env` file
+before reading `os.Getenv`, while leaving already-exported environment
+variables authoritative. The command snippets still show inline
+`OPENAI_API_KEY=...` for clarity.
+
+Smoke gates:
+
+- `make examples-smoke` runs compile, offline, and server/probe examples.
+- `make examples-smoke-live` runs provider-backed examples using `.env` or exported env.
+- `make examples-smoke-external` runs pgvector-backed examples with temporary Podman compose stacks.
+- `make examples-smoke-all` runs the full matrix.
+
 | Example | What it shows |
 |---|---|
 | [agent-forge](./agent-forge/) | Flagship meta-programming example — multi-agent pipeline (architect → coder → 3 parallel reviewers in a dountil loop → deploy) that designs, writes, reviews, and deploys a brand-new agent at runtime |
 | [agent-spawner](./agent-spawner/) | Minimal meta-programming example — an agent with a `deploy_agent` tool that templates a .ts package and deploys it, for learning the primitive before agent-forge |
 | [agent-stream](./agent-stream/) | `agent.stream()` from inside a deployment — plain text streaming + `structuredOutput` → typed partials, both piped over bus `CallStream` + SSE gateway |
+| [artifact-runtime](./artifact-runtime/) | Normalized-JS-only runtime profile — mounts `standard.ArtifactRuntimeSet()`, deploys a prebuilt JS artifact through `ArtifactDeployer`, and proves raw TypeScript syntax is not transpiled |
 | [ai-chat](./ai-chat/) | Register an AI provider, deploy a `.ts` that calls `generateText`, print the model's reply |
 | [cross-kit](./cross-kit/) | Two Kits on a shared in-process NATS, routed by peer name through `modules/topology` + `WithCallTo` |
 | [custom-scorer](./custom-scorer/) | Domain-specific `createScorer` — regex scorer + LLM-judge scorer side by side on the same dataset; highlights regex-vs-LLM tradeoffs |

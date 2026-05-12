@@ -315,9 +315,9 @@ func (e *TestEnv) Deploy(source, code string) error {
 	return testutil.DeployErr(e.Kit, source, code)
 }
 
-// EvalTS evaluates TypeScript code and returns the result string.
-func (e *TestEnv) EvalTS(code string) (string, error) {
-	return testutil.EvalTSErr(e.Kit, "__suite_eval.ts", code)
+// EvalJS evaluates TypeScript code and returns the result string.
+func (e *TestEnv) EvalJS(code string) (string, error) {
+	return testutil.EvalJSErr(e.Kit, "__suite_eval.ts", code)
 }
 
 // PublishAndWait publishes a typed message and waits for the reply payload.

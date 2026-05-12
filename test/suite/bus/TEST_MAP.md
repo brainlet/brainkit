@@ -60,7 +60,7 @@
 | Function | Purpose |
 |----------|---------|
 | testPumpScheduleLatency | Deploys .ts ping handler, measures 10 round-trip latencies, asserts median is under 5ms |
-| testPumpResponsiveAfterIdle | Sleeps 500ms then calls EvalTS, asserts the kernel responds (pump is still alive after idle) |
+| testPumpResponsiveAfterIdle | Sleeps 500ms then calls EvalJS, asserts the kernel responds (pump is still alive after idle) |
 
 ### log.go — Console log handler compartmentalization
 
@@ -182,7 +182,7 @@
 | testCascadeDeployWithBrokenStore | Closes SQLite store, deploys in memory, asserts ErrorHandler called for persistence failure |
 | testCascadeCorruptedStore | Writes garbage to store file, asserts NewSQLiteStore returns error |
 | testCascadePublishDuringDrain | Sets kernel draining, publishes from JS, asserts publish still works |
-| testCascadeEvalTSDuringClose | Closes kernel, calls EvalTS, asserts error (not panic) |
+| testCascadeEvalJSDuringClose | Closes kernel, calls EvalJS, asserts error (not panic) |
 | testCascadeSecretRotatePluginFails | Sets a secret, rotates with restart=true when no plugins running, asserts rotation succeeds |
 | testCascadeRetryExhausted | Creates kernel with retry policy, deploys always-failing handler, verifies exhaustion event fires |
 | testCascadeHandlerThrowNoReplyTo | Deploys handler that throws, sends via emit (no replyTo), asserts bus.handler.failed event or no panic |
@@ -204,14 +204,14 @@
 | testTransportComplianceCorrelationID | Publishes raw, asserts correlationId is present in received message metadata |
 | testTransportComplianceDottedTopics | Subscribes/publishes on a dotted topic, asserts message arrives |
 
-### surface_matrix.go — Surface consistency (Go SDK, TS deployed, EvalTS, error consistency)
+### surface_matrix.go — Surface consistency (Go SDK, TS deployed, EvalJS, error consistency)
 
 | Function | Purpose |
 |----------|---------|
 | testSurfaceGoSDK | Exercises tools.list, tools.call, secrets set+get, fs write+read, request/reply, schedule, metrics, registry from Go SDK |
 | testSurfaceTSDeployed | Deploys .ts code for each operation (tools, secrets, fs, bus, registry, schedule, metrics), verifies output |
-| testSurfaceEvalTS | Runs each operation via EvalTS in global scope, verifies correct returns |
-| testSurfaceErrorConsistency | Verifies NOT_FOUND and VALIDATION_ERROR produce identical error codes from Go, TS deployed, and EvalTS surfaces |
+| testSurfaceEvalJS | Runs each operation via EvalJS in global scope, verifies correct returns |
+| testSurfaceErrorConsistency | Verifies NOT_FOUND and VALIDATION_ERROR produce identical error codes from Go, TS deployed, and EvalJS surfaces |
 
 ### transport_matrix.go — Transport matrix operations (ported from transport compliance tests)
 
@@ -220,8 +220,8 @@
 | testTransportMatrixToolsCall | Calls tools.call with add(10,32) via sdk.Runtime, asserts sum=42 |
 | testTransportMatrixToolsList | Calls tools.list, asserts non-empty tools array |
 | testTransportMatrixToolsResolve | Calls tools.resolve for "echo", asserts ShortName="echo" |
-| testTransportMatrixFSWriteRead | Writes and reads a file via EvalTS, asserts content match |
-| testTransportMatrixFSMkdirListStatDelete | Creates dir, writes file, lists, stats, deletes via EvalTS, asserts correct counts and types |
+| testTransportMatrixFSWriteRead | Writes and reads a file via EvalJS, asserts content match |
+| testTransportMatrixFSMkdirListStatDelete | Creates dir, writes file, lists, stats, deletes via EvalJS, asserts correct counts and types |
 | testTransportMatrixAgentsListEmpty | Calls agents.list, asserts non-nil Agents slice |
 | testTransportMatrixKitDeployTeardown | Deploys .ts with tool, calls the tool, tears down, verifies full lifecycle |
 | testTransportMatrixKitRedeploy | Deploys then redeploys same source, verifies redeploy succeeds |

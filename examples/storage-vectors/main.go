@@ -18,21 +18,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/examples/internal/exampleenv"
 	"github.com/brainlet/brainkit/modules/packages/client"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 	_ "github.com/brainlet/brainkit/storagebridges/sqlite"
 )
 
 func main() {
+	exampleenv.LoadRootDotEnv()
 	if err := run(); err != nil {
 		log.Fatalf("storage-vectors: %v", err)
 	}
@@ -63,7 +63,7 @@ func run() error {
 		Namespace: "storage-vectors-demo",
 		Transport: brainkit.Memory(),
 		FSRoot:    tmp,
-		Modules:   []bkmodule.Module{packages.New()},
+		Modules:   standard.PackageSet(),
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmp, "kv.db")),
 		},
@@ -89,7 +89,7 @@ func run() error {
 		return fmt.Errorf("kv demo: %w", err)
 	}
 
-	if _, hasKey := os.LookupEnv("OPENAI_API_KEY"); !hasKey {
+	if os.Getenv("OPENAI_API_KEY") == "" {
 		fmt.Println()
 		fmt.Println("OPENAI_API_KEY not set — skipping vector similarity demo.")
 		fmt.Println("Set it and re-run to see embeddings + similaritySearch.")

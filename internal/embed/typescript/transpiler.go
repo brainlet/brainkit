@@ -1,7 +1,7 @@
 // Package typescript provides Kit-level TypeScript transpilation.
 //
-// Wraps vendor_typescript.Transpile() with brainkit-specific defaults.
-// Used by package deployment when source is .ts and by the fixture test runner.
+// Wraps vendor_typescript.Transpile with Brainkit-specific defaults. The JS
+// runtime uses this for direct .ts source deployments before evaluation.
 package typescript
 
 import (
@@ -9,9 +9,10 @@ import (
 )
 
 // TranspileTS converts TypeScript source to JavaScript.
-// Uses ESNext target + ESNext modules — no downleveling.
-// Strips: type annotations, interfaces, type aliases, generics.
-// Preserves: imports, exports, async/await, all runtime code.
+//
+// Uses ESNext target + ESNext modules with no downleveling. Type annotations,
+// interfaces, type aliases, and generics are erased; imports, exports,
+// async/await, and runtime code are preserved for the caller to handle.
 func TranspileTS(source string, fileName ...string) (string, error) {
 	name := "input.ts"
 	if len(fileName) > 0 && fileName[0] != "" {

@@ -7,7 +7,7 @@
 
 ## Files
 
-### operations.go — Filesystem polyfill operations via EvalTS
+### operations.go — Filesystem polyfill operations via EvalJS
 
 | Function | Purpose |
 |----------|---------|

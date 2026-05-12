@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-// AttachJSRuntime installs the optional JS/TS runtime attachment. It is the
+// AttachJSRuntime installs the optional JavaScript runtime attachment. It is the
 // narrow handoff point used by the jsruntime module/package boundary.
 func (k *Kernel) AttachJSRuntime(rt JSRuntimeAttachment) error {
 	if k == nil {
@@ -44,7 +44,7 @@ func (k *Kernel) DisableJSRuntime(ctx context.Context) error {
 
 	var err error
 	if k.runtimeHost != nil {
-		err = errors.Join(err, k.runtimeHost.Close())
+		err = errors.Join(err, k.runtimeHost.CloseContext(ctx))
 	}
 	if k.draining.Load() || k.IsClosed() {
 		err = errors.Join(err, rt.Shutdown(ctx))

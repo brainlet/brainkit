@@ -67,7 +67,7 @@ func testParallelPublish(t *testing.T, env *suite.TestEnv) {
 	}
 }
 
-func testParallelEvalTS(t *testing.T, env *suite.TestEnv) {
+func testParallelEvalJS(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipped in short mode")
 	}
@@ -77,9 +77,9 @@ func testParallelEvalTS(t *testing.T, env *suite.TestEnv) {
 	results := make([]string, 10)
 	testutil.ConcurrentDo(t, 10, func(i int) {
 		code := fmt.Sprintf(`return JSON.stringify({ id: %d });`, i)
-		result, err := testutil.EvalTSErr(k, fmt.Sprintf("eval-stress-%d.ts", i), code)
+		result, err := testutil.EvalJSErr(k, fmt.Sprintf("eval-stress-%d.ts", i), code)
 		if err != nil {
-			t.Errorf("EvalTS %d failed: %v", i, err)
+			t.Errorf("EvalJS %d failed: %v", i, err)
 			return
 		}
 		results[i] = result

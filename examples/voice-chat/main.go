@@ -21,7 +21,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"os"
 	"strings"
@@ -29,9 +28,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/audio/local"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
+	"github.com/brainlet/brainkit/examples/internal/exampleenv"
 	"github.com/brainlet/brainkit/modules/packages/client"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -44,6 +43,7 @@ type reply struct {
 }
 
 func main() {
+	exampleenv.LoadRootDotEnv()
 	if err := run(); err != nil {
 		log.Fatalf("voice-chat: %v", err)
 	}
@@ -60,7 +60,7 @@ func run() error {
 		Transport: brainkit.Memory(),
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
 		Audio:     local.New(),
-		Modules:   []bkmodule.Module{packages.New()},
+		Modules:   standard.PackageSet(),
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

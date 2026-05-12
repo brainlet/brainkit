@@ -424,7 +424,7 @@ func TestManagerDebugSnapshotReportsClosingDuringClose(t *testing.T) {
 func TestProbeVectorStoreUsesRuntimeHook(t *testing.T) {
 	manager, err := NewManager(types.KernelConfig{}, Hooks{
 		HasJSRuntime: func() bool { return true },
-		EvalTS: func(_ context.Context, filename, code string) (string, error) {
+		EvalJS: func(_ context.Context, filename, code string) (string, error) {
 			if filename != "__probe_vectorstore.ts" {
 				t.Fatalf("filename = %q", filename)
 			}

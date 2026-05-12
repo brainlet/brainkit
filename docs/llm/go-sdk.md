@@ -463,7 +463,7 @@ type PackageDeployResp struct {
 type KitEvalMsg struct {
     Source string `json:"source,omitempty"`
     Code   string `json:"code"`
-    Mode   string `json:"mode,omitempty"` // "script" (default), "ts", "module"
+    Mode   string `json:"mode,omitempty"` // "script" (default), "js", "module"
 }
 func (KitEvalMsg) BusTopic() string { return "kit.eval" }
 
@@ -472,7 +472,7 @@ type KitHealthMsg struct{}
 func (KitHealthMsg) BusTopic() string { return "kit.health" }
 ```
 
-`evalmsg.KitEvalMsg.Mode` is whitelisted to `script`, `ts`, `module`. `ts` is a direct eval/dev path through the JS runtime; package/file bundling stays in `modules/packages`.
+`evalmsg.KitEvalMsg.Mode` is whitelisted to `script`, `js`, `module`. `js` is a direct eval/dev path through the JS runtime; package/file bundling stays in `modules/packages`.
 
 ---
 

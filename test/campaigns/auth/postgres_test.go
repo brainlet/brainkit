@@ -73,7 +73,7 @@ func evalStore(t *testing.T, k *brainkit.Kit, storeType, storeCode string) strin
 			return JSON.stringify({ error: e.message.substring(0, 300), backend: "` + storeType + `" });
 		}
 	`
-	result := testutil.EvalTS(t, k, "__auth_test.ts", code)
+	result := testutil.EvalJS(t, k, "__auth_test.ts", code)
 	t.Logf("[%s] %s", storeType, result)
 	return result
 }

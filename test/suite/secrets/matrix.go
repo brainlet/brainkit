@@ -234,7 +234,7 @@ func testMatrixFromTS(t *testing.T, _ *suite.TestEnv) {
 	callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "ts-secret-sec-adv", Value: "ts-value"})
 
 	// Read from .ts
-	result := testutil.EvalTS(t, env.Kit, "__sec_adv_read.ts", `
+	result := testutil.EvalJS(t, env.Kit, "__sec_adv_read.ts", `
 		var val = secrets.get("ts-secret-sec-adv");
 		return val;
 	`)

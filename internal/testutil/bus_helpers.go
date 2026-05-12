@@ -183,22 +183,22 @@ func inlineManifest(name, entry string) json.RawMessage {
 	return raw
 }
 
-// ── EvalTS ──────────────────────────────────────────────────────────────────
+// ── EvalJS ──────────────────────────────────────────────────────────────────
 
-func EvalTS(t *testing.T, rt sdk.Runtime, source, code string) string {
+func EvalJS(t *testing.T, rt sdk.Runtime, source, code string) string {
 	t.Helper()
-	result, err := EvalTSErr(rt, source, code)
+	result, err := EvalJSErr(rt, source, code)
 	if err != nil {
-		t.Fatalf("EvalTS(%s): %v", source, err)
+		t.Fatalf("EvalJS(%s): %v", source, err)
 	}
 	return result
 }
 
-func EvalTSErr(rt sdk.Runtime, source, code string) (string, error) {
+func EvalJSErr(rt sdk.Runtime, source, code string) (string, error) {
 	if !ensureEvalModule(rt) {
 		return "", sdk.ErrCallerClosed
 	}
-	payload, err := roundTrip(rt, evalmsg.KitEvalMsg{Source: source, Code: code, Mode: "ts"}, 15*time.Second)
+	payload, err := roundTrip(rt, evalmsg.KitEvalMsg{Source: source, Code: code, Mode: "js"}, 15*time.Second)
 	if err != nil {
 		return "", err
 	}
@@ -316,7 +316,7 @@ func Alive(t *testing.T, rt sdk.Runtime) bool {
 // ── EvalModule ──────────────────────────────────────────────────────────────
 
 // EvalModule evaluates code as an ES module (supports import statements).
-// Different from Deploy which uses EvalTS (no import support).
+// Different from Deploy which uses EvalJS (no import support).
 func EvalModule(t *testing.T, rt sdk.Runtime, source, code string) {
 	t.Helper()
 	ensureEvalModule(rt)

@@ -7,7 +7,6 @@ package main
 import (
 	"context"
 	"fmt"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"log"
 	"net"
 	"net/http"
@@ -17,9 +16,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/gateway"
-	"github.com/brainlet/brainkit/modules/packages"
-	_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"
 	"github.com/brainlet/brainkit/modules/packages/client"
+	"github.com/brainlet/brainkit/presets/standard"
 )
 
 func main() {
@@ -39,7 +37,7 @@ func main() {
 		Namespace: "gateway-routes",
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
-		Modules:   []bkmodule.Module{packages.New(), gw},
+		Modules:   append(standard.PackageSet(), gw),
 	})
 	if err != nil {
 		log.Fatalf("new kit: %v", err)

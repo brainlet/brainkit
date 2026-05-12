@@ -80,7 +80,7 @@ func testDrainTimeoutForcesClose(t *testing.T, _ *suite.TestEnv) {
 func testCloseStillWorks(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
 
-	result := testutil.EvalTS(t, env.Kit, "__test.ts", `return "alive"`)
+	result := testutil.EvalJS(t, env.Kit, "__test.ts", `return "alive"`)
 	assert.Equal(t, "alive", result)
 
 	err := env.Kit.Close()
@@ -103,11 +103,11 @@ func testMessagesDroppedDuringDrain(t *testing.T, _ *suite.TestEnv) {
 	assert.Error(t, err, "message should be dropped during drain")
 }
 
-func testEvalTSWorksDuringDrain(t *testing.T, _ *suite.TestEnv) {
+func testEvalJSWorksDuringDrain(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
 	testutil.SetDraining(t, env.Kit, true)
 
-	result := testutil.EvalTS(t, env.Kit, "__test.ts", `return "works"`)
+	result := testutil.EvalJS(t, env.Kit, "__test.ts", `return "works"`)
 	assert.Equal(t, "works", result)
 }
 

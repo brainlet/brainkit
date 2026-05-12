@@ -83,12 +83,12 @@ func Init(rt Runtime, cfg HarnessConfig) (*Harness, error) {
 
 	// Create JS Harness via createHarness(configJSON)
 	createCode := fmt.Sprintf(`await __kit.createHarness(%s)`, quoteJSString(string(configJSON)))
-	if _, err := rt.EvalTS(context.Background(), "harness-create.ts", createCode); err != nil {
+	if _, err := rt.EvalJS(context.Background(), "harness-create.ts", createCode); err != nil {
 		return nil, fmt.Errorf("harness: create JS harness: %w", err)
 	}
 
 	// Initialize (loads storage, workspace, selects thread)
-	if _, err := rt.EvalTS(context.Background(), "harness-init.ts", `await __brainkit_harness.init()`); err != nil {
+	if _, err := rt.EvalJS(context.Background(), "harness-init.ts", `await __brainkit_harness.init()`); err != nil {
 		return nil, fmt.Errorf("harness: init: %w", err)
 	}
 
@@ -493,7 +493,7 @@ func (h *Harness) GrantSessionTool(toolName string) error {
 // ---------------------------------------------------------------------------
 
 // RespondToQuestion answers an ask_user tool invocation.
-// Uses direct bridge eval (not EvalTS) to avoid nested async wrapper issues
+// Uses direct bridge eval (not EvalJS) to avoid nested async wrapper issues
 // when called while SendMessage is awaiting the agent stream.
 func (h *Harness) RespondToQuestion(questionID, answer string) error {
 	b, _ := json.Marshal(map[string]string{"questionId": questionID, "answer": answer})

@@ -93,7 +93,7 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 
 	time.Sleep(500 * time.Millisecond)
 
-	result, _ := secEvalTSErr(k, "__exfil.ts", `
+	result, _ := secEvalJSErr(k, "__exfil.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -125,7 +125,7 @@ func testSecretEnvVarDump(t *testing.T, env *suite.TestEnv) {
 		output(envVars);
 	`)
 
-	result, _ := secEvalTSErr(k, "__env_dump.ts", `
+	result, _ := secEvalJSErr(k, "__env_dump.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -159,7 +159,7 @@ func testSecretEnumeration(t *testing.T, env *suite.TestEnv) {
 		output(result);
 	`)
 
-	result, _ := secEvalTSErr(k, "__enum.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalJSErr(k, "__enum.ts", `return String(globalThis.__module_result || "");`)
 	t.Logf("Secret enumeration: %s", result)
 }
 
