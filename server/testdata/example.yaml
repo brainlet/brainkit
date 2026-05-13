@@ -2,8 +2,8 @@
 # referenced as $NAME or ${NAME} are substituted at load time.
 #
 # Modules are declarative: every module named under `modules:` must
-# be registered in the binary. Import server/standard for the standard
-# set, or blank-import only the modules this binary wants. Unknown module
+# be registered in the binary. Import server/standard/full for the full
+# standard set, or blank-import only the modules this binary wants. Unknown module
 # keys fail at load with a "did you mean" hint.
 
 namespace: my-app

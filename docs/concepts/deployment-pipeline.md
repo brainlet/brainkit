@@ -128,7 +128,8 @@ The profile choice is explicit:
 | `standard.RuntimeSet()` | JS runtime/eval only. Runtime-side raw `.ts` source deploys are allowed and transpiled. No package builder or `package.deploy` command is mounted. |
 | `standard.ArtifactRuntimeSet()` | JS runtime/eval only. Deploy only normalized JavaScript artifacts through `brainkit.core.artifact_deployer`. Raw TypeScript syntax is rejected. Logical source names may still end in `.ts` for routing and persistence when the artifact is marked normalized. |
 | `standard.PackageSet()` | Adds `modules/packages` and the standard esbuild package builder. This is the normal `packageclient.Deploy` path for app `.ts` files. |
-| `standard.CommandSet()` | Adds the core command surface around package deployment for embedded app runtimes. |
+| `standard.CommandSet()` | Adds the light core command/control surface only. |
+| `standard.FullCommandSet()` | Adds the core command surface around package deployment for embedded app runtimes. |
 
 For a minimal artifact-only example, see
 `examples/artifact-runtime/main.go`.

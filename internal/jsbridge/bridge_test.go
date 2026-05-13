@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -139,6 +140,9 @@ func TestBridgeCloseContextCancelsSpawnProcessAndTrackedWaiters(t *testing.T) {
 		t.Fatalf("spawn readLine = %q, want ready", got)
 	}
 	val.Free()
+	if got := resourceCount(b, "exec.spawnedProcesses"); got != 1 {
+		t.Fatalf("spawned process resources = %d, want 1 snapshot=%+v", got, b.DebugSnapshot())
+	}
 
 	waitForActiveBridgeGoroutines(t, b)
 	closeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -148,6 +152,176 @@ func TestBridgeCloseContextCancelsSpawnProcessAndTrackedWaiters(t *testing.T) {
 	}
 	if snap := b.DebugSnapshot(); snap.ActiveGoroutines != 0 || !snap.Closed {
 		t.Fatalf("snapshot after spawn close = %+v, want closed with no active goroutines", snap)
+	}
+}
+
+func TestBridgeDebugSnapshotTracksGenericResources(t *testing.T) {
+	b := newTestBridge(t)
+
+	release := b.TrackResource("test.resource")
+	if got := resourceCount(b, "test.resource"); got != 1 {
+		t.Fatalf("resource count after track = %d, want 1", got)
+	}
+	release()
+	release()
+	if got := resourceCount(b, "test.resource"); got != 0 {
+		t.Fatalf("resource count after release = %d, want 0", got)
+	}
+}
+
+func TestBridgeDebugSnapshotTracksTimerResourcesThroughClose(t *testing.T) {
+	b := newTestBridge(t, Timers())
+
+	val, err := b.Eval("timer-resource.js", `setTimeout(function(){}, 10000); "scheduled";`)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	val.Free()
+
+	waitForBridgeResource(t, b, "timers.timeouts", 1)
+	closeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := b.CloseContext(closeCtx); err != nil {
+		t.Fatalf("CloseContext: %v snapshot=%+v", err, b.DebugSnapshot())
+	}
+	if got := resourceCount(b, "timers.timeouts"); got != 0 {
+		t.Fatalf("timer resources after close = %d, want 0 snapshot=%+v", got, b.DebugSnapshot())
+	}
+}
+
+func TestBridgeDebugSnapshotTracksFSHandlesThroughClose(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "open.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	b := newTestBridge(t, Encoding(), Buffer(), Events(), NodeStreams(), FS(root))
+
+	val, err := b.EvalAsync("fs-resource.js", `(async () => {
+		globalThis.__openHandle = await fs.promises.open("open.txt", "r");
+		return "opened";
+	})()`)
+	if err != nil {
+		t.Fatalf("EvalAsync open: %v", err)
+	}
+	val.Free()
+
+	if got := resourceCount(b, "fs.fileHandles"); got != 1 {
+		t.Fatalf("fs file handle resources = %d, want 1 snapshot=%+v", got, b.DebugSnapshot())
+	}
+	closeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := b.CloseContext(closeCtx); err != nil {
+		t.Fatalf("CloseContext: %v snapshot=%+v", err, b.DebugSnapshot())
+	}
+	if got := resourceCount(b, "fs.fileHandles"); got != 0 {
+		t.Fatalf("fs file handle resources after close = %d, want 0 snapshot=%+v", got, b.DebugSnapshot())
+	}
+}
+
+func TestBridgeDebugSnapshotTracksFetchRequestResources(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	closeRelease := func() {
+		releaseOnce.Do(func() { close(release) })
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-release
+		_, _ = w.Write([]byte("ok"))
+	}))
+	t.Cleanup(func() {
+		closeRelease()
+		srv.Close()
+	})
+
+	b := newTestBridge(t, Encoding(), Fetch())
+	done := make(chan error, 1)
+	go func() {
+		val, err := b.EvalAsync("fetch-resource.js", fmt.Sprintf(`(async () => {
+			const res = await fetch(%q);
+			return await res.text();
+		})()`, srv.URL))
+		if val != nil {
+			val.Free()
+		}
+		done <- err
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("server did not receive fetch")
+	}
+	waitForBridgeResource(t, b, "fetch.requests", 1)
+
+	closeRelease()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("EvalAsync fetch: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for fetch")
+	}
+}
+
+func TestBridgeCloseContextCancelsPendingFetchRequest(t *testing.T) {
+	entered := make(chan struct{})
+	cancelled := make(chan struct{})
+	var enteredOnce sync.Once
+	var cancelledOnce sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		enteredOnce.Do(func() { close(entered) })
+		<-r.Context().Done()
+		cancelledOnce.Do(func() { close(cancelled) })
+	}))
+	t.Cleanup(srv.Close)
+
+	b := newTestBridge(t, Encoding(), Fetch())
+	done := make(chan error, 1)
+	go func() {
+		val, err := b.EvalAsync("fetch-close-cancel.js", fmt.Sprintf(`(async () => {
+			const res = await fetch(%q);
+			return await res.text();
+		})()`, srv.URL))
+		if val != nil {
+			val.Free()
+		}
+		done <- err
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("server did not receive fetch")
+	}
+	waitForBridgeResource(t, b, "fetch.requests", 1)
+
+	closeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := b.CloseContext(closeCtx); err != nil {
+		t.Fatalf("CloseContext: %v snapshot=%+v", err, b.DebugSnapshot())
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("fetch request context was not cancelled by bridge close")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("EvalAsync fetch did not return after bridge close")
+	}
+	snapshot := b.DebugSnapshot()
+	if snapshot.ActiveGoroutines != 0 || !snapshot.Closed {
+		t.Fatalf("snapshot after pending fetch close = %+v, want closed with no active goroutines", snapshot)
+	}
+	if got := resourceCount(b, "fetch.requests"); got != 0 {
+		t.Fatalf("fetch request resources after close = %d, want 0 snapshot=%+v", got, snapshot)
 	}
 }
 
@@ -163,6 +337,27 @@ func waitForFile(t *testing.T, path string) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+func waitForBridgeResource(t *testing.T, b *Bridge, key string, wantAtLeast int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		if got := resourceCount(b, key); got >= wantAtLeast {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for resource %s >= %d; snapshot=%+v", key, wantAtLeast, b.DebugSnapshot())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func resourceCount(b *Bridge, key string) int {
+	if b == nil {
+		return 0
+	}
+	return b.DebugSnapshot().Resources[key]
 }
 
 func waitForActiveBridgeGoroutines(t *testing.T, b *Bridge) {
@@ -339,6 +534,23 @@ func TestURLSearchParams(t *testing.T) {
 	}
 	if len(parsed.All) != 2 {
 		t.Errorf("getAll('a') len = %d, want 2", len(parsed.All))
+	}
+}
+
+func TestNodeURLHelpers(t *testing.T) {
+	b := newTestBridge(t, URL())
+	result := evalString(t, b, `
+		JSON.stringify({
+			filePath: node_url.fileURLToPath("file:///tmp/x.txt"),
+			fileURL: node_url.pathToFileURL("/tmp/x.txt").toString(),
+			formatted: node_url.format({ protocol: "https:", host: "example.com", pathname: "/x" }),
+			parsed: node_url.parse("https://example.com/x?q=1").path,
+			resolved: node_url.resolve("https://example.com/a/", "../b")
+		});
+	`)
+	expected := `{"filePath":"/tmp/x.txt","fileURL":"file:///tmp/x.txt","formatted":"https://example.com/x","parsed":"/x?q=1","resolved":"https://example.com/b"}`
+	if result != expected {
+		t.Errorf("node_url helpers = %s", result)
 	}
 }
 

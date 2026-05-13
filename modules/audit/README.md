@@ -38,11 +38,11 @@ brainkit.New(brainkit.Config{
 - `stores/postgres.Store` — Postgres backing built on the shared sqlc
   queries.
 
-The `server/standard` YAML factory imports `modules/audit/standard`, which
-wires the default SQLite store constructor. Import
-`modules/audit/standard/postgres` in config-driven binaries that need
-`modules.audit.type: postgres`. Direct embedded callers import only the stores
-package they need.
+The `server/standard/observability` and `server/standard/full` YAML profiles
+import `modules/audit/standard`, which wires the default SQLite store
+constructor. Import `modules/audit/standard/postgres` in config-driven
+binaries that need `modules.audit.type: postgres`. Direct embedded callers
+import only the stores package they need.
 
 ## Capabilities
 

@@ -32,9 +32,9 @@ brainkit.New(brainkit.Config{
   the owned database handle.
 
 Core always has a Tracer — without a store wired, spans no-op.
-The `server/standard` YAML factory imports `modules/tracing/standard`, which
-opens the default SQLite-backed store. Direct embedded callers import only the
-store driver they choose.
+The `server/standard/observability` and `server/standard/full` YAML profiles
+import `modules/tracing/standard`, which opens the default SQLite-backed store.
+Direct embedded callers import only the store driver they choose.
 
 ## Capabilities
 

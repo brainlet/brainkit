@@ -53,10 +53,31 @@ func (p *WebSocketPolyfill) Name() string { return "websocket" }
 // SetBridge wires the bridge for goroutine + Schedule access.
 func (p *WebSocketPolyfill) SetBridge(b *Bridge) { p.bridge = b }
 
+func (p *WebSocketPolyfill) debugResources() map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	pending := 0
+	connected := 0
+	for _, conn := range p.conns {
+		if conn != nil && conn.conn != nil {
+			connected++
+		} else {
+			pending++
+		}
+	}
+	return map[string]int{
+		"websocket.connections":  connected,
+		"websocket.pendingDials": pending,
+	}
+}
+
 // Setup installs globalThis.WebSocket + the Go-side dial /
 // send / close bridges.
 func (p *WebSocketPolyfill) Setup(ctx *quickjs.Context) error {
 	polyfill := p
+	if p.bridge != nil {
+		p.bridge.RegisterResourceProvider(p.debugResources)
+	}
 
 	// __go_ws_dial(url, protocolsJSON, headersJSON) → handle
 	// Returns a numeric handle synchronously; the actual dial

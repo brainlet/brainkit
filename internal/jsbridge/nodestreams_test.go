@@ -113,6 +113,52 @@ func TestNodeTransform_WriteThrough(t *testing.T) {
 	}
 }
 
+func TestNodeStreamPromises(t *testing.T) {
+	b := newTestBridge(t, Console(), Encoding(), Events(), NodeStreams())
+	val, err := b.Eval("stream-promises.js", `(function() {
+		var NS = globalThis.stream;
+		var pt = new NS.PassThrough();
+		var finished = NS.promises.finished(pt);
+		var pipeline = NS.promises.pipeline();
+		pt.end("ok");
+		return JSON.stringify({
+			hasFinished: typeof NS.promises.finished === "function",
+			hasPipeline: typeof NS.promises.pipeline === "function",
+			finishedThen: !!finished && typeof finished.then === "function",
+			pipelineThen: !!pipeline && typeof pipeline.then === "function"
+		});
+	})()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer val.Free()
+	if val.String() != `{"hasFinished":true,"hasPipeline":true,"finishedThen":true,"pipelineThen":true}` {
+		t.Fatalf("stream promises = %s", val.String())
+	}
+}
+
+func TestNodeStream_EventEmitterAlias(t *testing.T) {
+	b := newTestBridge(t, Console(), Encoding(), Events(), NodeStreams())
+	val, err := b.Eval("stream-event-emitter.js", `(function() {
+		var NS = globalThis.stream;
+		var emitter = new NS.EventEmitter();
+		var stream = new NS.Stream();
+		var readable = new NS.Readable();
+		return JSON.stringify({
+			eventEmitter: NS.EventEmitter === globalThis.EventEmitter,
+			streamIsEmitter: stream instanceof globalThis.EventEmitter,
+			readableIsStream: readable instanceof NS.Stream
+		});
+	})()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer val.Free()
+	if val.String() != `{"eventEmitter":true,"streamIsEmitter":true,"readableIsStream":true}` {
+		t.Fatalf("stream EventEmitter alias = %s", val.String())
+	}
+}
+
 func TestNodeReadable_BufferWhenPaused(t *testing.T) {
 	b := newTestBridge(t, Console(), Encoding(), Events(), NodeStreams())
 	val, err := b.Eval("test.js", `

@@ -18,5 +18,6 @@
 //
 // Config-driven binaries that want `modules.schedules.path` to open a
 // dedicated SQLite store should import modules/schedules/standard, or import
-// server/standard for the full built-in module catalog.
+// server/standard/automation or server/standard/full for the built-in YAML
+// profiles.
 package schedules

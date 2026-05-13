@@ -323,7 +323,7 @@ func (m *DeploymentManager) evaluateInCompartment(ctx context.Context, source, c
 		return "ok";
 	`, source, js.JSCompartments, source, code)
 
-	_, err := m.EvalJS(ctx, "__deploy_"+source, evalCode)
+	_, err := m.EvalJS(ctx, source, evalCode)
 	if err != nil {
 		m.TeardownFile(source)
 		m.EvalJS(ctx, "__deploy_cleanup.ts", fmt.Sprintf(
@@ -394,17 +394,26 @@ func (m *DeploymentManager) EvalJS(ctx context.Context, filename, code string) (
 		});
 	})()`, filename, code)
 
+	var (
+		result string
+		err    error
+	)
 	if m.bridge.IsEvalBusy() {
-		return m.bridge.EvalOnJSThread(filename, wrapped)
+		result, err = m.bridge.EvalOnJSThread(filename, wrapped)
+	} else {
+		result, err = m.agents.Eval(ctx, filename, wrapped)
 	}
-	return m.agents.Eval(ctx, filename, wrapped)
+	if err != nil {
+		return "", m.wrapRuntimeError("eval", filename, "", err)
+	}
+	return result, nil
 }
 
 func (m *DeploymentManager) EvalModule(ctx context.Context, filename, code string) (string, error) {
 	m.bridge.Eval("__clear_result.js", `delete globalThis.__module_result`)
 	val, err := m.bridge.EvalAsyncModule(filename, code)
 	if err != nil {
-		return "", fmt.Errorf("brainkit: eval module: %w", err)
+		return "", fmt.Errorf("brainkit: eval module: %w", m.wrapRuntimeError("eval-module", filename, "", err))
 	}
 	if val != nil {
 		val.Free()
@@ -412,10 +421,28 @@ func (m *DeploymentManager) EvalModule(ctx context.Context, filename, code strin
 	result, err := m.bridge.Eval("__get_result.js",
 		`typeof globalThis.__module_result !== 'undefined' ? String(globalThis.__module_result) : ""`)
 	if err != nil {
-		return "", err
+		return "", m.wrapRuntimeError("eval-module-result", "__get_result.js", "", err)
 	}
 	defer result.Free()
 	return result.String(), nil
+}
+
+func (m *DeploymentManager) wrapRuntimeError(phase, source, fn string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var snap *jsbridge.DebugSnapshot
+	if m != nil && m.bridge != nil {
+		s := m.bridge.DebugSnapshot()
+		snap = &s
+	}
+	return jsbridge.WrapError(err, jsbridge.DiagnosticContext{
+		RuntimeOwner:   "jsruntime",
+		Phase:          phase,
+		Source:         source,
+		Function:       fn,
+		BridgeSnapshot: snap,
+	})
 }
 
 func (m *DeploymentManager) ListResources(resourceType ...string) ([]types.ResourceInfo, error) {

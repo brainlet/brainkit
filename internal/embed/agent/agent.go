@@ -40,11 +40,13 @@ type StreamParams struct {
 // Agent is a persistent agent handle.
 // The underlying Mastra Agent lives in the JS runtime's global registry.
 type Agent struct {
-	id      string // UUID (with hyphens) — used as JS registry key
-	jsID    string // UUID with underscores — used for JS variable names
-	name    string
-	sandbox *Sandbox
-	closed  bool
+	id       string // UUID (with hyphens) — used as JS registry key
+	jsID     string // UUID with underscores — used for JS variable names
+	name     string
+	provider string
+	modelID  string
+	sandbox  *Sandbox
+	closed   bool
 }
 
 // ID returns the agent's unique identifier.
@@ -146,14 +148,17 @@ func (s *Sandbox) CreateAgent(cfg AgentConfig) (*Agent, error) {
 
 	_, err = s.bridge.Eval("create-agent.js", js)
 	if err != nil {
-		return nil, fmt.Errorf("agent-embed: create agent: %w", err)
+		return nil, fmt.Errorf("agent-embed: create agent: %w",
+			s.wrapEvalError("agent.create", "create-agent.js", "Agent.constructor", provider, modelID, err))
 	}
 
 	agent := &Agent{
-		id:      agentID,
-		jsID:    jsID,
-		name:    cfg.Name,
-		sandbox: s,
+		id:       agentID,
+		jsID:     jsID,
+		name:     cfg.Name,
+		provider: provider,
+		modelID:  modelID,
+		sandbox:  s,
 	}
 	s.registerAgent(agent)
 	return agent, nil
@@ -231,7 +236,8 @@ func (a *Agent) Generate(ctx context.Context, params GenerateParams) (*GenerateR
 
 	resultJSON, err := a.sandbox.Eval(ctx, "agent-generate.js", js)
 	if err != nil {
-		return nil, fmt.Errorf("agent-embed: generate: %w", err)
+		return nil, fmt.Errorf("agent-embed: generate: %w",
+			a.sandbox.wrapEvalError("agent.generate", "agent-generate.js", "Agent.generate", a.provider, a.modelID, err))
 	}
 
 	var result GenerateResult
@@ -310,7 +316,8 @@ func (a *Agent) Stream(ctx context.Context, params StreamParams) (*StreamResult,
 
 	resultJSON, err := a.sandbox.Eval(ctx, "agent-stream.js", js)
 	if err != nil {
-		return nil, fmt.Errorf("agent-embed: stream: %w", err)
+		return nil, fmt.Errorf("agent-embed: stream: %w",
+			a.sandbox.wrapEvalError("agent.stream", "agent-stream.js", "Agent.stream", a.provider, a.modelID, err))
 	}
 
 	var result StreamResult

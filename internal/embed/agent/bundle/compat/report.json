@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "nodeModulesUsed": [
+    "assert",
+    "async_hooks",
+    "buffer",
+    "child_process",
+    "crypto",
+    "diagnostics_channel",
+    "dns",
+    "dns/promises",
+    "events",
+    "fs",
+    "fs/promises",
+    "http",
+    "https",
+    "module",
+    "net",
+    "os",
+    "path",
+    "path/posix",
+    "process",
+    "querystring",
+    "stream",
+    "stream/web",
+    "string_decoder",
+    "timers",
+    "timers/promises",
+    "tls",
+    "url",
+    "util",
+    "worker_threads",
+    "zlib"
+  ],
+  "nodeModuleAliasesUsed": [
+    {
+      "raw": "node:assert",
+      "normalized": "assert"
+    },
+    {
+      "raw": "node:buffer",
+      "normalized": "buffer"
+    },
+    {
+      "raw": "node:crypto",
+      "normalized": "crypto"
+    },
+    {
+      "raw": "node:diagnostics_channel",
+      "normalized": "diagnostics_channel"
+    },
+    {
+      "raw": "node:events",
+      "normalized": "events"
+    },
+    {
+      "raw": "node:fs",
+      "normalized": "fs"
+    },
+    {
+      "raw": "node:http",
+      "normalized": "http"
+    },
+    {
+      "raw": "node:https",
+      "normalized": "https"
+    },
+    {
+      "raw": "node:net",
+      "normalized": "net"
+    },
+    {
+      "raw": "node:path",
+      "normalized": "path"
+    },
+    {
+      "raw": "node:process",
+      "normalized": "process"
+    },
+    {
+      "raw": "node:stream",
+      "normalized": "stream"
+    },
+    {
+      "raw": "node:stream/web",
+      "normalized": "stream/web"
+    },
+    {
+      "raw": "node:timers/promises",
+      "normalized": "timers/promises"
+    },
+    {
+      "raw": "node:tls",
+      "normalized": "tls"
+    },
+    {
+      "raw": "node:url",
+      "normalized": "url"
+    },
+    {
+      "raw": "node:util",
+      "normalized": "util"
+    },
+    {
+      "raw": "node:zlib",
+      "normalized": "zlib"
+    },
+    {
+      "raw": "process/",
+      "normalized": "process"
+    },
+    {
+      "raw": "string_decoder/",
+      "normalized": "string_decoder"
+    }
+  ],
+  "externalImports": [
+    "@aws-sdk/credential-providers",
+    "@chroma-core/default-embed",
+    "@mongodb-js/zstd",
+    "kerberos",
+    "mongodb-client-encryption",
+    "pg-native",
+    "snappy",
+    "socks"
+  ],
+  "dynamicRequires": [
+    "@opentelemetry/api",
+    "execa",
+    "vscode-jsonrpc",
+    "vscode-jsonrpc/node",
+    "vscode-languageserver-protocol",
+    "zod",
+    "zod/v4"
+  ],
+  "packagePatches": [
+    "big-js-shim",
+    "execa-dynamic-import",
+    "gemini-live-voice-disabled",
+    "libsql-undefined-null",
+    "lru-cache-cjs",
+    "mastra-rag-zod-function",
+    "mastra-schema-null-transform-prototype",
+    "tiktoken-fallback",
+    "vscode-jsonrpc-node",
+    "ws-alias",
+    "zod-unify"
+  ]
+}

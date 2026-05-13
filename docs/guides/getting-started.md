@@ -251,6 +251,7 @@ import (
     _ "github.com/brainlet/brainkit/server/configfile/storebackends/sqlite"
     _ "github.com/brainlet/brainkit/server/configfile/transportbackends/embeddednats"
     _ "github.com/brainlet/brainkit/server/standard/commands"
+    _ "github.com/brainlet/brainkit/server/standard/packages"
     _ "github.com/brainlet/brainkit/server/standard/server"
 )
 

@@ -1,0 +1,3935 @@
+{
+  "schemaVersion": 1,
+  "sources": {
+    "manifest": "internal/embed/agent/bundle/compat/manifest.json",
+    "meta": "internal/embed/agent/bundle/meta.json",
+    "packageJSON": "internal/embed/agent/bundle/package.json",
+    "packageManager": "pnpm@10.2.1"
+  },
+  "packageCount": 219,
+  "surfaceCount": 66,
+  "packages": [
+    {
+      "name": "@ai-sdk/anthropic",
+      "version": "3.0.77",
+      "dependencyClass": "direct-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 216853
+    },
+    {
+      "name": "@ai-sdk/cerebras",
+      "version": "2.0.51",
+      "dependencyClass": "direct-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 2052
+    },
+    {
+      "name": "@ai-sdk/cohere",
+      "version": "3.0.35",
+      "dependencyClass": "direct-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 34213
+    },
+    {
+      "name": "@ai-sdk/deepseek",
+      "version": "2.0.34",
+      "dependencyClass": "direct-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 25851
+    },
+    {
+      "name": "@ai-sdk/fireworks",
+      "version": "2.0.52",
+      "dependencyClass": "direct-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 11627
+    },
+    {
+      "name": "@ai-sdk/gateway",
+      "version": "3.0.114",
+      "dependencyClass": "transitive-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 58995
+    },
+    {
+      "name": "@ai-sdk/google",
+      "version": "3.0.73",
+      "dependencyClass": "direct-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 201285
+    },
+    {
+      "name": "@ai-sdk/groq",
+      "version": "3.0.39",
+      "dependencyClass": "direct-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 33431
+    },
+    {
+      "name": "@ai-sdk/mistral",
+      "version": "3.0.36",
+      "dependencyClass": "direct-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 26904
+    },
+    {
+      "name": "@ai-sdk/openai",
+      "version": "3.0.63",
+      "dependencyClass": "direct-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 252378
+    },
+    {
+      "name": "@ai-sdk/openai-compatible",
+      "version": "2.0.47",
+      "dependencyClass": "transitive-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 59848
+    },
+    {
+      "name": "@ai-sdk/perplexity",
+      "version": "3.0.33",
+      "dependencyClass": "direct-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 16340
+    },
+    {
+      "name": "@ai-sdk/provider",
+      "version": "2.0.3",
+      "dependencyClass": "transitive-provider",
+      "inputs": 1,
+      "bytes": 10924
+    },
+    {
+      "name": "@ai-sdk/provider",
+      "version": "3.0.10",
+      "dependencyClass": "transitive-provider",
+      "inputs": 1,
+      "bytes": 12081
+    },
+    {
+      "name": "@ai-sdk/provider-utils",
+      "version": "3.0.25",
+      "dependencyClass": "transitive-provider",
+      "inputs": 1,
+      "bytes": 75009
+    },
+    {
+      "name": "@ai-sdk/provider-utils",
+      "version": "4.0.27",
+      "dependencyClass": "transitive-provider",
+      "inputs": 1,
+      "bytes": 78593
+    },
+    {
+      "name": "@ai-sdk/togetherai",
+      "version": "2.0.51",
+      "dependencyClass": "direct-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 10332
+    },
+    {
+      "name": "@ai-sdk/xai",
+      "version": "3.0.89",
+      "dependencyClass": "direct-provider",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 107665
+    },
+    {
+      "name": "@deepgram/captions",
+      "version": "1.2.0",
+      "dependencyClass": "transitive",
+      "inputs": 7,
+      "bytes": 7684
+    },
+    {
+      "name": "@deepgram/sdk",
+      "version": "3.13.0",
+      "dependencyClass": "transitive",
+      "inputs": 74,
+      "bytes": 134791,
+      "nodeAPIs": [
+        "events"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "@isaacs/ttlcache",
+      "version": "2.1.4",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 10718
+    },
+    {
+      "name": "@libsql/client",
+      "version": "0.15.15",
+      "dependencyClass": "transitive-storage-client",
+      "inputs": 5,
+      "bytes": 39058,
+      "packagePatches": [
+        "libsql-undefined-null"
+      ],
+      "compatibilityTests": [
+        "fixtures/ts/memory/storage/libsql",
+        "fixtures/ts/vector/create-upsert-query/libsql"
+      ]
+    },
+    {
+      "name": "@libsql/core",
+      "version": "0.15.15",
+      "dependencyClass": "transitive-storage-client",
+      "inputs": 4,
+      "bytes": 11847
+    },
+    {
+      "name": "@libsql/hrana-client",
+      "version": "0.7.0",
+      "dependencyClass": "transitive-storage-client",
+      "inputs": 41,
+      "bytes": 119236
+    },
+    {
+      "name": "@libsql/isomorphic-fetch",
+      "version": "0.3.1",
+      "dependencyClass": "transitive-storage-client",
+      "inputs": 1,
+      "bytes": 157
+    },
+    {
+      "name": "@libsql/isomorphic-ws",
+      "version": "0.1.5",
+      "dependencyClass": "transitive-storage-client",
+      "inputs": 1,
+      "bytes": 355
+    },
+    {
+      "name": "@lukeed/uuid",
+      "version": "2.0.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 502
+    },
+    {
+      "name": "@mastra/chroma",
+      "version": "1.0.1",
+      "dependencyClass": "direct-mastra-vector",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 24440
+    },
+    {
+      "name": "@mastra/core",
+      "version": "1.33.0",
+      "dependencyClass": "direct-mastra-core",
+      "inputs": 87,
+      "bytes": 5823830,
+      "nodeAPIs": [
+        "async_hooks",
+        "child_process",
+        "crypto",
+        "events",
+        "fs",
+        "fs/promises",
+        "module",
+        "os",
+        "path",
+        "path/posix",
+        "stream",
+        "stream/web",
+        "url"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/embed/agent/conformance_test.go",
+        "internal/jsbridge/async_iterator_test.go",
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go",
+        "internal/jsbridge/exec_test.go",
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsbridge/nodestreams_test.go",
+        "internal/jsbridge/os_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/evals",
+      "version": "1.2.2",
+      "dependencyClass": "direct-mastra-evals",
+      "inputs": 2,
+      "bytes": 170267
+    },
+    {
+      "name": "@mastra/libsql",
+      "version": "1.10.1",
+      "dependencyClass": "direct-mastra-storage",
+      "inputs": 1,
+      "bytes": 414753,
+      "nodeAPIs": [
+        "crypto"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/memory",
+      "version": "1.18.0",
+      "dependencyClass": "direct-mastra-memory",
+      "inputs": 5,
+      "bytes": 1005637,
+      "nodeAPIs": [
+        "async_hooks",
+        "crypto",
+        "fs",
+        "path",
+        "util"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go",
+        "internal/jsbridge/nodecompat_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/mongodb",
+      "version": "1.8.1",
+      "dependencyClass": "direct-mastra-storage",
+      "inputs": 1,
+      "bytes": 367663,
+      "nodeAPIs": [
+        "crypto"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/observability",
+      "version": "1.12.0",
+      "dependencyClass": "direct",
+      "inputs": 1,
+      "bytes": 809514,
+      "nodeAPIs": [
+        "fs",
+        "fs/promises",
+        "module",
+        "path",
+        "stream/web",
+        "url"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/embed/agent/conformance_test.go",
+        "internal/jsbridge/async_iterator_test.go",
+        "internal/jsbridge/bridge_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/pg",
+      "version": "1.10.1",
+      "dependencyClass": "direct-mastra-storage",
+      "inputs": 1,
+      "bytes": 535081,
+      "nodeAPIs": [
+        "crypto",
+        "module"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/embed/agent/conformance_test.go",
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/pinecone",
+      "version": "1.0.1",
+      "dependencyClass": "direct-mastra-vector",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 21474
+    },
+    {
+      "name": "@mastra/qdrant",
+      "version": "1.0.2",
+      "dependencyClass": "direct-mastra-vector",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 40904
+    },
+    {
+      "name": "@mastra/rag",
+      "version": "2.2.1",
+      "dependencyClass": "direct-mastra-rag",
+      "inputs": 1,
+      "bytes": 258467,
+      "nodeAPIs": [
+        "crypto"
+      ],
+      "packagePatches": [
+        "mastra-rag-zod-function"
+      ],
+      "compatibilityTests": [
+        "fixtures/ts/rag",
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/redis",
+      "version": "1.1.1",
+      "dependencyClass": "transitive-mastra-storage",
+      "inputs": 1,
+      "bytes": 62698,
+      "nodeAPIs": [
+        "crypto"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/schema-compat",
+      "version": "1.2.10",
+      "dependencyClass": "transitive",
+      "inputs": 11,
+      "bytes": 511751,
+      "packagePatches": [
+        "mastra-schema-null-transform-prototype"
+      ],
+      "compatibilityTests": [
+        "examples/custom-scorer",
+        "internal/embed/agent/conformance_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/upstash",
+      "version": "1.1.1",
+      "dependencyClass": "direct-mastra-storage",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 101569,
+      "nodeAPIs": [
+        "crypto"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/voice-azure",
+      "version": "0.11.0",
+      "dependencyClass": "direct-mastra-voice",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 12496,
+      "nodeAPIs": [
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/voice-cloudflare",
+      "version": "0.12.1",
+      "dependencyClass": "direct-mastra-voice",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 2272
+    },
+    {
+      "name": "@mastra/voice-deepgram",
+      "version": "0.12.0",
+      "dependencyClass": "direct-mastra-voice",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 5864,
+      "nodeAPIs": [
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/voice-elevenlabs",
+      "version": "0.12.0",
+      "dependencyClass": "direct-mastra-voice",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 5394
+    },
+    {
+      "name": "@mastra/voice-google-gemini-live",
+      "dependencyClass": "direct-mastra-voice",
+      "externalService": true,
+      "packagePatches": [
+        "gemini-live-voice-disabled"
+      ],
+      "compatibilityTests": [
+        "fixtures/ts/voice"
+      ]
+    },
+    {
+      "name": "@mastra/voice-murf",
+      "version": "0.12.0",
+      "dependencyClass": "direct-mastra-voice",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 5184,
+      "nodeAPIs": [
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/voice-openai",
+      "version": "0.12.1",
+      "dependencyClass": "direct-mastra-voice",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 6420,
+      "nodeAPIs": [
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/voice-openai-realtime",
+      "version": "0.12.3",
+      "dependencyClass": "direct-mastra-voice",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 20108,
+      "nodeAPIs": [
+        "events",
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/voice-playai",
+      "version": "0.12.0",
+      "dependencyClass": "direct-mastra-voice",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 6246,
+      "nodeAPIs": [
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/voice-sarvam",
+      "version": "1.0.0",
+      "dependencyClass": "direct-mastra-voice",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 5245,
+      "nodeAPIs": [
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "@mastra/voice-speechify",
+      "version": "0.12.0",
+      "dependencyClass": "direct-mastra-voice",
+      "externalService": true,
+      "inputs": 1,
+      "bytes": 10660,
+      "nodeAPIs": [
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "@mongodb-js/saslprep",
+      "version": "1.4.8",
+      "dependencyClass": "transitive",
+      "inputs": 4,
+      "bytes": 564819
+    },
+    {
+      "name": "@opentelemetry/api",
+      "version": "1.9.1",
+      "dependencyClass": "direct",
+      "inputs": 44,
+      "bytes": 59721
+    },
+    {
+      "name": "@opentelemetry/core",
+      "version": "2.7.1",
+      "dependencyClass": "transitive",
+      "inputs": 31,
+      "bytes": 49369
+    },
+    {
+      "name": "@opentelemetry/resources",
+      "version": "2.7.1",
+      "dependencyClass": "transitive",
+      "inputs": 13,
+      "bytes": 14397
+    },
+    {
+      "name": "@opentelemetry/sdk-trace-base",
+      "version": "2.7.1",
+      "dependencyClass": "direct",
+      "inputs": 24,
+      "bytes": 60481
+    },
+    {
+      "name": "@opentelemetry/semantic-conventions",
+      "version": "1.41.1",
+      "dependencyClass": "transitive",
+      "inputs": 9,
+      "bytes": 278348
+    },
+    {
+      "name": "@pinecone-database/pinecone",
+      "version": "3.0.3",
+      "dependencyClass": "transitive",
+      "inputs": 109,
+      "bytes": 434865
+    },
+    {
+      "name": "@qdrant/js-client-rest",
+      "version": "1.18.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 126703
+    },
+    {
+      "name": "@redis/bloom",
+      "version": "5.10.0",
+      "dependencyClass": "transitive-storage-client",
+      "externalService": true,
+      "inputs": 57,
+      "bytes": 51272
+    },
+    {
+      "name": "@redis/client",
+      "version": "5.10.0",
+      "dependencyClass": "transitive-storage-client",
+      "externalService": true,
+      "inputs": 408,
+      "bytes": 679271,
+      "nodeAPIs": [
+        "assert",
+        "crypto",
+        "diagnostics_channel",
+        "dns/promises",
+        "events",
+        "net",
+        "stream",
+        "timers/promises",
+        "tls",
+        "url"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/conformance_test.go",
+        "internal/jsbridge/crypto_test.go",
+        "internal/jsbridge/dns_test.go",
+        "internal/jsbridge/net_test.go",
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "@redis/json",
+      "version": "5.10.0",
+      "dependencyClass": "transitive-storage-client",
+      "externalService": true,
+      "inputs": 25,
+      "bytes": 25623
+    },
+    {
+      "name": "@redis/search",
+      "version": "5.10.0",
+      "dependencyClass": "transitive-storage-client",
+      "externalService": true,
+      "inputs": 38,
+      "bytes": 72698
+    },
+    {
+      "name": "@redis/time-series",
+      "version": "5.10.0",
+      "dependencyClass": "transitive-storage-client",
+      "externalService": true,
+      "inputs": 33,
+      "bytes": 65061
+    },
+    {
+      "name": "@sindresorhus/slugify",
+      "version": "2.2.1",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 3612
+    },
+    {
+      "name": "@sindresorhus/transliterate",
+      "version": "1.6.0",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 32344
+    },
+    {
+      "name": "@speechify/api-sdk",
+      "version": "2.5.4",
+      "dependencyClass": "transitive",
+      "inputs": 3,
+      "bytes": 16778
+    },
+    {
+      "name": "@standard-schema/spec",
+      "version": "1.1.0",
+      "dependencyClass": "transitive",
+      "inputs": 1
+    },
+    {
+      "name": "@upstash/redis",
+      "version": "1.38.0",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 167347
+    },
+    {
+      "name": "@upstash/vector",
+      "version": "1.2.3",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 35848
+    },
+    {
+      "name": "@vercel/oidc",
+      "version": "3.2.0",
+      "dependencyClass": "transitive",
+      "inputs": 3,
+      "bytes": 4759
+    },
+    {
+      "name": "abort-controller",
+      "version": "3.0.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 394
+    },
+    {
+      "name": "agent-base",
+      "version": "6.0.2",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "disabledInputs": 1
+    },
+    {
+      "name": "agent-base",
+      "version": "7.1.3",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 9733,
+      "nodeAPIs": [
+        "http",
+        "https",
+        "net"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/net_test.go",
+        "internal/jsbridge/nodecompat_test.go"
+      ]
+    },
+    {
+      "name": "ai",
+      "version": "6.0.180",
+      "dependencyClass": "direct-ai-sdk",
+      "inputs": 1,
+      "bytes": 443287
+    },
+    {
+      "name": "async-mutex",
+      "version": "0.5.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 11154
+    },
+    {
+      "name": "base64-js",
+      "version": "1.5.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 3932
+    },
+    {
+      "name": "bent",
+      "version": "7.3.12",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 3509
+    },
+    {
+      "name": "big.js",
+      "dependencyClass": "transitive",
+      "packagePatches": [
+        "big-js-shim"
+      ],
+      "compatibilityTests": [
+        "fixtures/ts/rag/rerank"
+      ]
+    },
+    {
+      "name": "bignumber.js",
+      "version": "9.3.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 89684
+    },
+    {
+      "name": "bson",
+      "version": "7.2.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 180184
+    },
+    {
+      "name": "call-bind-apply-helpers",
+      "version": "1.0.2",
+      "dependencyClass": "transitive",
+      "inputs": 5,
+      "bytes": 1119
+    },
+    {
+      "name": "call-bound",
+      "version": "1.0.4",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 687
+    },
+    {
+      "name": "chromadb",
+      "version": "3.4.3",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 165527,
+      "nodeAPIs": [
+        "process"
+      ],
+      "externalImports": [
+        "@chroma-core/default-embed"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go",
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/polyfill_extras_test.go"
+      ]
+    },
+    {
+      "name": "cloudflare",
+      "version": "5.2.0",
+      "dependencyClass": "transitive",
+      "inputs": 770,
+      "bytes": 1563346
+    },
+    {
+      "name": "cluster-key-slot",
+      "version": "1.1.2",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 6650
+    },
+    {
+      "name": "command-exists",
+      "version": "1.2.9",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "disabledInputs": 1
+    },
+    {
+      "name": "compromise",
+      "version": "14.15.0",
+      "dependencyClass": "transitive",
+      "inputs": 431,
+      "bytes": 656625
+    },
+    {
+      "name": "croner",
+      "version": "10.0.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 27551
+    },
+    {
+      "name": "cross-fetch",
+      "version": "3.2.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 20841
+    },
+    {
+      "name": "data-uri-to-buffer",
+      "version": "4.0.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 1852
+    },
+    {
+      "name": "dayjs",
+      "version": "1.11.20",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 9421
+    },
+    {
+      "name": "debug",
+      "version": "2.6.9",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 9128
+    },
+    {
+      "name": "debug",
+      "version": "3.2.7",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 12214
+    },
+    {
+      "name": "debug",
+      "version": "4.4.3",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 13018
+    },
+    {
+      "name": "deepmerge",
+      "version": "4.3.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 4048
+    },
+    {
+      "name": "dunder-proto",
+      "version": "1.0.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 980
+    },
+    {
+      "name": "efrt",
+      "version": "2.7.0",
+      "dependencyClass": "transitive",
+      "inputs": 12,
+      "bytes": 18487
+    },
+    {
+      "name": "elevenlabs",
+      "version": "1.59.0",
+      "dependencyClass": "transitive",
+      "inputs": 763,
+      "bytes": 976222
+    },
+    {
+      "name": "es-define-property",
+      "version": "1.0.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 288
+    },
+    {
+      "name": "es-errors",
+      "version": "1.3.0",
+      "dependencyClass": "transitive",
+      "inputs": 7,
+      "bytes": 524
+    },
+    {
+      "name": "es-object-atoms",
+      "version": "1.1.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 67
+    },
+    {
+      "name": "escape-string-regexp",
+      "version": "5.0.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 469
+    },
+    {
+      "name": "eventsource-parser",
+      "version": "3.0.8",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 7626
+    },
+    {
+      "name": "execa",
+      "version": "5.1.1",
+      "dependencyClass": "dev",
+      "inputs": 1,
+      "disabledInputs": 1,
+      "packagePatches": [
+        "execa-dynamic-import"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go"
+      ]
+    },
+    {
+      "name": "extend",
+      "version": "3.0.2",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 3321
+    },
+    {
+      "name": "extend-shallow",
+      "version": "2.0.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 576
+    },
+    {
+      "name": "fastq",
+      "version": "1.20.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 7014
+    },
+    {
+      "name": "fetch-blob",
+      "version": "3.2.0",
+      "dependencyClass": "transitive",
+      "inputs": 4,
+      "bytes": 12912,
+      "nodeAPIs": [
+        "buffer",
+        "fs",
+        "path",
+        "process",
+        "stream/web"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/async_iterator_test.go",
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/buffer_test.go",
+        "internal/jsbridge/polyfill_extras_test.go"
+      ]
+    },
+    {
+      "name": "form-data",
+      "version": "4.0.5",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 117
+    },
+    {
+      "name": "form-data-encoder",
+      "version": "4.1.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 12741
+    },
+    {
+      "name": "formdata-node",
+      "version": "6.0.3",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 1336
+    },
+    {
+      "name": "formdata-polyfill",
+      "version": "4.0.10",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 2378
+    },
+    {
+      "name": "function-bind",
+      "version": "1.1.2",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 2169
+    },
+    {
+      "name": "gaxios",
+      "version": "7.1.4",
+      "dependencyClass": "transitive",
+      "inputs": 7,
+      "bytes": 47232,
+      "nodeAPIs": [
+        "crypto",
+        "https",
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go",
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "gcp-metadata",
+      "version": "8.1.2",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 19140,
+      "nodeAPIs": [
+        "fs",
+        "os"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/os_test.go"
+      ]
+    },
+    {
+      "name": "get-intrinsic",
+      "version": "1.3.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 14439
+    },
+    {
+      "name": "get-proto",
+      "version": "1.0.1",
+      "dependencyClass": "transitive",
+      "inputs": 3,
+      "bytes": 1127
+    },
+    {
+      "name": "google-logging-utils",
+      "version": "1.1.3",
+      "dependencyClass": "transitive",
+      "inputs": 3,
+      "bytes": 21111,
+      "nodeAPIs": [
+        "events",
+        "process",
+        "util"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsbridge/nodestreams_test.go",
+        "internal/jsbridge/polyfill_extras_test.go"
+      ]
+    },
+    {
+      "name": "gopd",
+      "version": "1.2.0",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 303
+    },
+    {
+      "name": "grad-school",
+      "version": "0.0.5",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 4439
+    },
+    {
+      "name": "gray-matter",
+      "version": "4.0.3",
+      "dependencyClass": "transitive",
+      "inputs": 9,
+      "bytes": 13309,
+      "nodeAPIs": [
+        "fs"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go"
+      ]
+    },
+    {
+      "name": "has-symbols",
+      "version": "1.1.0",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 2369
+    },
+    {
+      "name": "hasown",
+      "version": "2.0.2",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 206
+    },
+    {
+      "name": "html-entities",
+      "version": "2.6.0",
+      "dependencyClass": "transitive",
+      "inputs": 4,
+      "bytes": 35070
+    },
+    {
+      "name": "https-proxy-agent",
+      "version": "4.0.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "disabledInputs": 1
+    },
+    {
+      "name": "https-proxy-agent",
+      "version": "7.0.6",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 11359,
+      "nodeAPIs": [
+        "assert",
+        "net",
+        "tls",
+        "url"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/net_test.go",
+        "internal/jsbridge/nodecompat_test.go"
+      ]
+    },
+    {
+      "name": "iconv-lite",
+      "version": "0.4.24",
+      "dependencyClass": "transitive",
+      "inputs": 21,
+      "disabledInputs": 2,
+      "bytes": 309704,
+      "nodeAPIs": [
+        "string_decoder"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ]
+    },
+    {
+      "name": "ignore",
+      "version": "7.0.5",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 19476
+    },
+    {
+      "name": "image-size",
+      "version": "2.0.2",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 27829
+    },
+    {
+      "name": "is-extendable",
+      "version": "0.1.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 331
+    },
+    {
+      "name": "is-network-error",
+      "version": "1.3.2",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 1508
+    },
+    {
+      "name": "js-base64",
+      "version": "3.7.8",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 10472
+    },
+    {
+      "name": "js-tiktoken",
+      "version": "1.0.21",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 5608860,
+      "packagePatches": [
+        "tiktoken-fallback"
+      ],
+      "compatibilityTests": [
+        "fixtures/ts/agent",
+        "fixtures/ts/ai"
+      ]
+    },
+    {
+      "name": "js-yaml",
+      "version": "3.14.2",
+      "dependencyClass": "transitive",
+      "inputs": 30,
+      "bytes": 107545
+    },
+    {
+      "name": "json-bigint",
+      "version": "1.0.0",
+      "dependencyClass": "transitive",
+      "inputs": 3,
+      "bytes": 26744
+    },
+    {
+      "name": "json-schema-to-zod",
+      "version": "2.8.1",
+      "dependencyClass": "transitive",
+      "inputs": 25,
+      "bytes": 29682
+    },
+    {
+      "name": "keyword-extractor",
+      "version": "0.0.28",
+      "dependencyClass": "transitive",
+      "inputs": 22,
+      "bytes": 251833
+    },
+    {
+      "name": "kind-of",
+      "version": "6.0.3",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 3562
+    },
+    {
+      "name": "ky",
+      "version": "1.14.3",
+      "dependencyClass": "transitive",
+      "inputs": 15,
+      "bytes": 49211
+    },
+    {
+      "name": "lodash.merge",
+      "version": "4.6.2",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 51155
+    },
+    {
+      "name": "lru-cache",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 62297,
+      "nodeAPIs": [
+        "diagnostics_channel"
+      ],
+      "packagePatches": [
+        "lru-cache-cjs"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/jsbridge/nodecompat_test.go"
+      ]
+    },
+    {
+      "name": "mammoth",
+      "version": "1.12.0",
+      "dependencyClass": "direct",
+      "inputs": 1,
+      "bytes": 884760
+    },
+    {
+      "name": "math-intrinsics",
+      "version": "1.1.0",
+      "dependencyClass": "transitive",
+      "inputs": 8,
+      "bytes": 781
+    },
+    {
+      "name": "memory-pager",
+      "version": "1.5.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 3731
+    },
+    {
+      "name": "microsoft-cognitiveservices-speech-sdk",
+      "version": "1.50.0",
+      "dependencyClass": "transitive",
+      "inputs": 244,
+      "bytes": 1073449,
+      "nodeAPIs": [
+        "fs",
+        "net",
+        "tls"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/net_test.go"
+      ]
+    },
+    {
+      "name": "mongodb",
+      "version": "7.2.0",
+      "dependencyClass": "direct-storage-client",
+      "externalService": true,
+      "inputs": 131,
+      "bytes": 1117230,
+      "nodeAPIs": [
+        "child_process",
+        "crypto",
+        "dns",
+        "events",
+        "fs",
+        "fs/promises",
+        "http",
+        "net",
+        "os",
+        "process",
+        "stream",
+        "timers",
+        "timers/promises",
+        "tls",
+        "url",
+        "util",
+        "zlib"
+      ],
+      "externalImports": [
+        "@aws-sdk/credential-providers",
+        "@mongodb-js/zstd",
+        "kerberos",
+        "mongodb-client-encryption",
+        "snappy",
+        "socks"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go",
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go",
+        "internal/jsbridge/dns_test.go",
+        "internal/jsbridge/exec_test.go",
+        "internal/jsbridge/net_test.go",
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsbridge/nodestreams_test.go",
+        "internal/jsbridge/os_test.go",
+        "internal/jsbridge/polyfill_extras_test.go",
+        "internal/jsbridge/zlib_test.go"
+      ]
+    },
+    {
+      "name": "mongodb-connection-string-url",
+      "version": "7.0.1",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 12109
+    },
+    {
+      "name": "ms",
+      "version": "2.0.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 2764
+    },
+    {
+      "name": "ms",
+      "version": "2.1.3",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 3024
+    },
+    {
+      "name": "needle",
+      "version": "2.9.1",
+      "dependencyClass": "transitive",
+      "inputs": 8,
+      "bytes": 43775,
+      "nodeAPIs": [
+        "crypto",
+        "fs",
+        "http",
+        "https",
+        "path",
+        "querystring",
+        "stream",
+        "url",
+        "util",
+        "zlib"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go",
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsbridge/nodestreams_test.go",
+        "internal/jsbridge/zlib_test.go"
+      ]
+    },
+    {
+      "name": "node-domexception",
+      "version": "1.0.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 461,
+      "nodeAPIs": [
+        "worker_threads"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ]
+    },
+    {
+      "name": "node-fetch",
+      "version": "2.7.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 781
+    },
+    {
+      "name": "node-fetch",
+      "version": "3.3.2",
+      "dependencyClass": "transitive",
+      "inputs": 13,
+      "bytes": 67436,
+      "nodeAPIs": [
+        "buffer",
+        "http",
+        "https",
+        "net",
+        "stream",
+        "url",
+        "util",
+        "zlib"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/buffer_test.go",
+        "internal/jsbridge/net_test.go",
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsbridge/nodestreams_test.go",
+        "internal/jsbridge/zlib_test.go"
+      ]
+    },
+    {
+      "name": "node-html-better-parser",
+      "version": "1.5.8",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 35681
+    },
+    {
+      "name": "object-inspect",
+      "version": "1.13.4",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "disabledInputs": 1,
+      "bytes": 19059
+    },
+    {
+      "name": "openai",
+      "version": "5.23.2",
+      "dependencyClass": "transitive",
+      "inputs": 103,
+      "bytes": 323907
+    },
+    {
+      "name": "p-map",
+      "version": "7.0.4",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 7151
+    },
+    {
+      "name": "p-retry",
+      "version": "7.1.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 5829
+    },
+    {
+      "name": "papaparse",
+      "version": "5.5.3",
+      "dependencyClass": "direct",
+      "inputs": 1,
+      "bytes": 19419
+    },
+    {
+      "name": "pdfjs-dist",
+      "version": "5.7.284",
+      "dependencyClass": "direct",
+      "inputs": 2,
+      "bytes": 3340639
+    },
+    {
+      "name": "pg",
+      "version": "8.20.0",
+      "dependencyClass": "direct-storage-client",
+      "externalService": true,
+      "inputs": 19,
+      "bytes": 84912,
+      "nodeAPIs": [
+        "crypto",
+        "dns",
+        "events",
+        "net",
+        "tls",
+        "util"
+      ],
+      "externalImports": [
+        "pg-native"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go",
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go",
+        "internal/jsbridge/dns_test.go",
+        "internal/jsbridge/net_test.go",
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "pg-cloudflare",
+      "version": "1.3.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 258
+    },
+    {
+      "name": "pg-connection-string",
+      "version": "2.12.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 7157,
+      "nodeAPIs": [
+        "fs"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go"
+      ]
+    },
+    {
+      "name": "pg-int8",
+      "version": "1.0.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 1572
+    },
+    {
+      "name": "pg-pool",
+      "version": "3.13.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 14446,
+      "nodeAPIs": [
+        "events"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "pg-protocol",
+      "version": "1.13.0",
+      "dependencyClass": "transitive",
+      "inputs": 6,
+      "bytes": 30523
+    },
+    {
+      "name": "pg-types",
+      "version": "2.2.0",
+      "dependencyClass": "transitive",
+      "inputs": 5,
+      "bytes": 14416
+    },
+    {
+      "name": "pgpass",
+      "version": "1.0.5",
+      "dependencyClass": "transitive",
+      "inputs": 2,
+      "bytes": 5955,
+      "nodeAPIs": [
+        "fs",
+        "path",
+        "stream",
+        "util"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "picomatch",
+      "version": "4.0.4",
+      "dependencyClass": "transitive",
+      "inputs": 6,
+      "bytes": 60036
+    },
+    {
+      "name": "postgres-array",
+      "version": "2.0.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 2320
+    },
+    {
+      "name": "postgres-bytea",
+      "version": "1.0.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 863
+    },
+    {
+      "name": "postgres-date",
+      "version": "1.0.7",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 2676
+    },
+    {
+      "name": "postgres-interval",
+      "version": "1.2.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 3413
+    },
+    {
+      "name": "probe-image-size",
+      "version": "7.3.0",
+      "dependencyClass": "transitive",
+      "inputs": 30,
+      "bytes": 64485,
+      "nodeAPIs": [
+        "stream",
+        "url"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "promise-limit",
+      "version": "2.7.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 1550
+    },
+    {
+      "name": "punycode",
+      "version": "2.3.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 12711
+    },
+    {
+      "name": "qs",
+      "version": "6.15.1",
+      "dependencyClass": "transitive",
+      "inputs": 5,
+      "bytes": 36719
+    },
+    {
+      "name": "readable-stream",
+      "version": "4.7.0",
+      "dependencyClass": "transitive",
+      "inputs": 25,
+      "bytes": 202898,
+      "nodeAPIs": [
+        "buffer",
+        "events",
+        "process",
+        "string_decoder"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/buffer_test.go",
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsbridge/nodestreams_test.go",
+        "internal/jsbridge/polyfill_extras_test.go"
+      ]
+    },
+    {
+      "name": "redis",
+      "version": "5.10.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 2661
+    },
+    {
+      "name": "reusify",
+      "version": "1.1.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 454
+    },
+    {
+      "name": "safer-buffer",
+      "version": "2.1.2",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 2110,
+      "nodeAPIs": [
+        "buffer"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/buffer_test.go"
+      ]
+    },
+    {
+      "name": "sax",
+      "version": "1.6.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 50146,
+      "nodeAPIs": [
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "section-matter",
+      "version": "1.0.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 3082
+    },
+    {
+      "name": "sentiment",
+      "version": "5.0.2",
+      "dependencyClass": "transitive",
+      "inputs": 8,
+      "bytes": 77990
+    },
+    {
+      "name": "side-channel",
+      "version": "1.1.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 1189
+    },
+    {
+      "name": "side-channel-list",
+      "version": "1.0.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 3391
+    },
+    {
+      "name": "side-channel-map",
+      "version": "1.0.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 1981
+    },
+    {
+      "name": "side-channel-weakmap",
+      "version": "1.0.2",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 2708
+    },
+    {
+      "name": "sparse-bitfield",
+      "version": "3.0.3",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 2303
+    },
+    {
+      "name": "split2",
+      "version": "4.2.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 3764,
+      "nodeAPIs": [
+        "stream",
+        "string_decoder"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
+    },
+    {
+      "name": "stream-parser",
+      "version": "0.3.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 8261,
+      "nodeAPIs": [
+        "assert"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ]
+    },
+    {
+      "name": "string-similarity",
+      "version": "4.0.4",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 1985
+    },
+    {
+      "name": "strip-bom-string",
+      "version": "1.0.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 321
+    },
+    {
+      "name": "suffix-thumb",
+      "version": "5.0.2",
+      "dependencyClass": "transitive",
+      "inputs": 15,
+      "bytes": 11619
+    },
+    {
+      "name": "tokenx",
+      "version": "1.3.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 6072
+    },
+    {
+      "name": "tr46",
+      "version": "5.0.0",
+      "dependencyClass": "transitive",
+      "inputs": 4,
+      "bytes": 216278
+    },
+    {
+      "name": "uncrypto",
+      "version": "0.1.3",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 348
+    },
+    {
+      "name": "url-join",
+      "version": "4.0.1",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 2437
+    },
+    {
+      "name": "uuid",
+      "version": "9.0.1",
+      "dependencyClass": "transitive",
+      "inputs": 16,
+      "bytes": 24630
+    },
+    {
+      "name": "vscode-jsonrpc",
+      "dependencyClass": "direct",
+      "inputs": 1,
+      "bytes": 9778,
+      "nodeAPIs": [
+        "crypto",
+        "net",
+        "os",
+        "path"
+      ],
+      "packagePatches": [
+        "vscode-jsonrpc-node"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go",
+        "internal/jsbridge/net_test.go",
+        "internal/jsbridge/os_test.go"
+      ]
+    },
+    {
+      "name": "vscode-jsonrpc",
+      "version": "8.2.0",
+      "dependencyClass": "direct",
+      "inputs": 17,
+      "bytes": 126449,
+      "packagePatches": [
+        "vscode-jsonrpc-node"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go"
+      ]
+    },
+    {
+      "name": "vscode-jsonrpc",
+      "version": "8.2.1",
+      "dependencyClass": "direct",
+      "inputs": 15,
+      "bytes": 122927,
+      "nodeAPIs": [
+        "util"
+      ],
+      "packagePatches": [
+        "vscode-jsonrpc-node"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/jsbridge/nodecompat_test.go"
+      ]
+    },
+    {
+      "name": "vscode-languageserver-protocol",
+      "version": "3.17.5",
+      "dependencyClass": "direct",
+      "inputs": 27,
+      "bytes": 116147
+    },
+    {
+      "name": "vscode-languageserver-types",
+      "version": "3.17.5",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 77435
+    },
+    {
+      "name": "web-streams-polyfill",
+      "version": "3.3.3",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 212241
+    },
+    {
+      "name": "webidl-conversions",
+      "version": "7.0.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 12725
+    },
+    {
+      "name": "whatwg-url",
+      "version": "14.1.1",
+      "dependencyClass": "transitive",
+      "inputs": 13,
+      "bytes": 89000
+    },
+    {
+      "name": "ws",
+      "dependencyClass": "transitive",
+      "packagePatches": [
+        "ws-alias"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/websocket_test.go"
+      ]
+    },
+    {
+      "name": "xtend",
+      "version": "4.0.2",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 369
+    },
+    {
+      "name": "xxhash-wasm",
+      "version": "1.1.0",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 11195
+    },
+    {
+      "name": "zeroentropy",
+      "version": "0.1.0-alpha.7",
+      "dependencyClass": "transitive",
+      "inputs": 18,
+      "bytes": 65333
+    },
+    {
+      "name": "zod",
+      "dependencyClass": "transitive",
+      "inputs": 65,
+      "bytes": 420694,
+      "packagePatches": [
+        "zod-unify"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go"
+      ]
+    },
+    {
+      "name": "zod",
+      "version": "3.25.76",
+      "dependencyClass": "transitive",
+      "inputs": 65,
+      "bytes": 420694,
+      "packagePatches": [
+        "zod-unify"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go"
+      ]
+    },
+    {
+      "name": "zod",
+      "version": "4.4.3",
+      "dependencyClass": "transitive",
+      "inputs": 90,
+      "bytes": 717738,
+      "packagePatches": [
+        "zod-unify"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go"
+      ]
+    },
+    {
+      "name": "zod-from-json-schema",
+      "version": "0.0.5",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 7303
+    },
+    {
+      "name": "zod-from-json-schema",
+      "version": "0.5.2",
+      "dependencyClass": "transitive",
+      "inputs": 1,
+      "bytes": 28978
+    },
+    {
+      "name": "zod-to-json-schema",
+      "version": "3.25.2",
+      "dependencyClass": "transitive",
+      "inputs": 39,
+      "bytes": 54265
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "@opentelemetry/api",
+      "kind": "dynamic-require",
+      "classification": "shape-only",
+      "status": "stub",
+      "owner": "internal/embed/agent.runtimeGlobalsJS",
+      "used": true,
+      "globals": [
+        "require"
+      ],
+      "exports": [
+        "SpanKind",
+        "SpanStatusCode",
+        "context",
+        "diag",
+        "metrics",
+        "propagation",
+        "trace"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/embed/agent/conformance_test.go"
+      ],
+      "reason": "Dynamic require path is served with a no-op tracer shape until host-side OTel injection is implemented."
+    },
+    {
+      "id": "execa",
+      "kind": "dynamic-require",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "internal/embed/agent.runtimeGlobalsJS",
+      "used": true,
+      "globals": [
+        "__execa_polyfill",
+        "require"
+      ],
+      "exports": [
+        "execa"
+      ],
+      "dependencies": [
+        "child_process"
+      ],
+      "resources": [
+        "process"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/embed/agent/conformance_test.go"
+      ],
+      "reason": "Dynamic execa import is redirected to an explicit polyfill hook and otherwise throws."
+    },
+    {
+      "id": "vscode-jsonrpc",
+      "kind": "dynamic-require",
+      "classification": "shape-only",
+      "status": "stub",
+      "owner": "internal/embed/agent.runtimeGlobalsJS",
+      "used": true,
+      "globals": [
+        "__vscode_jsonrpc_node",
+        "require"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/embed/agent/conformance_test.go"
+      ],
+      "reason": "Optional LSP dependency path is shape-only unless language server functionality is exercised."
+    },
+    {
+      "id": "vscode-jsonrpc/node",
+      "kind": "dynamic-require",
+      "classification": "shape-only",
+      "status": "stub",
+      "owner": "internal/embed/agent.runtimeGlobalsJS",
+      "used": true,
+      "globals": [
+        "__vscode_jsonrpc_node",
+        "require"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/embed/agent/conformance_test.go"
+      ],
+      "reason": "Optional LSP dependency path is shape-only unless language server functionality is exercised."
+    },
+    {
+      "id": "vscode-languageserver-protocol",
+      "kind": "dynamic-require",
+      "classification": "shape-only",
+      "status": "stub",
+      "owner": "internal/embed/agent.runtimeGlobalsJS",
+      "used": true,
+      "globals": [
+        "__vscode_lsp_protocol",
+        "require"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/embed/agent/conformance_test.go"
+      ],
+      "reason": "Optional LSP dependency path is shape-only unless language server functionality is exercised."
+    },
+    {
+      "id": "zod",
+      "kind": "dynamic-require",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/embed/agent.runtimeGlobalsJS",
+      "used": true,
+      "globals": [
+        "__zod_v4_module",
+        "require"
+      ],
+      "exports": [
+        "toJSONSchema",
+        "z"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/embed/agent/conformance_test.go"
+      ],
+      "reason": "Dynamic require must resolve to the bundled zod/v4 singleton."
+    },
+    {
+      "id": "zod/v4",
+      "kind": "dynamic-require",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/embed/agent.runtimeGlobalsJS",
+      "used": true,
+      "globals": [
+        "__zod_v4_module",
+        "require"
+      ],
+      "exports": [
+        "toJSONSchema",
+        "z"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/embed/agent/conformance_test.go"
+      ],
+      "reason": "Dynamic require must resolve to the bundled zod/v4 singleton."
+    },
+    {
+      "id": "@ast-grep/napi",
+      "kind": "external",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "agent embed bundle configured external",
+      "used": false,
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "reason": "Native ast-grep binding is not available in QuickJS."
+    },
+    {
+      "id": "@aws-sdk/credential-providers",
+      "kind": "external",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "agent embed bundle external",
+      "used": true,
+      "usedByPackages": [
+        "mongodb"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "reason": "Optional cloud credential provider path is not bundled for the current agent embed surface."
+    },
+    {
+      "id": "@chroma-core/default-embed",
+      "kind": "external",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "agent embed bundle external",
+      "used": true,
+      "usedByPackages": [
+        "chromadb"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "reason": "Optional Chroma default embedding dynamic import is not bundled; Brainkit supplies embeddings through configured providers."
+    },
+    {
+      "id": "@mongodb-js/zstd",
+      "kind": "external",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "agent embed bundle external",
+      "used": true,
+      "usedByPackages": [
+        "mongodb"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "reason": "Optional MongoDB native zstd compression is not bundled."
+    },
+    {
+      "id": "better-sqlite3",
+      "kind": "external",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "agent embed bundle configured external",
+      "used": false,
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "reason": "Native SQLite binding is not available in QuickJS; libsql paths use HTTP/JS-compatible clients."
+    },
+    {
+      "id": "fastembed",
+      "kind": "external",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "agent embed bundle configured external",
+      "used": false,
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "reason": "Native/local embedding package is not available in the current QuickJS embed."
+    },
+    {
+      "id": "gcp-metadata",
+      "kind": "external",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "agent embed bundle external",
+      "used": false,
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "reason": "Optional cloud metadata lookup is not bundled for the current agent embed surface."
+    },
+    {
+      "id": "hono",
+      "kind": "external",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "agent embed bundle configured external",
+      "used": false,
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "reason": "Server framework path is intentionally external for the current agent embed surface."
+    },
+    {
+      "id": "kerberos",
+      "kind": "external",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "agent embed bundle external",
+      "used": true,
+      "usedByPackages": [
+        "mongodb"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "reason": "Optional MongoDB native auth dependency is not bundled."
+    },
+    {
+      "id": "mongodb-client-encryption",
+      "kind": "external",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "agent embed bundle external",
+      "used": true,
+      "usedByPackages": [
+        "mongodb"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "reason": "Optional MongoDB native client-side encryption is not bundled."
+    },
+    {
+      "id": "pg-native",
+      "kind": "external",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "agent embed bundle external",
+      "used": true,
+      "usedByPackages": [
+        "pg"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "reason": "Optional native pg acceleration is not available in QuickJS; pg falls back to pure JS."
+    },
+    {
+      "id": "snappy",
+      "kind": "external",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "agent embed bundle external",
+      "used": true,
+      "usedByPackages": [
+        "mongodb"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "reason": "Optional MongoDB native snappy compression is not bundled."
+    },
+    {
+      "id": "socks",
+      "kind": "external",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "agent embed bundle external",
+      "used": true,
+      "usedByPackages": [
+        "mongodb"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "reason": "Optional SOCKS proxy support is not bundled."
+    },
+    {
+      "id": "assert",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.NodeCompat",
+      "used": true,
+      "usedByPackages": [
+        "@redis/client",
+        "https-proxy-agent",
+        "stream-parser"
+      ],
+      "globals": [
+        "assert"
+      ],
+      "exports": [
+        "deepStrictEqual",
+        "default",
+        "fail",
+        "ok",
+        "strictEqual",
+        "throws"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ],
+      "reason": "Mastra dependencies import assertion helpers; behavior is provided by the pure jsbridge Node compatibility polyfill."
+    },
+    {
+      "id": "async_hooks",
+      "kind": "node-module",
+      "classification": "shape-only",
+      "status": "stub",
+      "owner": "internal/jsbridge.NodeCompat",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/core",
+        "@mastra/memory"
+      ],
+      "globals": [
+        "async_hooks"
+      ],
+      "exports": [
+        "AsyncLocalStorage",
+        "AsyncResource",
+        "createHook",
+        "default",
+        "executionAsyncId",
+        "executionAsyncResource",
+        "triggerAsyncId"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ],
+      "reason": "Imported by observability/runtime dependencies for shape. Async context propagation is not implemented yet."
+    },
+    {
+      "id": "buffer",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Buffer",
+      "used": true,
+      "usedByPackages": [
+        "fetch-blob",
+        "node-fetch",
+        "readable-stream",
+        "safer-buffer"
+      ],
+      "globals": [
+        "Buffer"
+      ],
+      "exports": [
+        "Buffer",
+        "default"
+      ],
+      "dependencies": [
+        "encoding"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/buffer_test.go"
+      ],
+      "reason": "Node Buffer is required by storage, network, RAG, and AI SDK dependencies."
+    },
+    {
+      "id": "child_process",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Exec",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/core",
+        "mongodb"
+      ],
+      "globals": [
+        "child_process"
+      ],
+      "exports": [
+        "default",
+        "exec",
+        "execFile",
+        "execFileSync",
+        "execSync",
+        "spawn",
+        "spawnSync"
+      ],
+      "dependencies": [
+        "process"
+      ],
+      "resources": [
+        "goroutine",
+        "pipe",
+        "process"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/exec_test.go"
+      ],
+      "reason": "Workspace and harness paths need controlled subprocess support scoped to the sandbox CWD."
+    },
+    {
+      "id": "crypto",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Crypto",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/core",
+        "@mastra/libsql",
+        "@mastra/memory",
+        "@mastra/mongodb",
+        "@mastra/pg",
+        "@mastra/rag",
+        "@mastra/redis",
+        "@mastra/upstash",
+        "@redis/client",
+        "gaxios",
+        "mongodb",
+        "needle",
+        "pg",
+        "vscode-jsonrpc"
+      ],
+      "globals": [
+        "crypto"
+      ],
+      "exports": [
+        "constants",
+        "createHash",
+        "createHmac",
+        "default",
+        "pbkdf2",
+        "pbkdf2Sync",
+        "randomBytes",
+        "randomFillSync",
+        "randomInt",
+        "randomUUID",
+        "timingSafeEqual",
+        "webcrypto"
+      ],
+      "dependencies": [
+        "encoding"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/crypto_test.go"
+      ],
+      "reason": "AI SDK, pg, MongoDB, and auth code rely on WebCrypto plus Node crypto helpers."
+    },
+    {
+      "id": "diagnostics_channel",
+      "kind": "node-module",
+      "classification": "shape-only",
+      "status": "stub",
+      "owner": "internal/jsbridge.NodeCompat",
+      "used": true,
+      "usedByPackages": [
+        "@redis/client",
+        "lru-cache"
+      ],
+      "globals": [
+        "diagnostics_channel"
+      ],
+      "exports": [
+        "Channel",
+        "channel",
+        "default",
+        "hasSubscribers",
+        "subscribe",
+        "tracingChannel",
+        "unsubscribe"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ],
+      "reason": "Imported by instrumentation dependencies for optional diagnostics hooks. No-op behavior is intentional until tracing integration owns it."
+    },
+    {
+      "id": "dns",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.DNS",
+      "used": true,
+      "usedByPackages": [
+        "mongodb",
+        "pg"
+      ],
+      "globals": [
+        "dns"
+      ],
+      "exports": [
+        "ADDRCONFIG",
+        "NODATA",
+        "NOTFOUND",
+        "Resolver",
+        "TIMEOUT",
+        "V4MAPPED",
+        "default",
+        "lookup",
+        "promises",
+        "resolve4"
+      ],
+      "dependencies": [
+        "net"
+      ],
+      "resources": [
+        "goroutine"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/dns_test.go"
+      ],
+      "reason": "pg, MongoDB, and networked providers need DNS lookup behavior."
+    },
+    {
+      "id": "events",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Events",
+      "used": true,
+      "usedByPackages": [
+        "@deepgram/sdk",
+        "@mastra/core",
+        "@mastra/voice-openai-realtime",
+        "@redis/client",
+        "google-logging-utils",
+        "mongodb",
+        "pg",
+        "pg-pool",
+        "readable-stream"
+      ],
+      "globals": [
+        "EventEmitter"
+      ],
+      "exports": [
+        "EventEmitter",
+        "default"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ],
+      "reason": "Node streams, sockets, websocket, and many packages expect EventEmitter."
+    },
+    {
+      "id": "fs",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.FS",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/core",
+        "@mastra/memory",
+        "@mastra/observability",
+        "fetch-blob",
+        "gcp-metadata",
+        "gray-matter",
+        "microsoft-cognitiveservices-speech-sdk",
+        "mongodb",
+        "needle",
+        "pg-connection-string",
+        "pgpass"
+      ],
+      "globals": [
+        "fs"
+      ],
+      "exports": [
+        "constants",
+        "createReadStream",
+        "createWriteStream",
+        "default",
+        "promises",
+        "readFile",
+        "readdir",
+        "stat",
+        "writeFile"
+      ],
+      "dependencies": [
+        "buffer",
+        "stream"
+      ],
+      "resources": [
+        "file-handle",
+        "goroutine",
+        "stream",
+        "watcher"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go"
+      ],
+      "reason": "Workspace, document loaders, package tooling, and storage adapters need sandbox-scoped file access."
+    },
+    {
+      "id": "http",
+      "kind": "node-module",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "internal/jsbridge.NodeCompat",
+      "used": true,
+      "usedByPackages": [
+        "agent-base",
+        "mongodb",
+        "needle",
+        "node-fetch"
+      ],
+      "globals": [
+        "http"
+      ],
+      "exports": [
+        "Agent",
+        "METHODS",
+        "STATUS_CODES",
+        "createServer",
+        "default",
+        "get",
+        "globalAgent",
+        "request"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ],
+      "reason": "Server/request APIs are not implemented; dependencies currently need shape constants only. Use fetch for real HTTP."
+    },
+    {
+      "id": "https",
+      "kind": "node-module",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "internal/jsbridge.NodeCompat",
+      "used": true,
+      "usedByPackages": [
+        "agent-base",
+        "gaxios",
+        "needle",
+        "node-fetch"
+      ],
+      "globals": [
+        "https"
+      ],
+      "exports": [
+        "Agent",
+        "createServer",
+        "default",
+        "get",
+        "globalAgent",
+        "request"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ],
+      "reason": "Server/request APIs are not implemented; dependencies currently need agent shape only. Use fetch for real HTTP."
+    },
+    {
+      "id": "module",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/embed/agent.runtimeGlobalsJS",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/core",
+        "@mastra/observability",
+        "@mastra/pg"
+      ],
+      "globals": [
+        "node_module"
+      ],
+      "exports": [
+        "createRequire",
+        "default"
+      ],
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go",
+        "internal/embed/agent/conformance_test.go"
+      ],
+      "reason": "Some bundled packages call createRequire for dynamic optional dependencies."
+    },
+    {
+      "id": "net",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Net",
+      "used": true,
+      "usedByPackages": [
+        "@redis/client",
+        "agent-base",
+        "https-proxy-agent",
+        "microsoft-cognitiveservices-speech-sdk",
+        "mongodb",
+        "node-fetch",
+        "pg",
+        "vscode-jsonrpc"
+      ],
+      "globals": [
+        "GoSocket",
+        "net"
+      ],
+      "exports": [
+        "Server",
+        "Socket",
+        "connect",
+        "createConnection",
+        "createServer",
+        "default",
+        "isIP",
+        "isIPv4",
+        "isIPv6"
+      ],
+      "dependencies": [
+        "buffer",
+        "stream"
+      ],
+      "resources": [
+        "goroutine",
+        "tcp-socket"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/net_test.go"
+      ],
+      "reason": "pg and MongoDB require TCP sockets."
+    },
+    {
+      "id": "os",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.OS",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/core",
+        "gcp-metadata",
+        "mongodb",
+        "vscode-jsonrpc"
+      ],
+      "globals": [
+        "os"
+      ],
+      "exports": [
+        "EOL",
+        "arch",
+        "cpus",
+        "default",
+        "endianness",
+        "freemem",
+        "homedir",
+        "hostname",
+        "platform",
+        "release",
+        "tmpdir",
+        "totalmem",
+        "type"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/os_test.go"
+      ],
+      "reason": "Node packages branch on platform and environment details."
+    },
+    {
+      "id": "path",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Path",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/core",
+        "@mastra/memory",
+        "@mastra/observability",
+        "fetch-blob",
+        "needle",
+        "pgpass",
+        "vscode-jsonrpc"
+      ],
+      "globals": [
+        "path"
+      ],
+      "exports": [
+        "basename",
+        "default",
+        "delimiter",
+        "dirname",
+        "extname",
+        "isAbsolute",
+        "join",
+        "normalize",
+        "parse",
+        "posix",
+        "relative",
+        "resolve",
+        "sep"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go"
+      ],
+      "reason": "Node path helpers are provided by jsbridge and re-exported by the bundle stub."
+    },
+    {
+      "id": "perf_hooks",
+      "kind": "node-module",
+      "classification": "shape-only",
+      "status": "stub",
+      "owner": "internal/jsbridge.NodeCompat plus internal/jsbridge.Performance",
+      "used": false,
+      "globals": [
+        "perf_hooks",
+        "performance"
+      ],
+      "exports": [
+        "PerformanceObserver",
+        "default",
+        "monitorEventLoopDelay",
+        "performance"
+      ],
+      "dependencies": [
+        "performance"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ],
+      "reason": "Packages need performance.now and optional observer shapes; full Node performance observers remain intentionally shape-only."
+    },
+    {
+      "id": "process",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Process",
+      "used": true,
+      "usedByPackages": [
+        "chromadb",
+        "fetch-blob",
+        "google-logging-utils",
+        "mongodb",
+        "readable-stream"
+      ],
+      "aliases": [
+        "process/"
+      ],
+      "globals": [
+        "process"
+      ],
+      "exports": [
+        "arch",
+        "argv",
+        "cwd",
+        "default",
+        "env",
+        "nextTick",
+        "pid",
+        "platform",
+        "stderr",
+        "stdout",
+        "version",
+        "versions"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/polyfill_extras_test.go"
+      ],
+      "reason": "Node packages branch on process metadata and environment variables. The trailing slash alias appears in bundled dependencies."
+    },
+    {
+      "id": "querystring",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.NodeCompat",
+      "used": true,
+      "usedByPackages": [
+        "needle"
+      ],
+      "globals": [
+        "querystring"
+      ],
+      "exports": [
+        "decode",
+        "default",
+        "encode",
+        "parse",
+        "stringify"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ],
+      "reason": "Legacy URL encoding helpers are used by older dependencies and are pure JavaScript compatibility behavior."
+    },
+    {
+      "id": "stream",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.NodeStreams",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/core",
+        "@mastra/voice-azure",
+        "@mastra/voice-deepgram",
+        "@mastra/voice-murf",
+        "@mastra/voice-openai",
+        "@mastra/voice-openai-realtime",
+        "@mastra/voice-playai",
+        "@mastra/voice-sarvam",
+        "@mastra/voice-speechify",
+        "@redis/client",
+        "gaxios",
+        "mongodb",
+        "needle",
+        "node-fetch",
+        "pgpass",
+        "probe-image-size",
+        "sax",
+        "split2"
+      ],
+      "globals": [
+        "stream"
+      ],
+      "exports": [
+        "Duplex",
+        "EventEmitter",
+        "PassThrough",
+        "Readable",
+        "Stream",
+        "Transform",
+        "Writable",
+        "default",
+        "finished",
+        "pipeline"
+      ],
+      "dependencies": [
+        "buffer",
+        "events"
+      ],
+      "resources": [
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ],
+      "reason": "Node streams underpin fs, net, zlib, fetch interop, and many package adapters."
+    },
+    {
+      "id": "string_decoder",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.NodeCompat",
+      "used": true,
+      "usedByPackages": [
+        "iconv-lite",
+        "readable-stream",
+        "split2"
+      ],
+      "aliases": [
+        "string_decoder/"
+      ],
+      "globals": [
+        "StringDecoder"
+      ],
+      "exports": [
+        "StringDecoder",
+        "default"
+      ],
+      "dependencies": [
+        "encoding"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ],
+      "reason": "Text decoding shape is needed by stream-oriented Node packages. The trailing slash alias appears in bundled dependencies."
+    },
+    {
+      "id": "timers",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Timers and internal/jsbridge.Scheduling",
+      "used": true,
+      "usedByPackages": [
+        "mongodb"
+      ],
+      "globals": [
+        "clearImmediate",
+        "clearInterval",
+        "clearTimeout",
+        "setImmediate",
+        "setInterval",
+        "setTimeout"
+      ],
+      "exports": [
+        "clearImmediate",
+        "clearInterval",
+        "clearTimeout",
+        "default",
+        "setImmediate",
+        "setInterval",
+        "setTimeout"
+      ],
+      "resources": [
+        "goroutine",
+        "interval",
+        "timer"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go"
+      ],
+      "reason": "Promise polling, stream scheduling, and package internals require timers."
+    },
+    {
+      "id": "tls",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Net",
+      "used": true,
+      "usedByPackages": [
+        "@redis/client",
+        "https-proxy-agent",
+        "microsoft-cognitiveservices-speech-sdk",
+        "mongodb",
+        "pg"
+      ],
+      "globals": [
+        "tls"
+      ],
+      "exports": [
+        "DEFAULT_ECDH_CURVE",
+        "DEFAULT_MAX_VERSION",
+        "DEFAULT_MIN_VERSION",
+        "TLSSocket",
+        "connect",
+        "createServer",
+        "default"
+      ],
+      "dependencies": [
+        "net"
+      ],
+      "resources": [
+        "goroutine",
+        "tcp-socket",
+        "tls-socket"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/net_test.go"
+      ],
+      "reason": "pg SSL upgrades require tls.connect over an existing net.Socket. The wrapper lives next to the net polyfill owner."
+    },
+    {
+      "id": "url",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.URL",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/core",
+        "@mastra/observability",
+        "@redis/client",
+        "https-proxy-agent",
+        "mongodb",
+        "needle",
+        "node-fetch",
+        "probe-image-size"
+      ],
+      "globals": [
+        "node_url"
+      ],
+      "exports": [
+        "URL",
+        "URLSearchParams",
+        "default",
+        "fileURLToPath",
+        "format",
+        "parse",
+        "pathToFileURL",
+        "resolve"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go"
+      ],
+      "reason": "WHATWG URL is Go-backed; legacy node:url parse/format helpers are hosted by the jsbridge URL polyfill."
+    },
+    {
+      "id": "util",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.NodeCompat plus internal/jsbridge.Inspect",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/memory",
+        "google-logging-utils",
+        "mongodb",
+        "needle",
+        "node-fetch",
+        "pg",
+        "pgpass",
+        "vscode-jsonrpc"
+      ],
+      "globals": [
+        "util"
+      ],
+      "exports": [
+        "TextDecoder",
+        "TextEncoder",
+        "default",
+        "deprecate",
+        "format",
+        "inherits",
+        "inspect",
+        "promisify",
+        "types"
+      ],
+      "dependencies": [
+        "encoding",
+        "inspect"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ],
+      "reason": "Node packages use util formatting, inheritance, promisify, and type checks."
+    },
+    {
+      "id": "worker_threads",
+      "kind": "node-module",
+      "classification": "unsupported-guarded",
+      "status": "unsupported",
+      "owner": "internal/jsbridge.NodeCompat",
+      "used": true,
+      "usedByPackages": [
+        "node-domexception"
+      ],
+      "globals": [
+        "worker_threads"
+      ],
+      "exports": [
+        "MessageChannel",
+        "MessagePort",
+        "Worker",
+        "default",
+        "isMainThread",
+        "parentPort",
+        "threadId",
+        "workerData"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ],
+      "reason": "QuickJS runtime is single-threaded; Worker constructor must throw until an explicit worker model exists."
+    },
+    {
+      "id": "zlib",
+      "kind": "node-module",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Zlib",
+      "used": true,
+      "usedByPackages": [
+        "mongodb",
+        "needle",
+        "node-fetch"
+      ],
+      "globals": [
+        "zlib"
+      ],
+      "exports": [
+        "constants",
+        "createDeflate",
+        "createGunzip",
+        "createGzip",
+        "createInflate",
+        "default",
+        "deflate",
+        "deflateRaw",
+        "deflateRawSync",
+        "deflateSync",
+        "gunzip",
+        "gunzipSync",
+        "gzip",
+        "gzipSync",
+        "inflate",
+        "inflateRaw",
+        "inflateRawSync",
+        "inflateSync"
+      ],
+      "dependencies": [
+        "buffer",
+        "stream"
+      ],
+      "resources": [
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/zlib_test.go"
+      ],
+      "reason": "Compression support is required by database clients and document/network packages."
+    },
+    {
+      "id": "dns/promises",
+      "kind": "node-subpath",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.DNS",
+      "used": true,
+      "usedByPackages": [
+        "@redis/client"
+      ],
+      "globals": [
+        "dns"
+      ],
+      "exports": [
+        "default",
+        "lookup",
+        "resolve4",
+        "resolveCname",
+        "resolvePtr",
+        "resolveSrv"
+      ],
+      "dependencies": [
+        "dns"
+      ],
+      "resources": [
+        "goroutine"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/conformance_test.go",
+        "internal/jsbridge/dns_test.go"
+      ],
+      "reason": "@redis/client imports dns/promises after the Mastra storage upgrade; jsbridge.DNS already owns the Promise DNS surface."
+    },
+    {
+      "id": "fs/promises",
+      "kind": "node-subpath",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.FS",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/core",
+        "@mastra/observability",
+        "mongodb"
+      ],
+      "globals": [
+        "fs"
+      ],
+      "exports": [
+        "access",
+        "copyFile",
+        "default",
+        "lstat",
+        "mkdir",
+        "readFile",
+        "readdir",
+        "realpath",
+        "rename",
+        "rm",
+        "stat",
+        "unlink",
+        "writeFile"
+      ],
+      "dependencies": [
+        "fs"
+      ],
+      "resources": [
+        "file-handle",
+        "goroutine"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go"
+      ],
+      "reason": "Modern packages prefer promise-based fs access."
+    },
+    {
+      "id": "path/posix",
+      "kind": "node-subpath",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Path",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/core"
+      ],
+      "globals": [
+        "path"
+      ],
+      "exports": [
+        "basename",
+        "default",
+        "dirname",
+        "extname",
+        "join",
+        "resolve",
+        "sep"
+      ],
+      "dependencies": [
+        "path"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go"
+      ],
+      "reason": "POSIX path helpers are required by bundled dependencies and are exposed from the jsbridge path polyfill."
+    },
+    {
+      "id": "stream/promises",
+      "kind": "node-subpath",
+      "classification": "shape-only",
+      "status": "stub",
+      "owner": "internal/jsbridge.NodeStreams",
+      "used": false,
+      "globals": [
+        "stream"
+      ],
+      "exports": [
+        "default",
+        "finished",
+        "pipeline"
+      ],
+      "dependencies": [
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodestreams_test.go"
+      ],
+      "reason": "Promise helpers are intentionally minimal and backed by the jsbridge Node stream polyfill."
+    },
+    {
+      "id": "stream/web",
+      "kind": "node-subpath",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Streams",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/core",
+        "@mastra/observability",
+        "fetch-blob"
+      ],
+      "globals": [
+        "ReadableStream",
+        "TransformStream",
+        "WritableStream"
+      ],
+      "exports": [
+        "ReadableStream",
+        "TransformStream",
+        "WritableStream",
+        "default"
+      ],
+      "resources": [
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/async_iterator_test.go",
+        "internal/jsbridge/bridge_test.go"
+      ],
+      "reason": "Fetch and AI streaming APIs depend on Web Streams."
+    },
+    {
+      "id": "timers/promises",
+      "kind": "node-subpath",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Scheduling backed by internal/jsbridge.Timers",
+      "used": true,
+      "usedByPackages": [
+        "@redis/client",
+        "mongodb"
+      ],
+      "globals": [
+        "timersPromises"
+      ],
+      "exports": [
+        "default",
+        "setInterval",
+        "setTimeout"
+      ],
+      "dependencies": [
+        "timers"
+      ],
+      "resources": [
+        "interval",
+        "timer"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ],
+      "reason": "Some dependencies await timer promises. Interval async iteration is minimal but explicit."
+    },
+    {
+      "id": "util/types",
+      "kind": "node-subpath",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.NodeCompat",
+      "used": false,
+      "globals": [
+        "utilTypes"
+      ],
+      "exports": [
+        "default",
+        "isArrayBuffer",
+        "isDate",
+        "isMap",
+        "isRegExp",
+        "isSet",
+        "isTypedArray",
+        "isUint8Array"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/nodecompat_test.go"
+      ],
+      "reason": "Type helpers are needed by dependency feature detection and are provided by the pure jsbridge Node compatibility polyfill."
+    },
+    {
+      "id": "big-js-shim",
+      "kind": "package-patch",
+      "classification": "package-patched",
+      "status": "compat",
+      "owner": "internal/embed/agent/bundle/build.mjs",
+      "used": true,
+      "usedByPackages": [
+        "big.js"
+      ],
+      "exports": [
+        "Big",
+        "default"
+      ],
+      "package": "big.js",
+      "versionRange": "7.0.1",
+      "patchType": "esbuild-plugin",
+      "required": true,
+      "expected": "Bare big.js imports resolve to the Number-backed shim.",
+      "removalCondition": "QuickJS no longer crashes on the real big.js path or Mastra rerank validation no longer imports big.js.",
+      "compatibilityTests": [
+        "fixtures/ts/rag/rerank"
+      ],
+      "reason": "The real big.js triggered native QuickJS SIGBUS in rerank validation. Number-backed behavior is sufficient for current Mastra weight validation."
+    },
+    {
+      "id": "execa-dynamic-import",
+      "kind": "package-patch",
+      "classification": "package-patched",
+      "status": "unsupported",
+      "owner": "internal/embed/agent/bundle/build.mjs",
+      "used": true,
+      "usedByPackages": [
+        "execa"
+      ],
+      "globals": [
+        "__execa_polyfill"
+      ],
+      "exports": [
+        "execa"
+      ],
+      "dependencies": [
+        "child_process"
+      ],
+      "resources": [
+        "process"
+      ],
+      "package": "execa",
+      "versionRange": "9.6.1",
+      "patchType": "post-build-rewrite",
+      "required": true,
+      "expected": "The bundle contains a getExeca helper using await import(\"execa\").",
+      "removalCondition": "The harness/workspace path stops using dynamic import(\"execa\") or the runtime supports that dynamic import path safely.",
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go"
+      ],
+      "reason": "Dynamic import('execa') cannot run inside the IIFE/QuickJS environment; it is redirected to an explicit hook."
+    },
+    {
+      "id": "gemini-live-voice-disabled",
+      "kind": "package-patch",
+      "classification": "package-patched",
+      "status": "unsupported",
+      "owner": "internal/embed/agent/bundle/entry.mjs",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/voice-google-gemini-live"
+      ],
+      "dependencies": [
+        "fetch",
+        "websocket"
+      ],
+      "resources": [
+        "websocket"
+      ],
+      "package": "@mastra/voice-google-gemini-live",
+      "versionRange": "0.11.4",
+      "patchType": "entry-exclusion",
+      "required": true,
+      "expected": "GeminiLiveVoice import remains commented out of the agent embed entrypoint.",
+      "removalCondition": "A focused investigation proves the Gemini Live dependency path can survive SES lockdown and jsbridge runtime constraints.",
+      "compatibilityTests": [
+        "fixtures/ts/voice"
+      ],
+      "reason": "GeminiLiveVoice is temporarily removed because transitive deps caused SES lockdown rejection and need focused investigation."
+    },
+    {
+      "id": "libsql-undefined-null",
+      "kind": "package-patch",
+      "classification": "package-patched",
+      "status": "compat",
+      "owner": "internal/embed/agent/bundle/build.mjs",
+      "used": true,
+      "usedByPackages": [
+        "@libsql/client"
+      ],
+      "package": "@libsql/client",
+      "versionRange": "0.15.15",
+      "patchType": "post-build-rewrite",
+      "required": false,
+      "expected": "The bundled serializer starts with if(e===null)return null; before string handling.",
+      "removalCondition": "@libsql/client accepts undefined values directly, Brainkit storage no longer bundles this serializer, or fixtures prove the serializer is absent and unnecessary.",
+      "compatibilityTests": [
+        "fixtures/ts/memory/storage/libsql",
+        "fixtures/ts/vector/create-upsert-query/libsql"
+      ],
+      "reason": "@libsql/client serializer needs undefined values normalized to null in the bundle."
+    },
+    {
+      "id": "lru-cache-cjs",
+      "kind": "package-patch",
+      "classification": "package-patched",
+      "status": "compat",
+      "owner": "internal/embed/agent/bundle/build.mjs",
+      "used": true,
+      "usedByPackages": [
+        "lru-cache"
+      ],
+      "package": "lru-cache",
+      "versionRange": "11.3.0",
+      "patchType": "esbuild-plugin",
+      "required": true,
+      "expected": "Bare lru-cache imports resolve to dist/commonjs/index.js.",
+      "removalCondition": "The bundle format supports top-level await or lru-cache no longer needs a top-level-await ESM entry.",
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go"
+      ],
+      "reason": "The ESM build uses top-level await that cannot be bundled into the current IIFE output."
+    },
+    {
+      "id": "mastra-rag-zod-function",
+      "kind": "package-patch",
+      "classification": "package-patched",
+      "status": "compat",
+      "owner": "internal/embed/agent/bundle/build.mjs",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/rag"
+      ],
+      "dependencies": [
+        "zod-unify"
+      ],
+      "package": "@mastra/rag",
+      "versionRange": "2.2.1",
+      "patchType": "post-build-rewrite",
+      "required": true,
+      "expected": "The bundled RAG validation object contains lengthFunction:\u003cz\u003e.optional(\u003cz\u003e.function()).",
+      "removalCondition": "@mastra/rag uses a zod/v4-compatible validator without post-build rewriting.",
+      "compatibilityTests": [
+        "fixtures/ts/rag"
+      ],
+      "reason": "@mastra/rag validation uses a z.function form that needs zod/v4-compatible handling."
+    },
+    {
+      "id": "mastra-schema-null-transform-prototype",
+      "kind": "package-patch",
+      "classification": "package-patched",
+      "status": "compat",
+      "owner": "internal/embed/agent/bundle/build.mjs",
+      "used": true,
+      "usedByPackages": [
+        "@mastra/schema-compat"
+      ],
+      "dependencies": [
+        "zod-unify"
+      ],
+      "package": "@mastra/schema-compat",
+      "versionRange": "1.2.7",
+      "patchType": "post-build-rewrite",
+      "required": true,
+      "expected": "The bundled wrapSchemaWithNullTransform helper returns a plain object containing only a ~standard property.",
+      "removalCondition": "@mastra/schema-compat preserves the original schema prototype when wrapping OpenAI structured-output schemas, or Agent.generate no longer expects schema methods after wrapping.",
+      "compatibilityTests": [
+        "examples/custom-scorer",
+        "internal/embed/agent/conformance_test.go"
+      ],
+      "reason": "Mastra's OpenAI structured-output null-transform wrapper must preserve the original schema prototype so downstream Agent code can still use Zod schema methods."
+    },
+    {
+      "id": "tiktoken-fallback",
+      "kind": "package-patch",
+      "classification": "package-patched",
+      "status": "compat",
+      "owner": "internal/embed/agent/bundle/build.mjs",
+      "used": true,
+      "usedByPackages": [
+        "js-tiktoken"
+      ],
+      "package": "js-tiktoken",
+      "versionRange": "1.0.21",
+      "patchType": "post-build-rewrite",
+      "required": false,
+      "expected": "The bundle contains a getTiktoken helper and an o200k_base encoder switch.",
+      "removalCondition": "Tokenizer loading is stable without a fallback or the dependency graph no longer includes the getTiktoken helper.",
+      "compatibilityTests": [
+        "fixtures/ts/agent",
+        "fixtures/ts/ai"
+      ],
+      "reason": "Tokenizer loading must use the bundled encoding when available and a deterministic fallback otherwise."
+    },
+    {
+      "id": "vscode-jsonrpc-node",
+      "kind": "package-patch",
+      "classification": "package-patched",
+      "status": "compat",
+      "owner": "internal/embed/agent/bundle/build.mjs",
+      "used": true,
+      "usedByPackages": [
+        "vscode-jsonrpc"
+      ],
+      "globals": [
+        "__vscode_jsonrpc_node"
+      ],
+      "package": "vscode-jsonrpc",
+      "versionRange": "8.2.1",
+      "patchType": "esbuild-plugin",
+      "required": true,
+      "expected": "vscode-jsonrpc/node resolves to lib/node/main.js.",
+      "removalCondition": "The package exports a bundle-safe node entry that esbuild resolves without browser-field confusion.",
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go"
+      ],
+      "reason": "LSP client code expects the node entrypoint rather than the browser field."
+    },
+    {
+      "id": "ws-alias",
+      "kind": "package-patch",
+      "classification": "package-patched",
+      "status": "compat",
+      "owner": "internal/embed/agent/bundle/build.mjs",
+      "used": true,
+      "usedByPackages": [
+        "ws"
+      ],
+      "globals": [
+        "WebSocket"
+      ],
+      "exports": [
+        "WebSocket",
+        "default"
+      ],
+      "dependencies": [
+        "websocket"
+      ],
+      "resources": [
+        "websocket"
+      ],
+      "package": "ws",
+      "versionRange": "8.20.0",
+      "patchType": "esbuild-plugin",
+      "required": true,
+      "expected": "Bare ws imports resolve to a module exporting globalThis.WebSocket.",
+      "removalCondition": "@mastra/voice-openai-realtime stops importing ws or Brainkit switches to a bundle target where ws resolves to the jsbridge WebSocket implementation without aliasing.",
+      "compatibilityTests": [
+        "internal/jsbridge/websocket_test.go"
+      ],
+      "reason": "@mastra/voice-openai-realtime imports ws; the bundle aliases it to the jsbridge WebSocket implementation."
+    },
+    {
+      "id": "zod-unify",
+      "kind": "package-patch",
+      "classification": "package-patched",
+      "status": "compat",
+      "owner": "internal/embed/agent/bundle/build.mjs",
+      "used": true,
+      "usedByPackages": [
+        "zod"
+      ],
+      "globals": [
+        "__zod_v4_module"
+      ],
+      "exports": [
+        "toJSONSchema",
+        "z"
+      ],
+      "package": "zod",
+      "versionRange": "3.25.76",
+      "patchType": "esbuild-plugin",
+      "required": true,
+      "expected": "Exact zod imports resolve to zod/v4.",
+      "removalCondition": "Mastra and transitive packages converge on one zod major without a build-time redirect.",
+      "compatibilityTests": [
+        "internal/embed/agent/agent_test.go"
+      ],
+      "reason": "Exact zod imports are redirected to zod/v4 so the bundle has one schema implementation."
+    },
+    {
+      "id": "fetch",
+      "kind": "web-global",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.Fetch",
+      "used": false,
+      "globals": [
+        "Blob",
+        "File",
+        "FormData",
+        "Headers",
+        "Request",
+        "Response",
+        "fetch"
+      ],
+      "dependencies": [
+        "abort",
+        "streams"
+      ],
+      "resources": [
+        "fetch-request",
+        "goroutine",
+        "response-body"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go"
+      ],
+      "reason": "AI SDK providers and most HTTP integrations use fetch."
+    },
+    {
+      "id": "websocket",
+      "kind": "web-global",
+      "classification": "compat",
+      "status": "compat",
+      "owner": "internal/jsbridge.WebSocketPoly",
+      "used": false,
+      "globals": [
+        "WebSocket"
+      ],
+      "dependencies": [
+        "events",
+        "fetch"
+      ],
+      "resources": [
+        "goroutine",
+        "websocket"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/websocket_test.go"
+      ],
+      "reason": "Realtime voice and websocket clients require WHATWG/ws-compatible WebSocket."
+    }
+  ]
+}

@@ -86,7 +86,8 @@ Use the smallest standard profile that answers those questions:
 | `standard.RuntimeSet()` | Default JS runtime + `kit.eval`. | Runtime/eval consumers that do not expose `package.deploy`. Raw `.ts` source deploys on the runtime path are transpiled before evaluation. |
 | `standard.ArtifactRuntimeSet()` | Artifact-only JS runtime + `kit.eval`. | You already build JavaScript outside Brainkit and want to avoid linking runtime TypeScript preparation. Deploy only normalized JavaScript artifacts through `brainkit.core.artifact_deployer`; raw TypeScript syntax is rejected. |
 | `standard.PackageSet()` | Default JS runtime, `kit.eval`, `modules/packages`, and the standard esbuild package builder. | Normal app `.ts` deployment through `packageclient.Deploy`. |
-| `standard.CommandSet()` | Core command modules plus package deployment. | A batteries-included embedded Kit command surface. |
+| `standard.CommandSet()` | Core command modules only. | A light embedded Kit command/control plane. |
+| `standard.FullCommandSet()` | Core command modules plus package deployment. | A batteries-included embedded Kit command/runtime surface. |
 
 Artifact runtime is not a `.js` filename requirement. The runtime may keep a
 `.ts` logical source name for persistence and `ts.<source>.<topic>` routing,
@@ -333,8 +334,8 @@ See [`examples/go-tools/`](../../examples/go-tools/).
 ## Deploying TypeScript
 
 `.ts` services are built as packages and evaluated inside SES
-Compartments. `standard.PackageSet()` and `standard.CommandSet()` include the
-standard source package builder. Custom Kit assemblies that mount
+Compartments. `standard.PackageSet()` and `standard.FullCommandSet()` include
+the standard source package builder. Custom Kit assemblies that mount
 `packages.New()` directly should also import the package builder they want,
 usually `_ "github.com/brainlet/brainkit/modules/packages/bundlers/esbuild"`.
 Caller-side deploy helpers are in
@@ -469,6 +470,7 @@ import (
 	_ "github.com/brainlet/brainkit/server/configfile/storebackends/sqlite"
 	_ "github.com/brainlet/brainkit/server/configfile/transportbackends/embeddednats"
 	_ "github.com/brainlet/brainkit/server/standard/commands"
+	_ "github.com/brainlet/brainkit/server/standard/packages"
 	_ "github.com/brainlet/brainkit/server/standard/server"
 )
 

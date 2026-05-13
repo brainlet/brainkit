@@ -108,7 +108,7 @@ func NewTestKitFull(t *testing.T) *TestKit {
 		},
 		// In-memory schedules module so fixtures can exercise
 		// bus.schedule / bus.unschedule without a persistence backend.
-		Modules: append(standard.CommandSet(), schedules.NewModule(schedules.Config{})),
+		Modules: append(standard.FullCommandSet(), schedules.NewModule(schedules.Config{})),
 		EnvVars: envVars,
 	})
 	if err != nil {
@@ -167,7 +167,7 @@ func NewTestNode(t *testing.T) sdk.Runtime {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
-		Modules: standard.CommandSet(),
+		Modules: standard.FullCommandSet(),
 		EnvVars: envVars,
 	})
 	if err != nil {

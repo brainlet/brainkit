@@ -2,6 +2,7 @@ package brainkit
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -10,8 +11,10 @@ import (
 	evalmod "github.com/brainlet/brainkit/modules/eval"
 	"github.com/brainlet/brainkit/modules/eval/evalmsg"
 	jsruntimemod "github.com/brainlet/brainkit/modules/jsruntime"
+	packageclient "github.com/brainlet/brainkit/modules/packages/client"
 	"github.com/brainlet/brainkit/presets/standard"
 	artifactruntimepreset "github.com/brainlet/brainkit/presets/standard/artifactruntime"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/stretchr/testify/require"
@@ -85,17 +88,29 @@ func TestStorageAndVectorConfigDoNotAutoEnableJSRuntime(t *testing.T) {
 	require.NotEmpty(t, k.kernel.ProviderRegistry().ListVectorStores())
 }
 
-func TestStandardCommandSetAutoEnablesJSRuntime(t *testing.T) {
+func TestStandardCommandSetStaysLightWithoutJSRuntime(t *testing.T) {
 	k, err := New(Config{Transport: Memory(), Modules: standard.CommandSet()})
+	require.NoError(t, err)
+	defer k.Close()
+
+	require.False(t, k.kernel.HasJSRuntime())
+	require.False(t, k.hasCommand("kit.eval"))
+	require.True(t, k.hasCommand("tools.list"))
+	require.True(t, k.hasCommand("kit.health"))
+}
+
+func TestStandardFullCommandSetAutoEnablesJSRuntime(t *testing.T) {
+	k, err := New(Config{Transport: Memory(), Modules: standard.FullCommandSet()})
 	require.NoError(t, err)
 	defer k.Close()
 
 	require.True(t, k.kernel.HasJSRuntime())
 	require.True(t, k.hasCommand("kit.eval"))
+	require.True(t, k.hasCommand("package.deploy"))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	result, err := k.kernel.EvalJS(ctx, "__standard.ts", `return "ok"`)
+	result, err := k.kernel.EvalJS(ctx, "__standard_full.ts", `return "ok"`)
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
 }
@@ -149,6 +164,62 @@ output(result);`)
 	require.Equal(t, `{"value":"typed"}`, got)
 }
 
+func TestStandardRuntimeSetTranspilesRawTSSource(t *testing.T) {
+	k, err := New(Config{Transport: Memory(), Modules: standard.RuntimeSet()})
+	require.NoError(t, err)
+	defer k.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = k.kernel.Deploy(ctx, "standard-runtime-raw.ts", `
+interface Config {
+  value: string;
+}
+const cfg: Config = { value: "standard-runtime" };
+output({ value: cfg.value });`)
+	require.NoError(t, err)
+
+	got, err := k.kernel.EvalJS(ctx, "__standard_runtime_raw_result.js", `return globalThis.__module_result;`)
+	require.NoError(t, err)
+	require.Equal(t, `{"value":"standard-runtime"}`, got)
+}
+
+func TestStandardPackageSetDeploysRawTypeScriptPackage(t *testing.T) {
+	k, err := New(Config{Transport: Memory(), Modules: standard.PackageSet()})
+	require.NoError(t, err)
+	defer k.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err = packageclient.Deploy(ctx, k, packageclient.Inline("typed-package", "index.ts", `
+import { bus, output } from "kit";
+
+type Payload = { name?: string };
+interface Reply {
+  greeting: string;
+}
+
+bus.on("ping", (msg) => {
+  const payload = msg.payload as Payload;
+  const name: string = payload.name || "world";
+  const reply: Reply = { greeting: "hello, " + name };
+  msg.reply(reply);
+});
+
+output({ ready: true });
+`))
+	require.NoError(t, err)
+
+	reply, err := Call[sdk.CustomMsg, json.RawMessage](k, ctx, sdk.CustomMsg{
+		Topic:   "ts.typed-package.ping",
+		Payload: json.RawMessage(`{"name":"ts"}`),
+	}, WithCallTimeout(2*time.Second))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"greeting":"hello, ts"}`, string(reply))
+}
+
 func TestStandardCommandModulesUnmountCleanly(t *testing.T) {
 	k, err := New(Config{Transport: Memory()})
 	require.NoError(t, err)
@@ -158,6 +229,31 @@ func TestStandardCommandModulesUnmountCleanly(t *testing.T) {
 	defer cancel()
 
 	mods := standard.CommandSet()
+	for _, mod := range mods {
+		require.NoError(t, k.Mount(ctx, mod), mod.ID())
+	}
+	require.False(t, k.kernel.HasJSRuntime())
+	require.NotEmpty(t, k.MountedModules())
+
+	for i := len(mods) - 1; i >= 0; i-- {
+		id := mods[i].ID()
+		require.NoError(t, k.Unmount(ctx, id), id)
+		_, mounted := k.Module(id)
+		require.False(t, mounted, id)
+	}
+	require.False(t, k.kernel.HasJSRuntime())
+	require.Empty(t, k.MountedModules())
+}
+
+func TestStandardFullCommandModulesUnmountCleanly(t *testing.T) {
+	k, err := New(Config{Transport: Memory()})
+	require.NoError(t, err)
+	defer k.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	mods := standard.FullCommandSet()
 	for _, mod := range mods {
 		require.NoError(t, k.Mount(ctx, mod), mod.ID())
 	}

@@ -149,6 +149,115 @@ func TestRootDoesNotExposeModuleAuthoringAliases(t *testing.T) {
 	}
 }
 
+func TestStandardServerProfileImportsStayExplicit(t *testing.T) {
+	const (
+		bareStandard = "github.com/brainlet/brainkit/server/standard"
+		fullStandard = "github.com/brainlet/brainkit/server/standard/full"
+	)
+	fullImportAllowlist := map[string]bool{
+		filepath.ToSlash(filepath.Join("cmd", "brainkit", "cmd", "start.go")): true,
+	}
+
+	var bareImportViolations []string
+	var fullImportViolations []string
+	fset := token.NewFileSet()
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		name := d.Name()
+		if d.IsDir() {
+			switch name {
+			case ".git", "bin", "node_modules", "vendor_typescript":
+				return filepath.SkipDir
+			}
+			if path == filepath.Join("internal", "embed", "agent") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".go" {
+			return nil
+		}
+		parsed, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", path, err)
+		}
+		for _, imp := range parsed.Imports {
+			importPath, err := strconv.Unquote(imp.Path.Value)
+			if err != nil {
+				return fmt.Errorf("unquote import in %s: %w", path, err)
+			}
+			slashPath := filepath.ToSlash(path)
+			switch importPath {
+			case bareStandard:
+				bareImportViolations = append(bareImportViolations, slashPath)
+			case fullStandard:
+				if !fullImportAllowlist[slashPath] {
+					fullImportViolations = append(fullImportViolations, slashPath)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(bareImportViolations) > 0 {
+		sort.Strings(bareImportViolations)
+		t.Fatalf("bare server/standard imports are forbidden; import selected server/standard/... profiles or server/standard/full explicitly:\n%s", strings.Join(bareImportViolations, "\n"))
+	}
+	if len(fullImportViolations) > 0 {
+		sort.Strings(fullImportViolations)
+		t.Fatalf("server/standard/full imports must stay explicitly allowlisted; prefer selected server/standard/... profiles:\n%s", strings.Join(fullImportViolations, "\n"))
+	}
+}
+
+func TestDocsAndScaffoldsDoNotTeachBareStandardServerImport(t *testing.T) {
+	quotedBareImport := strconv.Quote("github.com/brainlet/brainkit/server/standard")
+	var violations []string
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		name := d.Name()
+		if d.IsDir() {
+			switch name {
+			case ".git", "bin", "node_modules", "vendor_typescript":
+				return filepath.SkipDir
+			}
+			if path == filepath.Join("internal", "embed", "agent") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch filepath.Ext(path) {
+		case ".go", ".md", ".yaml", ".yml":
+		default:
+			return nil
+		}
+		if path == "import_boundary_test.go" {
+			return nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(b), quotedBareImport) {
+			violations = append(violations, filepath.ToSlash(path))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) > 0 {
+		sort.Strings(violations)
+		t.Fatalf("docs/scaffolds must not teach bare server/standard imports; use selected profiles or server/standard/full:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
 func nonEmptyLines(text string) []string {
 	lines := strings.Split(text, "\n")
 	out := make([]string, 0, len(lines))
@@ -1086,9 +1195,9 @@ func TestStatefulModuleStoreBackendsStayOptional(t *testing.T) {
 		"github.com/lib/pq",
 	)
 
-	out, err := exec.Command("go", "list", "-deps", "./server/standard").CombinedOutput()
+	out, err := exec.Command("go", "list", "-deps", "./server/standard/full").CombinedOutput()
 	if err != nil {
-		t.Fatalf("go list -deps ./server/standard: %v\n%s", err, out)
+		t.Fatalf("go list -deps ./server/standard/full: %v\n%s", err, out)
 	}
 	for _, want := range []string{
 		"github.com/brainlet/brainkit/modules/audit/standard",
@@ -1096,7 +1205,7 @@ func TestStatefulModuleStoreBackendsStayOptional(t *testing.T) {
 		"github.com/brainlet/brainkit/modules/tracing/standard",
 	} {
 		if !strings.Contains(string(out), want) {
-			t.Fatalf("server/standard must import %s for YAML module registration", want)
+			t.Fatalf("server/standard/full must import %s for YAML module registration", want)
 		}
 	}
 }
@@ -1385,6 +1494,8 @@ func TestStandardProfilesStayScoped(t *testing.T) {
 	}
 	checkDeps("./presets/standard/core", coreForbidden...)
 	checkDeps("./server/standard/core", coreForbidden...)
+	checkDeps("./presets/standard/commands", coreForbidden...)
+	checkDeps("./server/standard/commands", coreForbidden...)
 
 	checkDeps("./presets/standard/runtime",
 		"github.com/brainlet/brainkit/modules/audit",
@@ -1485,22 +1596,6 @@ func TestStandardProfilesStayScoped(t *testing.T) {
 		"github.com/brainlet/brainkit/modules/probes",
 		"github.com/brainlet/brainkit/modules/schedules",
 		"github.com/brainlet/brainkit/modules/testing",
-		"github.com/brainlet/brainkit/modules/tracing",
-		"github.com/brainlet/brainkit/modules/workflow",
-		"github.com/mark3labs/mcp-go",
-		"modernc.org/sqlite",
-	)
-
-	checkDeps("./server/standard/commands",
-		"github.com/brainlet/brainkit/modules/audit",
-		"github.com/brainlet/brainkit/modules/gateway",
-		"github.com/brainlet/brainkit/modules/harness",
-		"github.com/brainlet/brainkit/modules/mcp",
-		"github.com/brainlet/brainkit/modules/plugins",
-		"github.com/brainlet/brainkit/modules/probes",
-		"github.com/brainlet/brainkit/modules/schedules",
-		"github.com/brainlet/brainkit/modules/testing",
-		"github.com/brainlet/brainkit/modules/topology",
 		"github.com/brainlet/brainkit/modules/tracing",
 		"github.com/brainlet/brainkit/modules/workflow",
 		"github.com/mark3labs/mcp-go",

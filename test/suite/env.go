@@ -236,7 +236,7 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 	// Package deployment commands come from modules/packages. Most suite
 	// domains deploy at least one fixture over package.deploy, so keep the
 	// module in the shared environment by default.
-	kitCfg.Modules = append(kitCfg.Modules, standard.CommandSet()...)
+	kitCfg.Modules = append(kitCfg.Modules, standard.FullCommandSet()...)
 
 	// Workflow commands come from modules/workflow — always include so the
 	// workflow suite's bus commands are available.

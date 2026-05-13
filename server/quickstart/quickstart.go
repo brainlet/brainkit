@@ -16,7 +16,8 @@ import (
 )
 
 // New creates a Server with sensible defaults: EmbeddedNATS, SQLite store
-// under fsRoot, HTTP gateway on :8080, and the standard command module set.
+// under fsRoot, HTTP gateway on :8080, and the full standard command/runtime
+// module set.
 //
 // Library-embedded use should call server.New with an explicit Config.
 func New(namespace, fsRoot string, opts ...Option) (*server.Server, error) {
@@ -27,7 +28,7 @@ func New(namespace, fsRoot string, opts ...Option) (*server.Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	mods := standard.CommandSet()
+	mods := standard.FullCommandSet()
 	mods = append(mods, gateway.New(gateway.Config{Listen: ":8080"}))
 	cfg := server.Config{
 		Namespace: namespace,

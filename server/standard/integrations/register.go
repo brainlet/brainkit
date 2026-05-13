@@ -1,7 +1,7 @@
 // Package integrations registers integration-oriented YAML module names.
 //
 // These modules are useful in product/server binaries but are not part of the
-// light command/runtime catalog.
+// light command/control plane or package runtime catalog.
 package integrations
 
 import (

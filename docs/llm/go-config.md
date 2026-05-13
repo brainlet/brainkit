@@ -955,6 +955,7 @@ import _ "github.com/brainlet/brainkit/server/configfile/transportbackends/nats"
 import _ "github.com/brainlet/brainkit/server/configfile/packageboot"
 import _ "github.com/brainlet/brainkit/server/configfile/storebackends/sqlite"
 import _ "github.com/brainlet/brainkit/server/standard/commands"
+import _ "github.com/brainlet/brainkit/server/standard/packages"
 import _ "github.com/brainlet/brainkit/server/standard/server"
 
 cfg, err := configfile.Load("/etc/brainkit/config.yaml")

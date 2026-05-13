@@ -1,5 +1,5 @@
-// Package standard registers the schedules module factory used by
-// server/standard YAML assembly.
+// Package standard registers the schedules module factory used by standard
+// automation/full YAML assembly.
 package standard
 
 import (

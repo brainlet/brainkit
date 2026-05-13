@@ -3,6 +3,7 @@ package jsbridge
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	quickjs "github.com/buke/quickjs-go"
@@ -65,13 +66,70 @@ func (p *PathPolyfill) Setup(ctx *quickjs.Context) error {
 		return ctx.NewString(filepath.Ext(args[0].ToString()))
 	}))
 
-	return evalJS(ctx, `
-globalThis.path = {
-  join(...parts) { return __go_path_join(JSON.stringify(parts)); },
-  resolve(...parts) { return __go_path_resolve(JSON.stringify(parts)); },
-  dirname(p) { return __go_path_dirname(p); },
-  basename(p) { return __go_path_basename(p); },
-  extname(p) { return __go_path_extname(p); },
-};
-`)
+	ctx.Globals().Set("__go_path_normalize", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 1 {
+			return ctx.ThrowError(fmt.Errorf("path.normalize: path argument required"))
+		}
+		return ctx.NewString(filepath.Clean(args[0].ToString()))
+	}))
+
+	ctx.Globals().Set("__go_path_is_abs", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 1 {
+			return ctx.ThrowError(fmt.Errorf("path.isAbsolute: path argument required"))
+		}
+		return ctx.NewBool(filepath.IsAbs(args[0].ToString()))
+	}))
+
+	ctx.Globals().Set("__go_path_relative", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 2 {
+			return ctx.ThrowError(fmt.Errorf("path.relative: from and to arguments required"))
+		}
+		rel, err := filepath.Rel(args[0].ToString(), args[1].ToString())
+		if err != nil {
+			return ctx.NewString(args[1].ToString())
+		}
+		return ctx.NewString(rel)
+	}))
+
+	return evalJS(ctx, fmt.Sprintf(`
+(function() {
+  "use strict";
+
+  var sep = %q;
+  var delimiter = %q;
+
+  function basename(p) { return __go_path_basename(String(p)); }
+  function extname(p) { return __go_path_extname(String(p)); }
+  function dirname(p) { return __go_path_dirname(String(p)); }
+  function isAbsolute(p) { return __go_path_is_abs(String(p)); }
+
+  var pathAPI = {
+    join: function() { return __go_path_join(JSON.stringify(Array.prototype.slice.call(arguments).map(String))); },
+    resolve: function() { return __go_path_resolve(JSON.stringify(Array.prototype.slice.call(arguments).map(String))); },
+    dirname: dirname,
+    basename: basename,
+    extname: extname,
+    normalize: function(p) { return __go_path_normalize(String(p)); },
+    isAbsolute: isAbsolute,
+    parse: function(p) {
+      p = String(p);
+      var base = basename(p);
+      var ext = extname(p);
+      var dir = dirname(p);
+      return {
+        root: isAbsolute(p) ? sep : "",
+        dir: dir,
+        base: base,
+        ext: ext,
+        name: ext ? base.slice(0, -ext.length) : base,
+      };
+    },
+    relative: function(from, to) { return __go_path_relative(String(from), String(to)); },
+    sep: sep,
+    delimiter: delimiter,
+  };
+  pathAPI.posix = pathAPI;
+  globalThis.path = pathAPI;
+})();
+`, string(os.PathSeparator), string(os.PathListSeparator)))
 }

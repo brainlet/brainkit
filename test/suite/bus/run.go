@@ -29,6 +29,9 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("ts_bus_call_happy_path", func(t *testing.T) { testTSBusCallHappyPath(t, env) })
 		t.Run("ts_bus_call_stream_happy_path", func(t *testing.T) { testTSBusCallStreamHappyPath(t, env) })
 		t.Run("ts_bus_call_service_stream_happy_path", func(t *testing.T) { testTSBusCallServiceStreamHappyPath(t, env) })
+		t.Run("ts_bus_call_and_call_stream_stay_async_under_concurrency", func(t *testing.T) {
+			testTSBusCallAndCallStreamStayAsyncUnderConcurrency(t, env)
+		})
 		t.Run("ts_bus_call_stream_on_chunk_error_rejects", func(t *testing.T) { testTSBusCallStreamOnChunkErrorRejects(t, env) })
 		t.Run("ts_bus_call_requires_timeout", func(t *testing.T) { testTSBusCallRequiresTimeout(t, env) })
 		t.Run("ts_bus_call_propagates_brainkit_error", func(t *testing.T) { testTSBusCallPropagatesBrainkitError(t, env) })

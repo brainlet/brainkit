@@ -5,9 +5,9 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"net"
 	"strconv"
-	"github.com/brainlet/brainkit/internal/syncx"
 	"sync/atomic"
 	"time"
 
@@ -28,6 +28,7 @@ type goConn struct {
 	conn     net.Conn
 	done     chan struct{}
 	upgraded chan struct{} // closed when TLS upgrade completes; read loop restarts
+	tls      bool
 }
 
 // Net creates a net polyfill.
@@ -39,8 +40,35 @@ func (p *NetPolyfill) Name() string { return "net" }
 
 func (p *NetPolyfill) SetBridge(b *Bridge) { p.bridge = b }
 
+func (p *NetPolyfill) debugResources() map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	tlsSockets := 0
+	for _, conn := range p.conns {
+		if conn != nil && conn.tls {
+			tlsSockets++
+		}
+	}
+	return map[string]int{
+		"net.tcpSockets": len(p.conns),
+		"net.tlsSockets": tlsSockets,
+	}
+}
+
+func (p *NetPolyfill) deleteConn(id int64, expected *goConn) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if expected != nil && p.conns[id] != expected {
+		return
+	}
+	delete(p.conns, id)
+}
+
 func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 	polyfill := p
+	if p.bridge != nil {
+		p.bridge.RegisterResourceProvider(p.debugResources)
+	}
 
 	// __go_net_connect(host, port, useTLS) → connID
 	ctx.Globals().Set("__go_net_connect", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
@@ -78,7 +106,7 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 				return
 			}
 
-			gc := &goConn{id: id, conn: conn, done: make(chan struct{})}
+			gc := &goConn{id: id, conn: conn, done: make(chan struct{}), tls: useTLS}
 			polyfill.mu.Lock()
 			polyfill.conns[id] = gc
 			polyfill.mu.Unlock()
@@ -99,11 +127,13 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 				// Check cancellation
 				if goCtx.Err() != nil {
 					conn.Close()
+					polyfill.deleteConn(id, gc)
 					return
 				}
 				select {
 				case <-gc.done:
 					conn.Close()
+					polyfill.deleteConn(id, gc)
 					return
 				default:
 				}
@@ -144,6 +174,7 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 				}
 
 				if readErr != nil {
+					polyfill.deleteConn(id, gc)
 					qctx.Schedule(func(qctx *quickjs.Context) {
 						qctx.Eval(fmt.Sprintf(`globalThis.__net_sockets[%d]?._onClose()`, id))
 					})
@@ -238,7 +269,7 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 		}
 
 		// 4. Create new goConn with TLS connection, start new read loop
-		newGC := &goConn{id: id, conn: tlsConn, done: make(chan struct{})}
+		newGC := &goConn{id: id, conn: tlsConn, done: make(chan struct{}), tls: true}
 		polyfill.mu.Lock()
 		polyfill.conns[id] = newGC
 		polyfill.mu.Unlock()
@@ -250,10 +281,14 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 				n, readErr := tlsConn.Read(buf)
 
 				if goCtx.Err() != nil {
+					tlsConn.Close()
+					polyfill.deleteConn(id, newGC)
 					return
 				}
 				select {
 				case <-newGC.done:
+					tlsConn.Close()
+					polyfill.deleteConn(id, newGC)
 					return
 				default:
 				}
@@ -277,6 +312,8 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 				}
 
 				if readErr != nil {
+					tlsConn.Close()
+					polyfill.deleteConn(id, newGC)
 					qctx.Schedule(func(qctx *quickjs.Context) {
 						qctx.Eval(fmt.Sprintf(`globalThis.__net_sockets[%d]?._onClose()`, id))
 					})
@@ -588,15 +625,42 @@ globalThis.GoSocket = GoSocket;
   var notAvailable = function(name) { return function() { throw new Error(name + ": not available in QuickJS"); }; };
   var isIP = function(input) { try { return input.includes(":") ? 6 : input.match(/^\d+\.\d+\.\d+\.\d+$/) ? 4 : 0; } catch(e) { return 0; } };
 
-  globalThis.net = {
-    Socket: Socket,
-    createConnection: createConnection,
-    connect: createConnection,
+	  globalThis.net = {
+	    Socket: Socket,
+	    createConnection: createConnection,
+	    connect: createConnection,
     createServer: notAvailable("net.createServer"),
     Server: class Server {},
     isIP: isIP,
-    isIPv4: function(input) { return isIP(input) === 4; },
-    isIPv6: function(input) { return isIP(input) === 6; },
-  };
-})();
-`
+	    isIPv4: function(input) { return isIP(input) === 4; },
+	    isIPv6: function(input) { return isIP(input) === 6; },
+	  };
+
+	  class TLSSocket {}
+	  function tlsConnect(options) {
+	    if (options && options.socket && options.socket._gs && options.socket._gs._id) {
+	      var servername = options.servername || options.host || "";
+	      var ok = __go_net_tls_upgrade(options.socket._gs._id, servername);
+	      if (!ok) throw new Error("tls.connect: TLS upgrade failed");
+	      options.socket.emit("secureConnect");
+	      return options.socket;
+	    }
+	    if (options && options.socket && options.socket._id) {
+	      var rawServername = options.servername || options.host || "";
+	      var rawOK = __go_net_tls_upgrade(options.socket._id, rawServername);
+	      if (!rawOK) throw new Error("tls.connect: TLS upgrade failed");
+	      options.socket._emit && options.socket._emit("secureConnect");
+	      return options.socket;
+	    }
+	    throw new Error("tls.connect: requires options.socket (TLS upgrade of existing connection)");
+	  }
+	  globalThis.tls = {
+	    createServer: notAvailable("tls.createServer"),
+	    connect: tlsConnect,
+	    TLSSocket: TLSSocket,
+	    DEFAULT_ECDH_CURVE: "auto",
+	    DEFAULT_MIN_VERSION: "TLSv1.2",
+	    DEFAULT_MAX_VERSION: "TLSv1.3",
+	  };
+	})();
+	`

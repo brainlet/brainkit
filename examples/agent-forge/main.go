@@ -114,7 +114,7 @@ func run(apiKey, request, askPrompt, outRoot string, keep bool) error {
 		Transport: brainkit.Memory(),
 		FSRoot:    tmp,
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(apiKey)},
-		Modules:   standard.CommandSet(),
+		Modules:   standard.FullCommandSet(),
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)

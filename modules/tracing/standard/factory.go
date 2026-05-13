@@ -1,5 +1,5 @@
-// Package standard registers the tracing module factory used by
-// server/standard YAML assembly.
+// Package standard registers the tracing module factory used by standard
+// observability/full YAML assembly.
 package standard
 
 import (

@@ -253,7 +253,7 @@ func NewTestKitFullWithBackend(t *testing.T, backend string) *TestKit {
 		},
 		EnvVars:   envVars,
 		Transport: BrainkitTransport(tcfg),
-		Modules:   standard.CommandSet(),
+		Modules:   standard.FullCommandSet(),
 	})
 	if err != nil {
 		t.Fatalf("brainkit.New(%s): %v", backend, err)

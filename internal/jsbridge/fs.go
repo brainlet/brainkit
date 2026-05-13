@@ -5,15 +5,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	quickjs "github.com/buke/quickjs-go"
+	"github.com/fsnotify/fsnotify"
 )
 
 // FSPolyfill provides the complete Node.js 22 fs module as a jsbridge polyfill.
@@ -46,6 +46,21 @@ func FS(root string) *FSPolyfill {
 func (p *FSPolyfill) Name() string { return "fs" }
 
 func (p *FSPolyfill) SetBridge(b *Bridge) { p.bridge = b }
+
+func (p *FSPolyfill) debugResources() map[string]int {
+	p.handlesMu.Lock()
+	handles := len(p.handles)
+	p.handlesMu.Unlock()
+
+	p.watchersMu.Lock()
+	watchers := len(p.watchers)
+	p.watchersMu.Unlock()
+
+	return map[string]int{
+		"fs.fileHandles": handles,
+		"fs.watchers":    watchers,
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Path resolution — workspace escape protection
@@ -210,24 +225,24 @@ func buildStatsJSON(info os.FileInfo) string {
 	}
 
 	stats := map[string]any{
-		"dev":         0,
-		"ino":         0,
-		"mode":        int(mode.Perm()) | unixFileType(mode),
-		"nlink":       1,
-		"uid":         0,
-		"gid":         0,
-		"rdev":        0,
-		"size":        info.Size(),
-		"blksize":     4096,
-		"blocks":      (info.Size() + 511) / 512,
-		"atimeMs":     float64(atimeMs),
-		"mtimeMs":     float64(mtimeMs),
-		"ctimeMs":     float64(ctimeMs),
-		"birthtimeMs": float64(birthtimeMs),
-		"atime":       time.UnixMilli(atimeMs).UTC().Format(time.RFC3339Nano),
-		"mtime":       info.ModTime().UTC().Format(time.RFC3339Nano),
-		"ctime":       time.UnixMilli(ctimeMs).UTC().Format(time.RFC3339Nano),
-		"birthtime":   time.UnixMilli(birthtimeMs).UTC().Format(time.RFC3339Nano),
+		"dev":             0,
+		"ino":             0,
+		"mode":            int(mode.Perm()) | unixFileType(mode),
+		"nlink":           1,
+		"uid":             0,
+		"gid":             0,
+		"rdev":            0,
+		"size":            info.Size(),
+		"blksize":         4096,
+		"blocks":          (info.Size() + 511) / 512,
+		"atimeMs":         float64(atimeMs),
+		"mtimeMs":         float64(mtimeMs),
+		"ctimeMs":         float64(ctimeMs),
+		"birthtimeMs":     float64(birthtimeMs),
+		"atime":           time.UnixMilli(atimeMs).UTC().Format(time.RFC3339Nano),
+		"mtime":           info.ModTime().UTC().Format(time.RFC3339Nano),
+		"ctime":           time.UnixMilli(ctimeMs).UTC().Format(time.RFC3339Nano),
+		"birthtime":       time.UnixMilli(birthtimeMs).UTC().Format(time.RFC3339Nano),
 		"_isFile":         mode.IsRegular(),
 		"_isDirectory":    info.IsDir(),
 		"_isSymbolicLink": isSymlink,
@@ -291,15 +306,15 @@ func buildDirentJSON(entry os.DirEntry, parentPath string) string {
 	}
 
 	d := map[string]any{
-		"name":              entry.Name(),
-		"parentPath":        parentPath,
-		"_isFile":           isFile,
-		"_isDirectory":      entry.IsDir(),
-		"_isSymbolicLink":   isSymlink,
-		"_isBlockDevice":    isBlock,
+		"name":               entry.Name(),
+		"parentPath":         parentPath,
+		"_isFile":            isFile,
+		"_isDirectory":       entry.IsDir(),
+		"_isSymbolicLink":    isSymlink,
+		"_isBlockDevice":     isBlock,
 		"_isCharacterDevice": isChar,
-		"_isFIFO":           isFIFO,
-		"_isSocket":         isSocket,
+		"_isFIFO":            isFIFO,
+		"_isSocket":          isSocket,
 	}
 	b, _ := json.Marshal(d)
 	return string(b)
@@ -472,6 +487,9 @@ func recursiveCopy(src, dst string) error {
 func (p *FSPolyfill) Setup(ctx *quickjs.Context) error {
 	b := p.bridge
 	root := p.root
+	if b != nil {
+		b.RegisterResourceProvider(p.debugResources)
+	}
 
 	// Inject fs.constants from Go — matches actual OS values for the current platform
 	constantsJSON, _ := json.Marshal(map[string]int{
@@ -1077,7 +1095,9 @@ func (p *FSPolyfill) registerAsyncBridges(ctx *quickjs.Context, b *Bridge, root 
 				}
 				if err != nil {
 					// Extract path from args for error
-					var a struct{ Path string `json:"path"` }
+					var a struct {
+						Path string `json:"path"`
+					}
 					json.Unmarshal([]byte(argsJSON), &a)
 					scheduleReject(qctx, reject, err, op, a.Path)
 					return
@@ -1093,25 +1113,25 @@ func (p *FSPolyfill) registerAsyncBridges(ctx *quickjs.Context, b *Bridge, root 
 // execAsyncOp dispatches async fs operations. Returns JSON string result.
 func (p *FSPolyfill) execAsyncOp(op, argsJSON string, resolve func(string) (string, error)) (string, error) {
 	var args struct {
-		Path     string `json:"path"`
-		Data     string `json:"data"`
-		Dest     string `json:"dest"`
-		OldPath  string `json:"oldPath"`
-		NewPath  string `json:"newPath"`
-		Target   string `json:"target"`
-		Mode     int    `json:"mode"`
-		UID      int    `json:"uid"`
-		GID      int    `json:"gid"`
-		Len      int64  `json:"len"`
-		Atime    float64 `json:"atime"`
-		Mtime    float64 `json:"mtime"`
-		Encoding string `json:"encoding"`
-		Recursive bool  `json:"recursive"`
-		Force     bool  `json:"force"`
-		Prefix    string `json:"prefix"`
-		WithFileTypes bool `json:"withFileTypes"`
-		Flags    string `json:"flags"`
-		FileMode int    `json:"fileMode"`
+		Path          string  `json:"path"`
+		Data          string  `json:"data"`
+		Dest          string  `json:"dest"`
+		OldPath       string  `json:"oldPath"`
+		NewPath       string  `json:"newPath"`
+		Target        string  `json:"target"`
+		Mode          int     `json:"mode"`
+		UID           int     `json:"uid"`
+		GID           int     `json:"gid"`
+		Len           int64   `json:"len"`
+		Atime         float64 `json:"atime"`
+		Mtime         float64 `json:"mtime"`
+		Encoding      string  `json:"encoding"`
+		Recursive     bool    `json:"recursive"`
+		Force         bool    `json:"force"`
+		Prefix        string  `json:"prefix"`
+		WithFileTypes bool    `json:"withFileTypes"`
+		Flags         string  `json:"flags"`
+		FileMode      int     `json:"fileMode"`
 	}
 	json.Unmarshal([]byte(argsJSON), &args)
 

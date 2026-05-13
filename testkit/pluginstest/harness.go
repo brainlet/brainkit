@@ -132,7 +132,7 @@ func Modules(pluginName, binaryPath string, cfg Config) []bkmodule.Module {
 	if startTimeout <= 0 {
 		startTimeout = defaultStartTimeout
 	}
-	mods := append([]bkmodule.Module{}, standard.CommandSet()...)
+	mods := append([]bkmodule.Module{}, standard.FullCommandSet()...)
 	return append(mods, pluginsmod.NewModule(pluginsmod.Config{
 		Plugins: []pluginsmod.PluginConfig{{
 			Name:         pluginName,

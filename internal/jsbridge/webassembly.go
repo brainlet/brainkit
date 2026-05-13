@@ -28,11 +28,31 @@ func WebAssembly() *WebAssemblyPolyfill {
 	}
 }
 
-func (p *WebAssemblyPolyfill) Name() string      { return "webassembly" }
+func (p *WebAssemblyPolyfill) Name() string        { return "webassembly" }
 func (p *WebAssemblyPolyfill) SetBridge(b *Bridge) { p.bridge = b }
+
+func (p *WebAssemblyPolyfill) debugResources() map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	runtimeCount := 0
+	if p.rt != nil {
+		runtimeCount = 1
+	}
+	return map[string]int{
+		"wasm.runtimes": runtimeCount,
+		"wasm.modules":  len(p.modules),
+	}
+}
 
 func (p *WebAssemblyPolyfill) Setup(ctx *quickjs.Context) error {
 	p.rt = wazero.NewRuntime(context.Background())
+	if p.bridge != nil {
+		p.bridge.RegisterResourceProvider(p.debugResources)
+		p.bridge.Go(func(goCtx context.Context) {
+			<-goCtx.Done()
+			p.Close()
+		})
+	}
 
 	polyfill := p
 

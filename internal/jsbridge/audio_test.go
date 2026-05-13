@@ -96,6 +96,31 @@ func TestAudioPauseCancelsPlayback(t *testing.T) {
 	}
 }
 
+func TestAudioResourceSnapshotTracksPlayback(t *testing.T) {
+	sink := &recordingSink{delay: 5 * time.Second}
+	b := newTestBridge(t, Encoding(), Events(), NodeStreams(), Audio(AudioWithSink(sink)))
+	val, err := b.EvalAsync("audio-resource.js", `(async function() {
+		var bytes = new Uint8Array([0x49, 0x44, 0x33, 0x04, 0x00]);
+		var audio = new Audio(bytes);
+		globalThis.__audioPlay = audio.play();
+		return "started";
+	})()`)
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	val.Free()
+
+	waitForBridgeResource(t, b, "audio.playing", 1)
+	closeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := b.CloseContext(closeCtx); err != nil {
+		t.Fatalf("CloseContext: %v snapshot=%+v", err, b.DebugSnapshot())
+	}
+	if got := resourceCount(b, "audio.playing"); got != 0 {
+		t.Fatalf("audio resources after close = %d, want 0 snapshot=%+v", got, b.DebugSnapshot())
+	}
+}
+
 func TestAudioDefaultsToNullSink(t *testing.T) {
 	b := newTestBridge(t, Encoding(), Events(), NodeStreams(), Audio())
 	val, err := b.EvalAsync("audio.js", `(async function() {

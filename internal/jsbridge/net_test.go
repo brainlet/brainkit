@@ -1,6 +1,7 @@
 package jsbridge
 
 import (
+	"fmt"
 	"net"
 	"strconv"
 	"testing"
@@ -62,6 +63,66 @@ func TestSocket_CreateConnection(t *testing.T) {
 		});
 	`)
 	expected := `{"hasSocket":true,"hasCreateConnection":true,"hasConnect":true,"hasIsIP":true}`
+	if result != expected {
+		t.Errorf("got %s", result)
+	}
+}
+
+func TestNetResourceSnapshotTracksOpenSocket(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err == nil {
+			accepted <- conn
+		}
+	}()
+	t.Cleanup(func() {
+		select {
+		case conn := <-accepted:
+			_ = conn.Close()
+		default:
+		}
+	})
+
+	b := newTestBridge(t, Console(), Encoding(), Events(), NodeStreams(), Timers(), Net())
+	val, err := b.EvalAsync("net-resource.js", fmt.Sprintf(`(async () => {
+		return await new Promise((resolve, reject) => {
+			const socket = net.createConnection({ host: "127.0.0.1", port: %d });
+			globalThis.__resourceSocket = socket;
+			socket.on("connect", () => resolve("connected"));
+			socket.on("error", reject);
+		});
+	})()`, ln.Addr().(*net.TCPAddr).Port))
+	if err != nil {
+		t.Fatalf("EvalAsync connect: %v", err)
+	}
+	val.Free()
+
+	if got := resourceCount(b, "net.tcpSockets"); got != 1 {
+		t.Fatalf("net socket resources = %d, want 1 snapshot=%+v", got, b.DebugSnapshot())
+	}
+}
+
+func TestTLSModuleShape(t *testing.T) {
+	b := newTestBridge(t, Console(), Encoding(), Events(), NodeStreams(), Timers(), Net())
+	result := evalString(t, b, `
+		var threw = false;
+		try { globalThis.tls.connect({}); } catch (_) { threw = true; }
+		JSON.stringify({
+			hasConnect: typeof globalThis.tls.connect === "function",
+			hasCreateServer: typeof globalThis.tls.createServer === "function",
+			hasTLSSocket: typeof globalThis.tls.TLSSocket === "function",
+			minVersion: globalThis.tls.DEFAULT_MIN_VERSION,
+			throwsWithoutSocket: threw
+		});
+	`)
+	expected := `{"hasConnect":true,"hasCreateServer":true,"hasTLSSocket":true,"minVersion":"TLSv1.2","throwsWithoutSocket":true}`
 	if result != expected {
 		t.Errorf("got %s", result)
 	}

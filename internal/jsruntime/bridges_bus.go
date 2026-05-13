@@ -153,7 +153,7 @@ func (r *Runtime) invokeBusStreamHandler(ctx context.Context, qctx *quickjs.Cont
 			handlerErr := qctx.Exception()
 			val.Free()
 			handlerErr = r.enrichHandlerErr(qctx, handlerErr)
-			done <- normalizeBusStreamHandlerError(handlerErr)
+			done <- r.normalizeBusStreamHandlerError(topic, handlerErr)
 			return
 		}
 		if val.IsPromise() {
@@ -166,7 +166,7 @@ func (r *Runtime) invokeBusStreamHandler(ctx context.Context, qctx *quickjs.Cont
 				handlerErr := qctx.Exception()
 				awaited.Free()
 				handlerErr = r.enrichHandlerErr(qctx, handlerErr)
-				done <- normalizeBusStreamHandlerError(handlerErr)
+				done <- r.normalizeBusStreamHandlerError(topic, handlerErr)
 				return
 			}
 			awaited.Free()
@@ -188,7 +188,7 @@ func (r *Runtime) invokeBusStreamHandler(ctx context.Context, qctx *quickjs.Cont
 	}
 }
 
-func normalizeBusStreamHandlerError(err error) error {
+func (r *Runtime) normalizeBusStreamHandlerError(topic string, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -196,7 +196,22 @@ func normalizeBusStreamHandlerError(err error) error {
 	if errors.As(err, &bkErr) {
 		return err
 	}
+	err = r.wrapJSHandlerError("stream handler", "", "bus.callStream.onChunk:"+topic, err)
 	return &sdkerrors.BridgeError{Function: "bus.callStream.onChunk", Cause: err}
+}
+
+func (r *Runtime) wrapJSHandlerError(phase, source, fn string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var bkErr sdkerrors.BrainkitError
+	if errors.As(err, &bkErr) {
+		return err
+	}
+	if r != nil && r.deploymentMgr != nil {
+		return r.deploymentMgr.wrapRuntimeError(phase, source, fn, err)
+	}
+	return err
 }
 
 // registerBusBridges adds bus_send, bus_publish, bus_emit, bus_reply, subscribe, unsubscribe bridges.
@@ -485,6 +500,7 @@ func (r *Runtime) registerBusBridges(qctx *quickjs.Context) {
 						handlerErr := qctx.Exception()
 						val.Free()
 						handlerErr = r.enrichHandlerErr(qctx, handlerErr)
+						handlerErr = r.wrapJSHandlerError("handler", subscriberSource, "bus.subscribe:"+topic, handlerErr)
 						r.handlers.HandleHandlerFailure(msg, topic, handlerErr)
 						return
 					}
@@ -498,6 +514,7 @@ func (r *Runtime) registerBusBridges(qctx *quickjs.Context) {
 							handlerErr := qctx.Exception()
 							awaited.Free()
 							handlerErr = r.enrichHandlerErr(qctx, handlerErr)
+							handlerErr = r.wrapJSHandlerError("handler", subscriberSource, "bus.subscribe:"+topic, handlerErr)
 							r.handlers.HandleHandlerFailure(msg, topic, handlerErr)
 							return
 						}

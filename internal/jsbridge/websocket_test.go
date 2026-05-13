@@ -187,6 +187,9 @@ func TestWebSocketCloseCancelsPendingDial(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("websocket server did not receive pending dial")
 	}
+	if got := resourceCount(b, "websocket.pendingDials"); got < 1 {
+		t.Fatalf("websocket pending dial resources = %d, want >= 1 snapshot=%+v", got, b.DebugSnapshot())
+	}
 	select {
 	case err := <-done:
 		if err != nil {

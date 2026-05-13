@@ -42,3 +42,20 @@ func TestDNS_JSLookupCallback(t *testing.T) {
 	}
 	t.Logf("dns.lookup callback: %s", s)
 }
+
+func TestDNS_PromisesLookupLocalhost(t *testing.T) {
+	b := newTestBridge(t, DNS())
+	val, err := b.EvalAsync("test.js", `(async () => {
+		const result = await globalThis.dns.promises.lookup("localhost");
+		return JSON.stringify({ addr: result.address, family: result.family });
+	})()`)
+	if err != nil {
+		t.Fatalf("dns.promises.lookup localhost: %v", err)
+	}
+	defer val.Free()
+	s := val.String()
+	if s == "" || s == "null" {
+		t.Fatal("dns.promises.lookup returned empty")
+	}
+	t.Logf("dns.promises.lookup localhost: %s", s)
+}

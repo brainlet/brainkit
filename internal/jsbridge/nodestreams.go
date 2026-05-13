@@ -26,26 +26,27 @@ func (p *NodeStreamsPolyfill) Setup(ctx *quickjs.Context) error {
 //
 // Key design decisions for MongoDB SCRAM compatibility:
 //
-// 1. Readable._buffer: data pushed while paused or with no listeners is buffered.
-//    Adding a "data" listener flushes the buffer (switches to flowing mode).
+//  1. Readable._buffer: data pushed while paused or with no listeners is buffered.
+//     Adding a "data" listener flushes the buffer (switches to flowing mode).
 //
-// 2. Readable[Symbol.asyncIterator]: creates an iterator that listens for "data"
-//    events. When the iterator's return() is called (for-await exits early), it
-//    removes its listener BUT transfers any unconsumed data back to the Readable's
-//    _buffer via unshift(). The NEXT async iterator will see that buffered data.
-//    This is critical for MongoDB's conn.command() pattern where hello and saslStart
-//    responses can arrive before the first for-await chain fully unwinds.
+//  2. Readable[Symbol.asyncIterator]: creates an iterator that listens for "data"
+//     events. When the iterator's return() is called (for-await exits early), it
+//     removes its listener BUT transfers any unconsumed data back to the Readable's
+//     _buffer via unshift(). The NEXT async iterator will see that buffered data.
+//     This is critical for MongoDB's conn.command() pattern where hello and saslStart
+//     responses can arrive before the first for-await chain fully unwinds.
 //
-// 3. Transform._write → _transform → push: synchronous by default. The push()
-//    goes to Readable's buffer/emit path. Subclasses override _transform.
+//  3. Transform._write → _transform → push: synchronous by default. The push()
+//     goes to Readable's buffer/emit path. Subclasses override _transform.
 const nodeStreamsJS = `
 (function() {
   "use strict";
 
   var EE = globalThis.EventEmitter;
+  class Stream extends EE {}
 
   // ─── Readable ──────────────────────────────────────────────────
-  class Readable extends EE {
+  class Readable extends Stream {
     constructor(opts) {
       super();
       this.readable = true;
@@ -232,6 +233,35 @@ const nodeStreamsJS = `
     return r;
   };
 
+  Readable.toWeb = function(nodeStream) {
+    return new ReadableStream({
+      start: function(ctrl) {
+        nodeStream.on("data", function(c) { ctrl.enqueue(c); });
+        nodeStream.on("end", function() { ctrl.close(); });
+        nodeStream.on("error", function(err) { ctrl.error(err); });
+      },
+    });
+  };
+
+  Readable.fromWeb = function(webStream) {
+    var r = new Readable();
+    var reader = webStream.getReader();
+    (async function pump() {
+      try {
+        var res = await reader.read();
+        if (res.done) {
+          r.push(null);
+          return;
+        }
+        r.push(res.value);
+        pump();
+      } catch (err) {
+        r.emit("error", err);
+      }
+    })();
+    return r;
+  };
+
   // ─── Writable ──────────────────────────────────────────────────
   class Writable extends EE {
     constructor(opts) {
@@ -370,20 +400,59 @@ const nodeStreamsJS = `
     var cb = args.pop();
     if (typeof cb === "function") cb();
   }
-  function finished(stream, cb) {
-    if (cb) cb();
-  }
+	  function finished(stream, cb) {
+	    if (cb) cb();
+	  }
+	  function pipelinePromise() {
+	    return new Promise(function(resolve, reject) {
+	      try {
+	        pipeline.apply(null, Array.prototype.slice.call(arguments));
+	        resolve();
+	      } catch (err) {
+	        reject(err);
+	      }
+	    });
+	  }
+	  function finishedPromise(stream) {
+	    return new Promise(function(resolve, reject) {
+	      if (!stream || typeof stream.on !== "function") {
+	        resolve();
+	        return;
+	      }
+	      var done = false;
+	      function finish() {
+	        if (done) return;
+	        done = true;
+	        resolve();
+	      }
+	      function fail(err) {
+	        if (done) return;
+	        done = true;
+	        reject(err);
+	      }
+	      stream.on("end", finish);
+	      stream.on("finish", finish);
+	      stream.on("close", finish);
+	      stream.on("error", fail);
+	    });
+	  }
+	  var streamPromises = {
+	    pipeline: pipelinePromise,
+	    finished: finishedPromise,
+	  };
 
-  // ─── Export on globalThis ──────────────────────────────────────
-  globalThis.stream = {
-    Readable: Readable,
+	  // ─── Export on globalThis ──────────────────────────────────────
+	  globalThis.stream = {
+	    EventEmitter: EE,
+	    Readable: Readable,
     Writable: Writable,
     Duplex: Duplex,
     Transform: Transform,
     PassThrough: PassThrough,
-    pipeline: pipeline,
-    finished: finished,
-    Stream: Readable,
-  };
-})();
-`
+	    pipeline: pipeline,
+	    finished: finished,
+	    Stream: Stream,
+	    promises: streamPromises,
+	  };
+	})();
+	`

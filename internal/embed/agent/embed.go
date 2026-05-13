@@ -56,21 +56,21 @@ func LoadBundle(b *jsbridge.Bridge) error {
 	// 1. Node.js/browser global polyfills (process, Buffer, etc.)
 	setup, err := b.Eval("agent-embed-setup.js", runtimeGlobalsJS)
 	if err != nil {
-		return fmt.Errorf("agent-embed: setup globals: %w", err)
+		return fmt.Errorf("agent-embed: setup globals: %w", wrapBundleError(b, "setup globals", "agent-embed-setup.js", err))
 	}
 	setup.Free()
 
 	// 2. SES polyfills (console stubs, Iterator prototype fix)
 	sp, err := b.Eval("ses-polyfills.js", sesPolyfillsSource)
 	if err != nil {
-		return fmt.Errorf("agent-embed: SES polyfills: %w", err)
+		return fmt.Errorf("agent-embed: SES polyfills: %w", wrapBundleError(b, "ses polyfills", "ses-polyfills.js", err))
 	}
 	sp.Free()
 
 	// 3. SES UMD (provides Compartment, harden, lockdown — but don't lock down yet)
 	sv, err := b.Eval("ses.umd.js", sesSource)
 	if err != nil {
-		return fmt.Errorf("agent-embed: SES load: %w", err)
+		return fmt.Errorf("agent-embed: SES load: %w", wrapBundleError(b, "ses load", "ses.umd.js", err))
 	}
 	sv.Free()
 
@@ -80,13 +80,13 @@ func LoadBundle(b *jsbridge.Bridge) error {
 	if len(bundleBytecode) > 0 {
 		val, err := b.EvalBytecode(bundleBytecode)
 		if err != nil {
-			return fmt.Errorf("agent-embed: load bytecode: %w", err)
+			return fmt.Errorf("agent-embed: load bytecode: %w", wrapBundleError(b, "bundle bytecode load", "agent_embed_bundle.bc", err))
 		}
 		val.Free()
 	} else {
 		val, err := b.EvalAsync("agent-embed-bundle.js", bundleSource)
 		if err != nil {
-			return fmt.Errorf("agent-embed: load bundle: %w", err)
+			return fmt.Errorf("agent-embed: load bundle: %w", wrapBundleError(b, "bundle source load", "agent-embed-bundle.js", err))
 		}
 		val.Free()
 	}
@@ -94,36 +94,52 @@ func LoadBundle(b *jsbridge.Bridge) error {
 	// 5. Call lockdown() — freezes intrinsics now that bundle init is done.
 	lv, err := b.Eval("ses-lockdown.js", sesLockdownJS)
 	if err != nil {
-		return fmt.Errorf("agent-embed: SES lockdown: %w", err)
+		return fmt.Errorf("agent-embed: SES lockdown: %w", wrapBundleError(b, "ses lockdown", "ses-lockdown.js", err))
 	}
 	lv.Free()
 	return nil
 }
 
-
 // BundleSource returns the raw JS bundle source (for benchmarking/compilation).
 func BundleSource() string { return bundleSource }
+
+func wrapBundleError(b *jsbridge.Bridge, phase, source string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var snap *jsbridge.DebugSnapshot
+	if b != nil {
+		s := b.DebugSnapshot()
+		snap = &s
+	}
+	return jsbridge.WrapError(err, jsbridge.DiagnosticContext{
+		RuntimeOwner:   "agent-embed",
+		Phase:          phase,
+		Source:         source,
+		BridgeSnapshot: snap,
+	})
+}
 
 // LoadPrelude loads everything except the main bundle: globals, SES polyfills, SES UMD, lockdown.
 func LoadPrelude(b *jsbridge.Bridge) error {
 	setup, err := b.Eval("agent-embed-setup.js", runtimeGlobalsJS)
 	if err != nil {
-		return fmt.Errorf("agent-embed: setup globals: %w", err)
+		return fmt.Errorf("agent-embed: setup globals: %w", wrapBundleError(b, "setup globals", "agent-embed-setup.js", err))
 	}
 	setup.Free()
 	sp, err := b.Eval("ses-polyfills.js", sesPolyfillsSource)
 	if err != nil {
-		return fmt.Errorf("agent-embed: SES polyfills: %w", err)
+		return fmt.Errorf("agent-embed: SES polyfills: %w", wrapBundleError(b, "ses polyfills", "ses-polyfills.js", err))
 	}
 	sp.Free()
 	sv, err := b.Eval("ses.umd.js", sesSource)
 	if err != nil {
-		return fmt.Errorf("agent-embed: SES load: %w", err)
+		return fmt.Errorf("agent-embed: SES load: %w", wrapBundleError(b, "ses load", "ses.umd.js", err))
 	}
 	sv.Free()
 	lv, err := b.Eval("ses-lockdown.js", sesLockdownJS)
 	if err != nil {
-		return fmt.Errorf("agent-embed: SES lockdown: %w", err)
+		return fmt.Errorf("agent-embed: SES lockdown: %w", wrapBundleError(b, "ses lockdown", "ses-lockdown.js", err))
 	}
 	lv.Free()
 	return nil
@@ -132,8 +148,8 @@ func LoadPrelude(b *jsbridge.Bridge) error {
 // runtimeGlobalsJS contains ONLY bundle-specific setup that runs before SES lockdown.
 // All Node.js API polyfills are now in jsbridge/*.go and loaded by sandbox.go.
 // What remains here:
-//   1. Pre-lockdown captures — SES tames Math.random/Date, we capture originals first
-//   2. require() shim — bundle has dynamic require() calls for otel, zod, vscode-jsonrpc, execa
+//  1. Pre-lockdown captures — SES tames Math.random/Date, we capture originals first
+//  2. require() shim — bundle has dynamic require() calls for otel, zod, vscode-jsonrpc, execa
 const runtimeGlobalsJS = `
 // ─── Pre-lockdown captures ──────────────────────────────────────────────
 // SES lockdown() tames Math.random, Date.now, Date() as "ambient authority".
@@ -200,8 +216,8 @@ if (typeof require === "undefined") {
       throw new Error("toJSONSchema not yet available");
     },
   };
-  globalThis.require = function(mod) {
-    if (mod === "@opentelemetry/api") return _otelStub;
+	  globalThis.require = function(mod) {
+	    if (mod === "@opentelemetry/api") return _otelStub;
     if (mod === "zod/v4" || mod === "zod") {
       return globalThis.__zod_v4_module || _zodV4Wrapper;
     }
@@ -213,12 +229,17 @@ if (typeof require === "undefined") {
     }
     if (mod === "execa") {
       return { execa: globalThis.__execa_polyfill || function() { throw new Error("execa not available"); } };
-    }
-    return {};
-  };
-}
+	    }
+	    return {};
+	  };
+	}
+	globalThis.node_module = {
+	  createRequire: function() {
+	    return globalThis.require;
+	  },
+	};
 
-// All other polyfills (Error.captureStackTrace, process extensions, Buffer,
+	// All other polyfills (Error.captureStackTrace, process extensions, Buffer,
 // navigator, performance, Intl, EventTarget, scheduling, Headers, etc.)
 // are now loaded by jsbridge polyfills in sandbox.go BEFORE this code runs.
 

@@ -54,5 +54,35 @@ if (typeof setInterval === "undefined") {
     }
   };
 }
-`)
+globalThis.timersPromises = {
+  setTimeout: function(ms, value) {
+    return new Promise(function(resolve) {
+      globalThis.setTimeout(function() { resolve(value); }, ms || 0);
+    });
+  },
+  setInterval: function(ms, value) {
+    return {
+      [Symbol.asyncIterator]: function() {
+        var closed = false;
+        return {
+          next: function() {
+            if (closed) return Promise.resolve({ value: undefined, done: true });
+            return new Promise(function(resolve) {
+              globalThis.setTimeout(function() {
+                if (closed) resolve({ value: undefined, done: true });
+                else resolve({ value: value, done: false });
+              }, ms || 0);
+            });
+          },
+          return: function() {
+            closed = true;
+            return Promise.resolve({ value: undefined, done: true });
+          },
+          [Symbol.asyncIterator]: function() { return this; },
+        };
+      },
+    };
+  },
+};
+	`)
 }

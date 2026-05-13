@@ -2,7 +2,8 @@
 //
 // This profile covers modules commonly needed by an HTTP-facing server binary:
 // the gateway and provider/storage/vector probes. It does not register the
-// command/runtime catalog; import server/standard/commands for that.
+// command/control or runtime catalogs; import server/standard/commands for the
+// light command plane and server/standard/packages for package deployment.
 package server
 
 import (

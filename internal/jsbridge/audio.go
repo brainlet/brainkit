@@ -104,6 +104,29 @@ func (p *AudioPolyfill) takeDone(handle uint64) (chan error, context.Context) {
 	return d.ch, d.ctx
 }
 
+func (p *AudioPolyfill) debugResources() map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return map[string]int{
+		"audio.playing": len(p.playing),
+		"audio.waiters": len(p.dones),
+	}
+}
+
+func (p *AudioPolyfill) closeAll() {
+	p.mu.Lock()
+	cancels := make([]context.CancelFunc, 0, len(p.playing))
+	for handle, cancel := range p.playing {
+		cancels = append(cancels, cancel)
+		delete(p.playing, handle)
+	}
+	p.dones = map[uint64]audioDone{}
+	p.mu.Unlock()
+	for _, cancel := range cancels {
+		cancel()
+	}
+}
+
 // Name implements Polyfill.
 func (p *AudioPolyfill) Name() string { return "audio" }
 
@@ -113,6 +136,13 @@ func (p *AudioPolyfill) SetBridge(b *Bridge) { p.bridge = b }
 // Setup installs globalThis.Audio + the bridge functions.
 func (p *AudioPolyfill) Setup(ctx *quickjs.Context) error {
 	polyfill := p
+	if p.bridge != nil {
+		p.bridge.RegisterResourceProvider(p.debugResources)
+		p.bridge.Go(func(goCtx context.Context) {
+			<-goCtx.Done()
+			p.closeAll()
+		})
+	}
 
 	// __go_audio_start(b64, mime) → handle (sync).
 	// Spawns the sink playback in a goroutine and returns the
@@ -222,12 +252,12 @@ func (p *AudioPolyfill) Setup(ctx *quickjs.Context) error {
 //
 // Mirrors the HTMLAudioElement subset agent code typically uses:
 //
-//   const audio = new Audio(src);    // src: URL | path | Buffer | Uint8Array | Blob | Node Readable
-//   audio.src = "...";                // late-bind
-//   await audio.play();               // resolves when playback ends
-//   audio.pause();                    // cancels in-flight playback
-//   audio.addEventListener("ended", fn);
-//   audio.onended = fn;
+//	const audio = new Audio(src);    // src: URL | path | Buffer | Uint8Array | Blob | Node Readable
+//	audio.src = "...";                // late-bind
+//	await audio.play();               // resolves when playback ends
+//	audio.pause();                    // cancels in-flight playback
+//	audio.addEventListener("ended", fn);
+//	audio.onended = fn;
 //
 // `play()` materializes the source into bytes, sniffs the MIME
 // type, and dispatches to the wired AudioSink. Without a sink

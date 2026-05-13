@@ -9,7 +9,7 @@ import (
 	_ "github.com/brainlet/brainkit/server/configfile/storebackends/sqlite"
 )
 
-func TestCommandsProfileRegistersCommandRuntimeModules(t *testing.T) {
+func TestCommandsProfileRegistersLightCommandModules(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := filepath.Join(tmp, "brainkit.yaml")
 	body := []byte(`namespace: commands-profile
@@ -17,9 +17,7 @@ fs_root: ` + tmp + `
 transport:
   type: memory
 modules:
-  jsruntime: {}
   agents: {}
-  packages: {}
   tools: {}
 `)
 	if err := os.WriteFile(configPath, body, 0644); err != nil {
@@ -34,9 +32,14 @@ modules:
 	for _, mod := range cfg.Modules {
 		got[mod.ID()] = true
 	}
-	for _, want := range []string{"agents", "jsruntime", "packages", "tools"} {
+	for _, want := range []string{"agents", "tools"} {
 		if !got[want] {
 			t.Fatalf("loaded modules = %#v, missing %s", got, want)
+		}
+	}
+	for _, unexpected := range []string{"jsruntime", "packages"} {
+		if got[unexpected] {
+			t.Fatalf("loaded modules = %#v, did not expect %s", got, unexpected)
 		}
 	}
 }

@@ -96,7 +96,8 @@ func (r *Runtime) loadRuntime() error {
 	for _, rf := range runtimeFiles {
 		val, err := r.bridge.Eval(rf.name, rf.source)
 		if err != nil {
-			return fmt.Errorf("brainkit: load %s: %w", rf.name, err)
+			return fmt.Errorf("brainkit: load %s: %w",
+				rf.name, r.deploymentMgr.wrapRuntimeError("runtime load", rf.name, "", err))
 		}
 		val.Free()
 	}
@@ -121,7 +122,8 @@ func (r *Runtime) loadRuntime() error {
 		if modVal.IsException() {
 			exc := ctx.Exception()
 			modVal.Free()
-			return fmt.Errorf("brainkit: register %s module: %v", mod.name, exc)
+			return fmt.Errorf("brainkit: register %s module: %w",
+				mod.name, r.deploymentMgr.wrapRuntimeError("runtime module register", mod.name, "", exc))
 		}
 		modVal.Free()
 	}

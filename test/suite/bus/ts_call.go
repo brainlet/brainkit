@@ -129,6 +129,71 @@ func testTSBusCallServiceStreamHappyPath(t *testing.T, env *suite.TestEnv) {
 	assert.Equal(t, float64(9), reply["sum"])
 }
 
+// testTSBusCallAndCallStreamStayAsyncUnderConcurrency proves that JS callers
+// do not serialize every request/reply or stream response behind one blocking
+// response path. The server increments an in-flight counter before awaiting a
+// timer; if awaited handlers were serialized, maxActive would stay at 1.
+func testTSBusCallAndCallStreamStayAsyncUnderConcurrency(t *testing.T, env *suite.TestEnv) {
+	testutil.Deploy(t, env.Kit, "ts-async-calls-server.ts", `
+		let active = 0;
+		let maxActive = 0;
+		function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+		async function withActive(fn) {
+			active++;
+			if (active > maxActive) maxActive = active;
+			try {
+				return await fn();
+			} finally {
+				active--;
+			}
+		}
+		bus.on("work", async (msg) => {
+			await withActive(async () => {
+				await sleep(120);
+			});
+			msg.reply({ n: msg.payload.n, maxActive });
+		});
+		bus.on("stream", async (msg) => {
+			await withActive(async () => {
+				msg.send({ n: msg.payload.n, phase: "start" });
+				await sleep(120);
+				msg.send({ n: msg.payload.n, phase: "end" });
+			});
+			msg.reply({ n: msg.payload.n, maxActive });
+		});
+	`)
+	time.Sleep(100 * time.Millisecond)
+
+	reply := tsCallDeployAndTrigger(t, env, "ts-async-calls-client.ts", `
+		bus.on("trigger", async (msg) => {
+			const started = Date.now();
+			const calls = Array.from({ length: 8 }, (_, n) => {
+				return bus.call("ts.ts-async-calls-server.work", { n }, { timeoutMs: 5000 });
+			});
+			let chunks = 0;
+			const streams = Array.from({ length: 4 }, (_, n) => {
+				return bus.callStream("ts.ts-async-calls-server.stream", { n: n + 100 }, {
+					timeoutMs: 5000,
+					bufferSize: 8,
+					bufferPolicy: "block",
+					onChunk: async () => {
+						await Promise.resolve();
+						chunks++;
+					},
+				});
+			});
+			const results = await Promise.all(calls.concat(streams));
+			const maxActive = results.reduce((max, item) => Math.max(max, item.maxActive || 0), 0);
+			const sum = results.reduce((total, item) => total + item.n, 0);
+			msg.reply({ elapsedMs: Date.now() - started, maxActive, chunks, sum });
+		});
+	`)
+	assert.GreaterOrEqual(t, int(reply["maxActive"].(float64)), 2)
+	assert.Less(t, int(reply["elapsedMs"].(float64)), 1000)
+	assert.Equal(t, float64(8), reply["chunks"])
+	assert.Equal(t, float64(434), reply["sum"])
+}
+
 // testTSBusCallStreamOnChunkErrorRejects — local stream consumer failures
 // abort the call and preserve typed BrainkitError details.
 func testTSBusCallStreamOnChunkErrorRejects(t *testing.T, env *suite.TestEnv) {

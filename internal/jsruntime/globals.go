@@ -59,6 +59,9 @@ func (r *Runtime) evalJSCall(ctx context.Context, fn string, args any) (json.Raw
 	code := fmt.Sprintf("return JSON.stringify(await %s(JSON.parse(%q)))", fn, string(argsJSON))
 	result, err := r.EvalJS(ctx, "__dispatch__.ts", code)
 	if err != nil {
+		if r.deploymentMgr != nil {
+			return nil, r.deploymentMgr.wrapRuntimeError("call", "__dispatch__.ts", fn, err)
+		}
 		return nil, err
 	}
 	return json.RawMessage(result), nil

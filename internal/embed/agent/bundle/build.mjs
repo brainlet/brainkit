@@ -1,5 +1,6 @@
 import * as esbuild from "esbuild";
-import { statSync, writeFileSync } from "node:fs";
+import { builtinModules } from "node:module";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 
 // Node.js built-ins that Mastra imports.
 // We stub them at build time so esbuild can resolve named imports.
@@ -7,26 +8,100 @@ import { statSync, writeFileSync } from "node:fs";
 // on globalThis (stream, crypto, net, os, Buffer, etc.).
 // These stubs are THIN RE-EXPORTS — no logic, just wiring for esbuild resolution.
 
-const nodeBuiltins = new Set([
-  "assert", "async_hooks", "buffer", "child_process", "crypto",
-  "diagnostics_channel", "dns", "events", "fs", "http", "https", "module", "timers",
-  "net", "os", "path", "perf_hooks", "process", "querystring",
-  "stream", "string_decoder", "tls", "url", "util", "worker_threads", "zlib",
-]);
-
-const nodeSubpaths = new Set([
-  "fs/promises", "stream/web", "path/posix", "stream/promises", "util/types", "timers/promises",
-]);
+const compatManifest = JSON.parse(
+  readFileSync(new URL("./compat/manifest.json", import.meta.url), "utf8"),
+);
+const compatEntries = compatManifest.entries || [];
+const nodeCompatEntries = new Map(
+  compatEntries
+    .filter((entry) => entry.kind === "node-module" || entry.kind === "node-subpath")
+    .map((entry) => [entry.id, entry]),
+);
+const nodeCompatAliases = new Map();
+for (const entry of compatEntries) {
+  for (const alias of entry.aliases || []) {
+    nodeCompatAliases.set(alias, entry.id);
+  }
+}
+const packagePatchEntries = new Map(
+  compatEntries
+    .filter((entry) => entry.kind === "package-patch")
+    .map((entry) => [entry.id, entry]),
+);
+const nativeNodeBuiltins = new Set(
+  builtinModules.map((id) => id.startsWith("node:") ? id.slice(5) : id),
+);
 
 function isNodeBuiltin(id) {
   if (id.startsWith("node:")) return true;
-  if (nodeSubpaths.has(id)) return true;
-  const base = id.split("/")[0];
-  return nodeBuiltins.has(base);
+  const normalized = normalizeId(id);
+  if (id.endsWith("/") && normalized === id) {
+    return false;
+  }
+  if (nativeNodeBuiltins.has(normalized)) return true;
+  const base = normalized.split("/")[0];
+  return nativeNodeBuiltins.has(base);
 }
 
 function normalizeId(id) {
-  return id.startsWith("node:") ? id.slice(5) : id;
+  let normalized = id.startsWith("node:") ? id.slice(5) : id;
+  if (nodeCompatAliases.has(normalized)) {
+    return nodeCompatAliases.get(normalized);
+  }
+  if (normalized.endsWith("/") && nodeCompatEntries.has(normalized.slice(0, -1))) {
+    return normalized.slice(0, -1);
+  }
+  return normalized;
+}
+
+function requirePackagePatch(id) {
+  const entry = packagePatchEntries.get(id);
+  if (!entry) {
+    throw new Error(`package patch ${id} is missing from compat/manifest.json`);
+  }
+  if (typeof entry.required !== "boolean") {
+    throw new Error(`package patch ${id} is missing required=true/false in compat/manifest.json`);
+  }
+  if (!entry.package || !entry.versionRange || !entry.patchType || !entry.expected || !entry.removalCondition) {
+    throw new Error(`package patch ${id} is missing package, versionRange, patchType, expected, or removalCondition metadata in compat/manifest.json`);
+  }
+  return id;
+}
+
+function getPackagePatch(id) {
+  requirePackagePatch(id);
+  return packagePatchEntries.get(id);
+}
+
+function packagePatchApplied(id, detail) {
+  getPackagePatch(id);
+  console.log(`Package patch ${id} applied: ${detail}`);
+}
+
+function packagePatchInstalledVersion(entry) {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL(`./node_modules/${entry.package}/package.json`, import.meta.url), "utf8"));
+    return pkg.version || "unknown";
+  } catch (_) {
+    return "unknown";
+  }
+}
+
+function packagePatchMissed(id, detail) {
+  const entry = getPackagePatch(id);
+  const installed = packagePatchInstalledVersion(entry);
+  const message = [
+    `Package patch ${id} not applied: ${detail}.`,
+    `Package: ${entry.package}@${installed}.`,
+    `Version range: ${entry.versionRange}.`,
+    `Patch type: ${entry.patchType}.`,
+    `Expected: ${entry.expected}.`,
+    `Removal condition: ${entry.removalCondition}.`,
+  ].join(" ");
+  if (entry.required) {
+    throw new Error(message);
+  }
+  console.warn(`Optional ${message}`);
 }
 
 const throwFn = (name) => `function() { throw new Error("${name}: not available in QuickJS"); }`;
@@ -34,25 +109,25 @@ const throwFn = (name) => `function() { throw new Error("${name}: not available 
 // ─── Module stubs: thin re-exports from jsbridge polyfills on globalThis ──
 const moduleStubs = {
   "crypto": `
-    var C = globalThis.crypto || {};
-    export var randomUUID = function() { return globalThis.crypto.randomUUID(); };
-    export var randomBytes = C.randomBytes || function(n) { return new Uint8Array(n); };
-    export var randomFillSync = C.randomFillSync || function(buf) { return buf; };
-    export var randomInt = C.randomInt || function(min, max) { if (max === undefined) { max = min; min = 0; } return min + Math.floor(Math.random() * (max - min)); };
-    export var createHash = C.createHash || function() { return { update: function() { return this; }, digest: function() { return ""; } }; };
-    export var createHmac = C.createHmac || function() { return { update: function() { return this; }, digest: function() { return ""; } }; };
-    export var pbkdf2 = C.pbkdf2 || ${throwFn("pbkdf2")};
-    export var pbkdf2Sync = C.pbkdf2Sync || ${throwFn("pbkdf2Sync")};
-    export var timingSafeEqual = C.timingSafeEqual || function(a, b) { if (a.length !== b.length) return false; var r = 0; for (var i = 0; i < a.length; i++) r |= a[i] ^ b[i]; return r === 0; };
-    export var getHashes = C.getHashes || function() { return ["sha256", "sha512"]; };
-    export var getCiphers = C.getCiphers || function() { return []; };
-    export var getFips = C.getFips || function() { return 0; };
-    export var createCipheriv = ${throwFn("createCipheriv")};
-    export var createDecipheriv = ${throwFn("createDecipheriv")};
-    export var createSign = ${throwFn("createSign")};
-    export var createVerify = ${throwFn("createVerify")};
-    export var scrypt = ${throwFn("scrypt")};
-    export var scryptSync = ${throwFn("scryptSync")};
+    var C = globalThis.crypto;
+    export var randomUUID = C.randomUUID;
+    export var randomBytes = C.randomBytes;
+    export var randomFillSync = C.randomFillSync;
+    export var randomInt = C.randomInt;
+    export var createHash = C.createHash;
+    export var createHmac = C.createHmac;
+    export var pbkdf2 = C.pbkdf2;
+    export var pbkdf2Sync = C.pbkdf2Sync;
+    export var timingSafeEqual = C.timingSafeEqual;
+    export var getHashes = C.getHashes;
+    export var getCiphers = C.getCiphers;
+    export var getFips = C.getFips;
+    export var createCipheriv = C.createCipheriv;
+    export var createDecipheriv = C.createDecipheriv;
+    export var createSign = C.createSign;
+    export var createVerify = C.createVerify;
+    export var scrypt = C.scrypt;
+    export var scryptSync = C.scryptSync;
     export var constants = {};
     export var webcrypto = globalThis.crypto;
     export default { randomUUID, randomBytes, randomFillSync, randomInt, createHash, createHmac,
@@ -60,403 +135,375 @@ const moduleStubs = {
       scrypt, scryptSync, timingSafeEqual, constants, webcrypto, getHashes, getCiphers, getFips };
   `,
   "stream": `
-    var S = globalThis.stream || {};
-    export var Readable = S.Readable || class Readable {};
-    export var Writable = S.Writable || class Writable {};
-    export var Duplex = S.Duplex || class Duplex {};
-    export var Transform = S.Transform || class Transform {};
-    export var PassThrough = S.PassThrough || class PassThrough {};
-    export var pipeline = S.pipeline || function() { var cb = arguments[arguments.length - 1]; if (typeof cb === "function") cb(); };
-    export var finished = S.finished || function(stream, cb) { if (cb) cb(); };
-    export var Stream = S.Stream || Readable;
-    if (!Readable.from) Readable.from = function(iterable) { var r = new Readable(); if (iterable && iterable[Symbol.iterator]) { for (var v of iterable) r.push(v); r.push(null); } return r; };
-    if (!Readable.toWeb) Readable.toWeb = function(nodeStream) { return new ReadableStream({ start(ctrl) { nodeStream.on("data", function(c) { ctrl.enqueue(c); }); nodeStream.on("end", function() { ctrl.close(); }); } }); };
-    if (!Readable.fromWeb) Readable.fromWeb = function(webStream) { var r = new Readable(); var reader = webStream.getReader(); (async function pump() { var res = await reader.read(); if (res.done) { r.push(null); return; } r.push(res.value); pump(); })(); return r; };
-    export default { Readable, Writable, Duplex, Transform, PassThrough, pipeline, finished, Stream };
+    var S = globalThis.stream;
+    export var EventEmitter = S.EventEmitter;
+    export var Readable = S.Readable;
+    export var Writable = S.Writable;
+    export var Duplex = S.Duplex;
+    export var Transform = S.Transform;
+    export var PassThrough = S.PassThrough;
+    export var pipeline = S.pipeline;
+    export var finished = S.finished;
+    export var Stream = S.Stream;
+    export default { EventEmitter, Readable, Writable, Duplex, Transform, PassThrough, pipeline, finished, Stream };
   `,
   "stream/web": `
-    export var ReadableStream = globalThis.ReadableStream || class ReadableStream {};
-    export var WritableStream = globalThis.WritableStream || class WritableStream {};
-    export var TransformStream = globalThis.TransformStream || class TransformStream {};
+    export var ReadableStream = globalThis.ReadableStream;
+    export var WritableStream = globalThis.WritableStream;
+    export var TransformStream = globalThis.TransformStream;
     export default { ReadableStream, WritableStream, TransformStream };
   `,
   "stream/promises": `
-    export var pipeline = function() { return Promise.resolve(); };
-    export var finished = function() { return Promise.resolve(); };
-    export default { pipeline, finished };
+    var P = globalThis.stream.promises;
+    export var pipeline = P.pipeline;
+    export var finished = P.finished;
+    export default P;
   `,
   "net": `
-    var N = globalThis.net || {};
-    export var Socket = N.Socket || class Socket {};
-    export var createConnection = N.createConnection || function() { return new Socket(); };
-    export var connect = N.connect || createConnection;
-    export var createServer = N.createServer || ${throwFn("net.createServer")};
-    export var Server = N.Server || class Server {};
-    export var isIP = N.isIP || function() { return 0; };
-    export var isIPv4 = N.isIPv4 || function() { return false; };
-    export var isIPv6 = N.isIPv6 || function() { return false; };
+    var N = globalThis.net;
+    export var Socket = N.Socket;
+    export var createConnection = N.createConnection;
+    export var connect = N.connect;
+    export var createServer = N.createServer;
+    export var Server = N.Server;
+    export var isIP = N.isIP;
+    export var isIPv4 = N.isIPv4;
+    export var isIPv6 = N.isIPv6;
     export default { Socket, createConnection, connect, createServer, Server, isIP, isIPv4, isIPv6 };
   `,
   "tls": `
-    export var createServer = ${throwFn("tls.createServer")};
-    export var connect = function(options) {
-      // pg SSL upgrade: tls.connect({ socket: existingSocket, servername: host })
-      // Upgrades existing TCP connection to TLS via Go crypto/tls
-      if (options && options.socket && options.socket._gs && options.socket._gs._id) {
-        var servername = options.servername || options.host || "";
-        var ok = __go_net_tls_upgrade(options.socket._gs._id, servername);
-        if (!ok) throw new Error("tls.connect: TLS upgrade failed");
-        // Return the same socket — its underlying Go conn is now TLS
-        options.socket.emit("secureConnect");
-        return options.socket;
-      }
-      // Raw GoSocket (not wrapped in Duplex Socket)
-      if (options && options.socket && options.socket._id) {
-        var servername = options.servername || options.host || "";
-        var ok = __go_net_tls_upgrade(options.socket._id, servername);
-        if (!ok) throw new Error("tls.connect: TLS upgrade failed");
-        options.socket._emit && options.socket._emit("secureConnect");
-        return options.socket;
-      }
-      throw new Error("tls.connect: requires options.socket (TLS upgrade of existing connection)");
-    };
-    export var TLSSocket = class TLSSocket {};
-    export var DEFAULT_ECDH_CURVE = "auto";
-    export var DEFAULT_MIN_VERSION = "TLSv1.2";
-    export var DEFAULT_MAX_VERSION = "TLSv1.3";
-    export default { createServer, connect, TLSSocket, DEFAULT_ECDH_CURVE, DEFAULT_MIN_VERSION, DEFAULT_MAX_VERSION };
+    var T = globalThis.tls;
+    export var createServer = T.createServer;
+    export var connect = T.connect;
+    export var TLSSocket = T.TLSSocket;
+    export var DEFAULT_ECDH_CURVE = T.DEFAULT_ECDH_CURVE;
+    export var DEFAULT_MIN_VERSION = T.DEFAULT_MIN_VERSION;
+    export var DEFAULT_MAX_VERSION = T.DEFAULT_MAX_VERSION;
+    export default T;
   `,
   "buffer": `
-    export var Buffer = globalThis.Buffer || { from: function() { return new Uint8Array(0); }, alloc: function(n) { return new Uint8Array(n); }, isBuffer: function() { return false; } };
+    export var Buffer = globalThis.Buffer;
     export default { Buffer };
   `,
   "events": `
-    export var EventEmitter = globalThis.EventEmitter || class EventEmitter {};
+    export var EventEmitter = globalThis.EventEmitter;
     export default EventEmitter;
   `,
   "path": `
-    var P = globalThis.path || {};
-    export var join = P.join || function() { return Array.prototype.join.call(arguments, "/"); };
-    export var resolve = P.resolve || join;
-    export var dirname = P.dirname || function(p) { return p.replace(/\\/[^\\/]*$/, ""); };
-    export var basename = P.basename || function(p) { return p.replace(/.*\\//, ""); };
-    export var extname = P.extname || function(p) { var m = p.match(/\\.[^.]+$/); return m ? m[0] : ""; };
-    export var normalize = function(p) { return p.replace(/\\/+/g, "/").replace(/\\/$/,""); };
-    export var isAbsolute = function(p) { return p.charAt(0) === "/"; };
-    export var parse = function(p) { var b = basename(p); var e = extname(p); return { root: "", dir: dirname(p), base: b, ext: e, name: b.replace(e, "") }; };
-    export var relative = function(from, to) { return to; };
-    export var sep = "/";
-    export var delimiter = ":";
+    var P = globalThis.path;
+    export var join = P.join;
+    export var resolve = P.resolve;
+    export var dirname = P.dirname;
+    export var basename = P.basename;
+    export var extname = P.extname;
+    export var normalize = P.normalize;
+    export var isAbsolute = P.isAbsolute;
+    export var parse = P.parse;
+    export var relative = P.relative;
+    export var sep = P.sep;
+    export var delimiter = P.delimiter;
     export var posix = P;
     export default { join, resolve, dirname, basename, extname, normalize, isAbsolute, parse, relative, sep, delimiter, posix };
   `,
   "path/posix": `
-    var P = globalThis.path || {};
-    export var join = P.join || function() { return ""; };
-    export var resolve = P.resolve || join;
-    export var dirname = P.dirname || function() { return ""; };
-    export var basename = P.basename || function() { return ""; };
-    export var extname = P.extname || function() { return ""; };
-    export var sep = "/";
+    var P = globalThis.path.posix;
+    export var join = P.join;
+    export var resolve = P.resolve;
+    export var dirname = P.dirname;
+    export var basename = P.basename;
+    export var extname = P.extname;
+    export var sep = P.sep;
     export default { join, resolve, dirname, basename, extname, sep };
   `,
   "os": `
-    var O = globalThis.os || {};
-    export var platform = O.platform || function() { return "linux"; };
-    export var arch = O.arch || function() { return "x64"; };
-    export var tmpdir = O.tmpdir || function() { return "/tmp"; };
-    export var homedir = O.homedir || function() { return "/"; };
-    export var hostname = O.hostname || function() { return "localhost"; };
-    export var type = O.type || function() { return "Linux"; };
-    export var EOL = O.EOL || "\\n";
-    export var cpus = O.cpus || function() { return []; };
-    export var release = O.release || function() { return ""; };
-    export var totalmem = O.totalmem || function() { return 0; };
-    export var freemem = O.freemem || function() { return 0; };
-    export var endianness = O.endianness || function() { return "LE"; };
+    var O = globalThis.os;
+    export var platform = O.platform;
+    export var arch = O.arch;
+    export var tmpdir = O.tmpdir;
+    export var homedir = O.homedir;
+    export var hostname = O.hostname;
+    export var type = O.type;
+    export var EOL = O.EOL;
+    export var cpus = O.cpus;
+    export var release = O.release;
+    export var totalmem = O.totalmem;
+    export var freemem = O.freemem;
+    export var endianness = O.endianness;
     export default { platform, arch, tmpdir, homedir, hostname, type, EOL, cpus, release, totalmem, freemem, endianness };
   `,
   "fs": `
-    var F = globalThis.fs || {};
-    export var readFile = F.readFile || ${throwFn("fs.readFile")};
-    export var writeFile = F.writeFile || ${throwFn("fs.writeFile")};
-    export var appendFile = F.appendFile || ${throwFn("fs.appendFile")};
-    export var readdir = F.readdir || ${throwFn("fs.readdir")};
-    export var stat = F.stat || ${throwFn("fs.stat")};
-    export var lstat = F.lstat || ${throwFn("fs.lstat")};
-    export var access = F.access || ${throwFn("fs.access")};
-    export var mkdir = F.mkdir || ${throwFn("fs.mkdir")};
-    export var unlink = F.unlink || ${throwFn("fs.unlink")};
-    export var rm = F.rm || ${throwFn("fs.rm")};
-    export var rename = F.rename || ${throwFn("fs.rename")};
-    export var copyFile = F.copyFile || ${throwFn("fs.copyFile")};
-    export var realpath = F.realpath || ${throwFn("fs.realpath")};
-    export var readFileSync = (F.readFileSync && F.readFileSync.bind(F)) || ${throwFn("fs.readFileSync")};
-    export var writeFileSync = (F.writeFileSync && F.writeFileSync.bind(F)) || ${throwFn("fs.writeFileSync")};
-    export var existsSync = (F.existsSync && F.existsSync.bind(F)) || function() { return false; };
-    export var realpathSync = (F.realpathSync && F.realpathSync.bind(F)) || function(p) { return p; };
-    export var mkdirSync = (F.mkdirSync && F.mkdirSync.bind(F)) || ${throwFn("fs.mkdirSync")};
-    export var renameSync = (F.renameSync && F.renameSync.bind(F)) || ${throwFn("fs.renameSync")};
-    export var rmSync = (F.rmSync && F.rmSync.bind(F)) || ${throwFn("fs.rmSync")};
-    export var readdirSync = (F.readdirSync && F.readdirSync.bind(F)) || function() { return []; };
-    export var statSync = (F.statSync && F.statSync.bind(F)) || function() { return { isFile: function() { return false; }, isDirectory: function() { return false; }, size: 0 }; };
-    export var appendFileSync = (F.appendFileSync && F.appendFileSync.bind(F)) || ${throwFn("fs.appendFileSync")};
-    export var createReadStream = (F.createReadStream && F.createReadStream.bind(F)) || ${throwFn("fs.createReadStream")};
-    export var createWriteStream = (F.createWriteStream && F.createWriteStream.bind(F)) || ${throwFn("fs.createWriteStream")};
-    export var promises = F.promises || {};
-    export var constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1 };
+    var F = globalThis.fs;
+    export var readFile = F.readFile;
+    export var writeFile = F.writeFile;
+    export var appendFile = F.appendFile;
+    export var readdir = F.readdir;
+    export var stat = F.stat;
+    export var lstat = F.lstat;
+    export var access = F.access;
+    export var mkdir = F.mkdir;
+    export var unlink = F.unlink;
+    export var rm = F.rm;
+    export var rename = F.rename;
+    export var copyFile = F.copyFile;
+    export var realpath = F.realpath;
+    export var readFileSync = F.readFileSync.bind(F);
+    export var writeFileSync = F.writeFileSync.bind(F);
+    export var existsSync = F.existsSync.bind(F);
+    export var realpathSync = F.realpathSync.bind(F);
+    export var mkdirSync = F.mkdirSync.bind(F);
+    export var renameSync = F.renameSync.bind(F);
+    export var rmSync = F.rmSync.bind(F);
+    export var readdirSync = F.readdirSync.bind(F);
+    export var statSync = F.statSync.bind(F);
+    export var appendFileSync = F.appendFileSync.bind(F);
+    export var createReadStream = F.createReadStream.bind(F);
+    export var createWriteStream = F.createWriteStream.bind(F);
+    export var promises = F.promises;
+    export var constants = F.constants;
     export default { readFile, writeFile, appendFile, readdir, stat, lstat, access, mkdir, unlink, rm, rename, copyFile, realpath, readFileSync, writeFileSync, existsSync, realpathSync, mkdirSync, renameSync, rmSync, readdirSync, statSync, appendFileSync, createReadStream, createWriteStream, promises, constants };
   `,
   "fs/promises": `
-    // Prefer the fully-implemented globalThis.fs.promises surface
-    // installed by internal/jsbridge/fs.go. Fall back to
-    // top-level globalThis.fs (also populated with promisified
-    // methods), then to a throwFn for truly unavailable ops.
-    var F = (globalThis.fs && globalThis.fs.promises) || globalThis.fs || {};
-    var T = globalThis.fs || {};
-    export var readFile = F.readFile || T.readFile || ${throwFn("fs.readFile")};
-    export var writeFile = F.writeFile || T.writeFile || ${throwFn("fs.writeFile")};
-    export var readdir = F.readdir || T.readdir || ${throwFn("fs.readdir")};
-    export var stat = F.stat || T.stat || ${throwFn("fs.stat")};
-    export var lstat = F.lstat || T.lstat || ${throwFn("fs.lstat")};
-    export var mkdir = F.mkdir || T.mkdir || ${throwFn("fs.mkdir")};
-    export var mkdtemp = F.mkdtemp || T.mkdtemp || ${throwFn("fs.mkdtemp")};
-    export var rmdir = F.rmdir || T.rmdir || ${throwFn("fs.rmdir")};
-    export var rm = F.rm || T.rm || ${throwFn("fs.rm")};
-    export var unlink = F.unlink || T.unlink || ${throwFn("fs.unlink")};
-    export var access = F.access || T.access || ${throwFn("fs.access")};
-    export var copyFile = F.copyFile || T.copyFile || ${throwFn("fs.copyFile")};
-    export var rename = F.rename || T.rename || ${throwFn("fs.rename")};
-    export var realpath = F.realpath || T.realpath || ${throwFn("fs.realpath")};
-    export var appendFile = F.appendFile || T.appendFile || ${throwFn("fs.appendFile")};
-    export var symlink = F.symlink || T.symlink || ${throwFn("fs.symlink")};
-    export var readlink = F.readlink || T.readlink || ${throwFn("fs.readlink")};
-    export var chmod = F.chmod || T.chmod || ${throwFn("fs.chmod")};
-    export var chown = F.chown || T.chown || ${throwFn("fs.chown")};
-    export var truncate = F.truncate || T.truncate || ${throwFn("fs.truncate")};
-    export var utimes = F.utimes || T.utimes || ${throwFn("fs.utimes")};
+    var F = globalThis.fs.promises;
+    export var readFile = F.readFile;
+    export var writeFile = F.writeFile;
+    export var readdir = F.readdir;
+    export var stat = F.stat;
+    export var lstat = F.lstat;
+    export var mkdir = F.mkdir;
+    export var mkdtemp = F.mkdtemp;
+    export var rmdir = F.rmdir;
+    export var rm = F.rm;
+    export var unlink = F.unlink;
+    export var access = F.access;
+    export var copyFile = F.copyFile;
+    export var rename = F.rename;
+    export var realpath = F.realpath;
+    export var appendFile = F.appendFile;
+    export var symlink = F.symlink;
+    export var readlink = F.readlink;
+    export var chmod = F.chmod;
+    export var chown = F.chown;
+    export var truncate = F.truncate;
+    export var utimes = F.utimes;
     export default { readFile, writeFile, readdir, stat, lstat, mkdir, mkdtemp, rmdir, rm, unlink, access, copyFile, rename, realpath, appendFile, symlink, readlink, chmod, chown, truncate, utimes };
   `,
   "url": `
-    export var URL = globalThis.URL;
-    export var URLSearchParams = globalThis.URLSearchParams;
-    export var fileURLToPath = function(u) { return typeof u === "string" ? u.replace("file://", "") : String(u); };
-    export var pathToFileURL = function(p) { return new URL("file://" + p); };
-    // node:url legacy "format" / "parse" API — only shape-
-    // compliant enough to keep node-fetch (pulled in by
-    // @google/genai → GeminiLiveVoice) happy. Full API lives
-    // on the WHATWG URL constructor; consumers doing anything
-    // beyond the basics should use that directly.
-    export var format = function(urlObj) {
-      if (typeof urlObj === "string") return urlObj;
-      if (urlObj instanceof URL) return urlObj.toString();
-      var u = String(urlObj.protocol || "http:") + (urlObj.slashes === false ? "" : "//") +
-              String(urlObj.host || (urlObj.hostname || "") + (urlObj.port ? ":" + urlObj.port : "")) +
-              String(urlObj.pathname || "") + String(urlObj.search || "") + String(urlObj.hash || "");
-      return u;
-    };
-    export var parse = function(s) {
-      try { var u = new URL(s); return { protocol: u.protocol, host: u.host, hostname: u.hostname, port: u.port, pathname: u.pathname, search: u.search, hash: u.hash, href: u.href, path: u.pathname + u.search }; }
-      catch (_) { return { href: String(s) }; }
-    };
-    export var resolve = function(base, rel) { try { return new URL(rel, base).toString(); } catch(_) { return rel; } };
-    export default { URL: globalThis.URL, URLSearchParams: globalThis.URLSearchParams, fileURLToPath, pathToFileURL, format, parse, resolve };
+    var U = globalThis.node_url;
+    export var URL = U.URL;
+    export var URLSearchParams = U.URLSearchParams;
+    export var fileURLToPath = U.fileURLToPath;
+    export var pathToFileURL = U.pathToFileURL;
+    export var format = U.format;
+    export var parse = U.parse;
+    export var resolve = U.resolve;
+    export default U;
   `,
   "process": `
-    var _p = globalThis.process || {};
-    export var env = _p.env || {};
-    export var version = _p.version || "v20.0.0";
-    export var versions = _p.versions || {};
-    export var platform = _p.platform || "linux";
-    export var arch = _p.arch || "x64";
-    export var pid = _p.pid || 1;
-    export var argv = _p.argv || [];
-    export var cwd = _p.cwd || function() { return "/"; };
-    export var nextTick = _p.nextTick || function(fn) { queueMicrotask(fn); };
-    export var stdout = _p.stdout || { write: function() { return true; } };
-    export var stderr = _p.stderr || { write: function() { return true; } };
+    var _p = globalThis.process;
+    export var env = _p.env;
+    export var version = _p.version;
+    export var versions = _p.versions;
+    export var platform = _p.platform;
+    export var arch = _p.arch;
+    export var pid = _p.pid;
+    export var argv = _p.argv;
+    export var cwd = _p.cwd;
+    export var nextTick = _p.nextTick;
+    export var stdout = _p.stdout;
+    export var stderr = _p.stderr;
     export default _p;
   `,
   "util": `
-    export var promisify = function(fn) { return function() { var args = Array.prototype.slice.call(arguments); return new Promise(function(resolve, reject) { args.push(function(err, result) { if (err) reject(err); else resolve(result); }); fn.apply(null, args); }); }; };
-    export var inherits = function(ctor, superCtor) { ctor.prototype = Object.create(superCtor.prototype); ctor.prototype.constructor = ctor; };
-    export var deprecate = function(fn) { return fn; };
-    export var types = { isUint8Array: function(v) { return v instanceof Uint8Array; }, isDate: function(v) { return v instanceof Date || (v !== null && typeof v === "object" && typeof v.getTime === "function" && typeof v.toISOString === "function"); }, isArrayBuffer: function(v) { return v instanceof ArrayBuffer; }, isRegExp: function(v) { return v instanceof RegExp; }, isMap: function(v) { return v instanceof Map; }, isSet: function(v) { return v instanceof Set; }, isTypedArray: function(v) { return ArrayBuffer.isView(v) && !(v instanceof DataView); } };
-    export var inspect = function(v, opts) { try { return JSON.stringify(v, null, opts && opts.compact === false ? 2 : undefined) || String(v); } catch(e) { return String(v); } };
-    export var format = function(fmt) { var args = Array.prototype.slice.call(arguments, 1); var i = 0; return String(fmt).replace(/%[sdj%]/g, function(m) { if (m === "%%") return "%"; if (i >= args.length) return m; return String(args[i++]); }); };
-    export var TextEncoder = globalThis.TextEncoder;
-    export var TextDecoder = globalThis.TextDecoder;
-    export default { promisify, inherits, deprecate, types, inspect, format, TextEncoder, TextDecoder };
+    var U = globalThis.util;
+    export var promisify = U.promisify;
+    export var inherits = U.inherits;
+    export var deprecate = U.deprecate;
+    export var types = U.types;
+    export var inspect = U.inspect;
+    export var format = U.format;
+    export var TextEncoder = U.TextEncoder;
+    export var TextDecoder = U.TextDecoder;
+    export default U;
   `,
   "util/types": `
-    export var isUint8Array = function(v) { return v instanceof Uint8Array; };
-    export var isArrayBuffer = function(v) { return v instanceof ArrayBuffer; };
-    export var isDate = function(v) { return v instanceof Date || (v !== null && typeof v === "object" && typeof v.getTime === "function" && typeof v.toISOString === "function"); };
-    export var isRegExp = function(v) { return v instanceof RegExp; };
-    export var isMap = function(v) { return v instanceof Map; };
-    export var isSet = function(v) { return v instanceof Set; };
-    export var isTypedArray = function(v) { return ArrayBuffer.isView(v) && !(v instanceof DataView); };
-    export default { isUint8Array, isArrayBuffer, isDate, isRegExp, isMap, isSet, isTypedArray };
+    var T = globalThis.utilTypes;
+    export var isUint8Array = T.isUint8Array;
+    export var isArrayBuffer = T.isArrayBuffer;
+    export var isDate = T.isDate;
+    export var isRegExp = T.isRegExp;
+    export var isMap = T.isMap;
+    export var isSet = T.isSet;
+    export var isTypedArray = T.isTypedArray;
+    export default T;
   `,
   "child_process": `
-    var CP = globalThis.child_process || {};
-    export var exec = CP.exec || ${throwFn("child_process.exec")};
-    export var spawn = CP.spawn || ${throwFn("child_process.spawn")};
-    export var execSync = CP.execSync || ${throwFn("child_process.execSync")};
-    export var execFile = CP.exec || ${throwFn("child_process.execFile")};
-    export var execFileSync = CP.execFileSync || ${throwFn("child_process.execFileSync")};
-    export var spawnSync = CP.spawnSync || ${throwFn("child_process.spawnSync")};
+    var CP = globalThis.child_process;
+    export var exec = CP.exec;
+    export var spawn = CP.spawn;
+    export var execSync = CP.execSync;
+    export var execFile = CP.execFile;
+    export var execFileSync = CP.execFileSync;
+    export var spawnSync = CP.spawnSync;
     export default { exec, spawn, execSync, execFile, execFileSync, spawnSync };
   `,
   "http": `
-    export var createServer = ${throwFn("http.createServer")};
-    export var request = ${throwFn("http.request")};
-    export var get = ${throwFn("http.get")};
-    export var Agent = class Agent { constructor() {} };
-    export var globalAgent = new Agent();
-    export var METHODS = ["GET","HEAD","POST","PUT","DELETE","CONNECT","OPTIONS","TRACE","PATCH"];
-    export var STATUS_CODES = { 200:"OK", 201:"Created", 204:"No Content", 301:"Moved Permanently", 302:"Found", 304:"Not Modified", 400:"Bad Request", 401:"Unauthorized", 403:"Forbidden", 404:"Not Found", 500:"Internal Server Error" };
-    export default { createServer, request, get, Agent, globalAgent, METHODS, STATUS_CODES };
+    var H = globalThis.http;
+    export var createServer = H.createServer;
+    export var request = H.request;
+    export var get = H.get;
+    export var Agent = H.Agent;
+    export var globalAgent = H.globalAgent;
+    export var METHODS = H.METHODS;
+    export var STATUS_CODES = H.STATUS_CODES;
+    export default H;
   `,
   "https": `
-    export var createServer = ${throwFn("https.createServer")};
-    export var request = ${throwFn("https.request")};
-    export var get = ${throwFn("https.get")};
-    export var Agent = class Agent { constructor() {} };
-    export var globalAgent = new Agent();
-    export default { createServer, request, get, Agent, globalAgent };
+    var H = globalThis.https;
+    export var createServer = H.createServer;
+    export var request = H.request;
+    export var get = H.get;
+    export var Agent = H.Agent;
+    export var globalAgent = H.globalAgent;
+    export default H;
   `,
   "assert": `
-    export default function assert(val, msg) { if (!val) throw new Error(msg || "Assertion failed"); };
-    export var ok = function(val, msg) { if (!val) throw new Error(msg || "Assertion failed"); };
-    export var strictEqual = function(a, b, msg) { if (a !== b) throw new Error(msg || a + " !== " + b); };
-    export var deepStrictEqual = function(a, b, msg) { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(msg || "Not deeply equal"); };
-    export var throws = function(fn, msg) { try { fn(); throw new Error(msg || "Expected to throw"); } catch(e) {} };
-    export var fail = function(msg) { throw new Error(msg || "Assertion failed"); };
+    var A = globalThis.assert;
+    export var ok = A.ok;
+    export var strictEqual = A.strictEqual;
+    export var deepStrictEqual = A.deepStrictEqual;
+    export var throws = A.throws;
+    export var fail = A.fail;
+    export default A;
   `,
   "querystring": `
-    export var parse = function(str) { var obj = {}; (str || "").split("&").forEach(function(pair) { if (!pair) return; var kv = pair.split("="); obj[decodeURIComponent(kv[0])] = decodeURIComponent(kv.slice(1).join("=")); }); return obj; };
-    export var stringify = function(obj) { return Object.entries(obj || {}).map(function(kv) { return encodeURIComponent(kv[0]) + "=" + encodeURIComponent(kv[1]); }).join("&"); };
-    export var encode = stringify;
-    export var decode = parse;
-    export default { parse, stringify, encode, decode };
+    var Q = globalThis.querystring;
+    export var parse = Q.parse;
+    export var stringify = Q.stringify;
+    export var encode = Q.encode;
+    export var decode = Q.decode;
+    export default Q;
   `,
   "string_decoder": `
-    export class StringDecoder {
-      constructor(encoding) { this.encoding = encoding || "utf-8"; this._decoder = new TextDecoder(this.encoding); }
-      write(buf) { return this._decoder.decode(buf instanceof Uint8Array ? buf : new Uint8Array(buf), { stream: true }); }
-      end(buf) { if (buf) return this._decoder.decode(buf instanceof Uint8Array ? buf : new Uint8Array(buf)); return this._decoder.decode(); }
-    }
+    export var StringDecoder = globalThis.StringDecoder;
     export default { StringDecoder };
   `,
   "perf_hooks": `
-    export var performance = globalThis.performance || { now: function() { return Date.now(); }, timeOrigin: Date.now() };
-    export var PerformanceObserver = class PerformanceObserver { constructor() {} observe() {} disconnect() {} };
-    export var monitorEventLoopDelay = function() { return { enable: function() {}, disable: function() {}, percentile: function() { return 0; }, min: 0, max: 0, mean: 0, stddev: 0 }; };
-    export default { performance, PerformanceObserver, monitorEventLoopDelay };
+    var P = globalThis.perf_hooks;
+    export var performance = globalThis.performance;
+    export var PerformanceObserver = P.PerformanceObserver;
+    export var monitorEventLoopDelay = P.monitorEventLoopDelay;
+    export default P;
   `,
   "timers": `
     export var setTimeout = globalThis.setTimeout;
     export var clearTimeout = globalThis.clearTimeout;
     export var setInterval = globalThis.setInterval;
     export var clearInterval = globalThis.clearInterval;
-    export var setImmediate = globalThis.setImmediate || function(fn) { return globalThis.setTimeout(fn, 0); };
-    export var clearImmediate = globalThis.clearImmediate || function() {};
+    export var setImmediate = globalThis.setImmediate;
+    export var clearImmediate = globalThis.clearImmediate;
     export default { setTimeout, clearTimeout, setInterval, clearInterval, setImmediate, clearImmediate };
   `,
   "timers/promises": `
-    export var setTimeout = function(ms) { return new Promise(function(r) { globalThis.setTimeout(r, ms); }); };
-    export var setInterval = function() { return { [Symbol.asyncIterator]: function() { return { next: function() { return new Promise(function() {}); } }; } }; };
-    export default { setTimeout, setInterval };
+    var P = globalThis.timersPromises;
+    export var setTimeout = P.setTimeout;
+    export var setInterval = P.setInterval;
+    export default P;
   `,
   "module": `
-    export var createRequire = function() { return globalThis.require || function() { return {}; }; };
-    export default { createRequire };
+    var M = globalThis.node_module;
+    export var createRequire = M.createRequire;
+    export default M;
   `,
   "dns": `
-    var D = globalThis.dns || {};
-    export var lookup = D.lookup || ${throwFn("dns.lookup")};
-    export var resolve4 = D.resolve4 || ${throwFn("dns.resolve4")};
-    export var Resolver = D.Resolver || class Resolver {};
-    export var promises = D.promises || { lookup: ${throwFn("dns.lookup")}, resolve4: ${throwFn("dns.resolve4")} };
-    export var ADDRCONFIG = D.ADDRCONFIG || 0;
-    export var V4MAPPED = D.V4MAPPED || 0;
-    export var NODATA = D.NODATA || "ENODATA";
-    export var NOTFOUND = D.NOTFOUND || "ENOTFOUND";
-    export var TIMEOUT = D.TIMEOUT || "ETIMEOUT";
+    var D = globalThis.dns;
+    export var lookup = D.lookup;
+    export var resolve4 = D.resolve4;
+    export var Resolver = D.Resolver;
+    export var promises = D.promises;
+    export var ADDRCONFIG = D.ADDRCONFIG;
+    export var V4MAPPED = D.V4MAPPED;
+    export var NODATA = D.NODATA;
+    export var NOTFOUND = D.NOTFOUND;
+    export var TIMEOUT = D.TIMEOUT;
     export default { lookup, resolve4, Resolver, promises, ADDRCONFIG, V4MAPPED, NODATA, NOTFOUND, TIMEOUT };
   `,
+  "dns/promises": `
+    var P = globalThis.dns.promises;
+    export var lookup = P.lookup;
+    export var resolve4 = P.resolve4;
+    export var resolveSrv = P.resolveSrv;
+    export var resolveCname = P.resolveCname;
+    export var resolvePtr = P.resolvePtr;
+    export default P;
+  `,
   "async_hooks": `
-    export var createHook = function() { return { enable: function() {}, disable: function() {} }; };
-    export var executionAsyncId = function() { return 0; };
-    export var triggerAsyncId = function() { return 0; };
-    export var executionAsyncResource = function() { return {}; };
-    export class AsyncLocalStorage {
-      constructor() { this._store = undefined; }
-      getStore() { return this._store; }
-      run(store, fn) { var prev = this._store; this._store = store; try { var args = Array.prototype.slice.call(arguments, 2); return fn.apply(null, args); } finally { this._store = prev; } }
-      enterWith(store) { this._store = store; }
-      disable() { this._store = undefined; }
-    }
-    export class AsyncResource {
-      constructor(type) { this.type = type; }
-      runInAsyncScope(fn, thisArg) { var args = Array.prototype.slice.call(arguments, 2); return fn.apply(thisArg, args); }
-      emitDestroy() { return this; }
-      asyncId() { return 0; }
-      triggerAsyncId() { return 0; }
-    }
-    export default { createHook, executionAsyncId, triggerAsyncId, executionAsyncResource, AsyncLocalStorage, AsyncResource };
+    var A = globalThis.async_hooks;
+    export var createHook = A.createHook;
+    export var executionAsyncId = A.executionAsyncId;
+    export var triggerAsyncId = A.triggerAsyncId;
+    export var executionAsyncResource = A.executionAsyncResource;
+    export var AsyncLocalStorage = A.AsyncLocalStorage;
+    export var AsyncResource = A.AsyncResource;
+    export default A;
   `,
   "diagnostics_channel": `
-    var _noop = function() {};
-    var _ch = function() { return { subscribe: _noop, unsubscribe: _noop, publish: _noop, hasSubscribers: false, bindStore: _noop, runStores: _noop }; };
-    export var channel = _ch;
-    export var tracingChannel = function(name) { return { start: _ch(), end: _ch(), asyncStart: _ch(), asyncEnd: _ch(), error: _ch(), subscribe: _noop, unsubscribe: _noop, hasSubscribers: false }; };
-    export var hasSubscribers = function() { return false; };
-    export var subscribe = _noop;
-    export var unsubscribe = _noop;
-    export class Channel { constructor() { this.hasSubscribers = false; } subscribe() {} unsubscribe() {} publish() {} bindStore() {} runStores() {} }
-    export default { channel, hasSubscribers, subscribe, unsubscribe, Channel };
+    var D = globalThis.diagnostics_channel;
+    export var channel = D.channel;
+    export var tracingChannel = D.tracingChannel;
+    export var hasSubscribers = D.hasSubscribers;
+    export var subscribe = D.subscribe;
+    export var unsubscribe = D.unsubscribe;
+    export var Channel = D.Channel;
+    export default D;
   `,
   "worker_threads": `
-    export var isMainThread = true;
-    export var parentPort = null;
-    export var workerData = undefined;
-    export var threadId = 0;
-    export class Worker { constructor() { throw new Error("Worker threads not available in QuickJS"); } }
-    export class MessageChannel { constructor() { this.port1 = {}; this.port2 = {}; } }
-    export class MessagePort {}
-    export default { isMainThread, parentPort, workerData, threadId, Worker, MessageChannel, MessagePort };
+    var W = globalThis.worker_threads;
+    export var isMainThread = W.isMainThread;
+    export var parentPort = W.parentPort;
+    export var workerData = W.workerData;
+    export var threadId = W.threadId;
+    export var Worker = W.Worker;
+    export var MessageChannel = W.MessageChannel;
+    export var MessagePort = W.MessagePort;
+    export default W;
   `,
   "zlib": `
-    var Z = globalThis.zlib || {};
-    export var createGzip = Z.createGzip || ${throwFn("createGzip")};
-    export var createGunzip = Z.createGunzip || ${throwFn("createGunzip")};
-    export var createDeflate = Z.createDeflate || ${throwFn("createDeflate")};
-    export var createInflate = Z.createInflate || ${throwFn("createInflate")};
-    export var gzip = Z.gzip || ${throwFn("gzip")};
-    export var gunzip = Z.gunzip || ${throwFn("gunzip")};
-    export var deflate = Z.deflate || ${throwFn("deflate")};
-    export var inflate = Z.inflate || ${throwFn("inflate")};
-    export var gzipSync = Z.gzipSync || ${throwFn("gzipSync")};
-    export var gunzipSync = Z.gunzipSync || ${throwFn("gunzipSync")};
-    export var deflateSync = Z.deflateSync || ${throwFn("deflateSync")};
-    export var inflateSync = Z.inflateSync || ${throwFn("inflateSync")};
-    export var inflateRaw = Z.inflateRaw || ${throwFn("inflateRaw")};
-    export var deflateRaw = Z.deflateRaw || ${throwFn("deflateRaw")};
-    export var inflateRawSync = Z.inflateRawSync || ${throwFn("inflateRawSync")};
-    export var deflateRawSync = Z.deflateRawSync || ${throwFn("deflateRawSync")};
-    export var brotliCompressSync = ${throwFn("brotliCompressSync")};
-    export var brotliDecompressSync = ${throwFn("brotliDecompressSync")};
-    export var constants = Z.constants || {};
+    var Z = globalThis.zlib;
+    export var createGzip = Z.createGzip;
+    export var createGunzip = Z.createGunzip;
+    export var createDeflate = Z.createDeflate;
+    export var createInflate = Z.createInflate;
+    export var gzip = Z.gzip;
+    export var gunzip = Z.gunzip;
+    export var deflate = Z.deflate;
+    export var inflate = Z.inflate;
+    export var gzipSync = Z.gzipSync;
+    export var gunzipSync = Z.gunzipSync;
+    export var deflateSync = Z.deflateSync;
+    export var inflateSync = Z.inflateSync;
+    export var inflateRaw = Z.inflateRaw;
+    export var deflateRaw = Z.deflateRaw;
+    export var inflateRawSync = Z.inflateRawSync;
+    export var deflateRawSync = Z.deflateRawSync;
+    export var brotliCompressSync = Z.brotliCompressSync;
+    export var brotliDecompressSync = Z.brotliDecompressSync;
+    export var constants = Z.constants;
     export default { createGzip, createGunzip, createDeflate, createInflate, gzip, gunzip, deflate, inflate,
       gzipSync, gunzipSync, deflateSync, inflateSync, inflateRaw, deflateRaw, inflateRawSync, deflateRawSync,
       brotliCompressSync, brotliDecompressSync, constants };
   `,
 };
 
-// Fallback: empty module for any Node.js built-in not explicitly stubbed
-const fallbackStub = "export default {};";
+for (const id of Object.keys(moduleStubs)) {
+  if (!nodeCompatEntries.has(id)) {
+    throw new Error(`module stub ${id} is missing from compat/manifest.json`);
+  }
+}
+for (const id of nodeCompatEntries.keys()) {
+  if (!moduleStubs[id]) {
+    throw new Error(`compat manifest declares ${id} but build.mjs has no module stub`);
+  }
+}
 
 const nodeStubPlugin = {
   name: "node-stub",
@@ -468,8 +515,24 @@ const nodeStubPlugin = {
     });
     build.onLoad({ filter: /.*/, namespace: "node-stub" }, (args) => {
       const id = normalizeId(args.path);
+      const entry = nodeCompatEntries.get(id);
+      if (!entry) {
+        return {
+          errors: [{
+            text: `Node builtin ${args.path} normalized to ${id} is not declared in compat/manifest.json`,
+          }],
+        };
+      }
+      const contents = moduleStubs[id];
+      if (!contents) {
+        return {
+          errors: [{
+            text: `Node builtin ${args.path} normalized to ${id} has no build stub`,
+          }],
+        };
+      }
       return {
-        contents: moduleStubs[id] || fallbackStub,
+        contents,
         loader: "js",
       };
     });
@@ -491,7 +554,7 @@ const result = await esbuild.build({
     // without this alias esbuild resolves ws's browser field to an
     // empty module and `new WebSocket(...)` throws "not a function".
     {
-      name: "ws-alias",
+      name: requirePackagePatch("ws-alias"),
       setup(build) {
         build.onResolve({ filter: /^ws$/ }, () => ({
           path: "ws-polyfill",
@@ -510,7 +573,7 @@ export default WS;
     // Force lru-cache to use CJS build — ESM version uses top-level await
     // which esbuild can't bundle in IIFE format. CJS version works fine.
     {
-      name: "lru-cache-cjs",
+      name: requirePackagePatch("lru-cache-cjs"),
       setup(build) {
         build.onResolve({ filter: /^lru-cache$/ }, (args) => {
           return {
@@ -526,7 +589,7 @@ export default WS;
     // Mastra only uses Big for rerank weight validation (3 default
     // weights summing to 1.0), so Number precision is sufficient.
     {
-      name: "big-js-shim",
+      name: requirePackagePatch("big-js-shim"),
       setup(build) {
         build.onResolve({ filter: /^big\.js$/ }, () => ({
           path: "big-js-shim",
@@ -587,7 +650,7 @@ export default Big;
     },
     // Redirect EXACT 'zod' imports to 'zod/v4' so all code uses ONE Zod version.
     {
-      name: "zod-unify",
+      name: requirePackagePatch("zod-unify"),
       setup(build) {
         build.onResolve({ filter: /^zod$/ }, (args) => {
           return build.resolve("zod/v4", {
@@ -600,7 +663,7 @@ export default Big;
     },
     // Force vscode-jsonrpc/node to use the Node.js version, not browser.
     {
-      name: "vscode-jsonrpc-node",
+      name: requirePackagePatch("vscode-jsonrpc-node"),
       setup(build) {
         build.onResolve({ filter: /^vscode-jsonrpc\/node$/ }, (args) => {
           return {
@@ -632,11 +695,11 @@ export default Big;
 
 // Post-process: patch bundled library code for QuickJS compatibility.
 // These are library-specific fixes, NOT polyfill concerns.
-import { readFileSync } from "node:fs";
 {
   let bundle = readFileSync("../agent_embed_bundle.js", "utf8");
 
   // Patch @libsql/client value serializer: handle undefined → null
+  requirePackagePatch("libsql-undefined-null");
   const oldPattern = /function (\w+)\(e\)\{if\(e===null\)return null;if\(typeof e==.?"string"\)return e;/;
   const match = bundle.match(oldPattern);
   if (match) {
@@ -645,25 +708,29 @@ import { readFileSync } from "node:fs";
     const fix = `function ${fname}(e){if(e===void 0||e===null)return null;`;
     bundle = bundle.replace(old, fix);
     writeFileSync("../agent_embed_bundle.js", bundle);
-    console.log(`Patched ${fname}: undefined → null in @libsql/client value serializer`);
+    packagePatchApplied("libsql-undefined-null", `${fname}: undefined → null in @libsql/client value serializer`);
   } else {
-    console.warn("WARNING: Could not find @libsql/client value serializer to patch");
+    packagePatchMissed("libsql-undefined-null", "could not find @libsql/client value serializer");
   }
 
   // Patch getExeca() to use __execa_polyfill instead of dynamic import("execa")
-  const execaPattern = /try\{let (\w+)=\(await import\("execa"\)\)\.execa;return (\w+)=\1,\1\}/;
+  requirePackagePatch("execa-dynamic-import");
+  const execaPattern = /try\{let ([A-Za-z_$][A-Za-z0-9_$]*)=\(await import\("execa"\)\)\.execa;return ([A-Za-z_$][A-Za-z0-9_$]*)=\1,\1\}/;
   const execaMatch = bundle.match(execaPattern);
   if (execaMatch) {
     const v = execaMatch[1], cached = execaMatch[2];
     const fix = `try{let ${v}=globalThis.__execa_polyfill;if(!${v})throw new Error("no execa");return ${cached}=${v},${v}}`;
     bundle = bundle.replace(execaMatch[0], fix);
     writeFileSync("../agent_embed_bundle.js", bundle);
-    console.log(`Patched getExeca: uses __execa_polyfill`);
+    packagePatchApplied("execa-dynamic-import", "getExeca uses __execa_polyfill");
+  } else {
+    packagePatchMissed("execa-dynamic-import", "could not find dynamic import(\"execa\") helper");
   }
 
   // Patch @mastra/rag validation: z.function() → z.any() (Zod v4 compat).
   // The minifier picks a different short identifier per rebuild, so match
   // whatever name it used this pass.
+  requirePackagePatch("mastra-rag-zod-function");
   const funcPattern = /lengthFunction:([a-zA-Z_$][a-zA-Z_$0-9]*)\.optional\(\1\.function\(\)\)/;
   const funcMatch = bundle.match(funcPattern);
   if (funcMatch) {
@@ -671,10 +738,39 @@ import { readFileSync } from "node:fs";
     const replacement = `lengthFunction:${v}.optional(${v}.any())`;
     bundle = bundle.replace(funcPattern, replacement);
     writeFileSync("../agent_embed_bundle.js", bundle);
-    console.log(`Patched: z.function() → z.any() for RAG validation (Zod v4 compat, minifier used '${v}')`);
+    packagePatchApplied("mastra-rag-zod-function", `z.function() → z.any() for RAG validation (minifier used '${v}')`);
+  } else {
+    packagePatchMissed("mastra-rag-zod-function", "could not find RAG lengthFunction z.function validator");
+  }
+
+  // Patch @mastra/schema-compat OpenAI null-transform wrapper. Mastra's
+  // Agent.generate path first converts structuredOutput.schema to a Standard
+  // Schema, then wraps OpenAI schemas to convert nulls back to undefined.
+  // The upstream wrapper returns a plain object, but later Agent code still
+  // expects the original schema's Zod methods/prototype. Preserve that
+  // prototype and override only the Standard Schema metadata.
+  requirePackagePatch("mastra-schema-null-transform-prototype");
+  const nullTransformPattern = /function ([A-Za-z_$][A-Za-z0-9_$]*)\(([A-Za-z_$][A-Za-z0-9_$]*)\)\{let ([A-Za-z_$][A-Za-z0-9_$]*);try\{\3=\2\["~standard"\]\.jsonSchema\.input\(\{target:"draft-07"\}\)\}catch\{\}if\(!\3\)return \2;let ([A-Za-z_$][A-Za-z0-9_$]*)=\2\["~standard"\];return\{"~standard":\{version:\4\.version,vendor:\4\.vendor,types:\4\.types,validate:\(([A-Za-z_$][A-Za-z0-9_$]*),([A-Za-z_$][A-Za-z0-9_$]*)\)=>\{let ([A-Za-z_$][A-Za-z0-9_$]*)=([A-Za-z_$][A-Za-z0-9_$]*)\(\5,\3\);return \4\.validate\(\7,\6\)\},jsonSchema:\4\.jsonSchema\}\}\}/;
+  const nullTransformMatch = bundle.match(nullTransformPattern);
+  if (nullTransformMatch) {
+    const fn = nullTransformMatch[1];
+    const schema = nullTransformMatch[2];
+    const jsonSchema = nullTransformMatch[3];
+    const standard = nullTransformMatch[4];
+    const value = nullTransformMatch[5];
+    const options = nullTransformMatch[6];
+    const transformed = nullTransformMatch[7];
+    const transformFn = nullTransformMatch[8];
+    const replacement = `function ${fn}(${schema}){let ${jsonSchema};try{${jsonSchema}=${schema}["~standard"].jsonSchema.input({target:"draft-07"})}catch{}if(!${jsonSchema})return ${schema};let ${standard}=${schema}["~standard"],wrapper=Object.create(${schema});return Object.defineProperty(wrapper,"~standard",{value:{version:${standard}.version,vendor:${standard}.vendor,types:${standard}.types,validate:(${value},${options})=>{let ${transformed}=${transformFn}(${value},${jsonSchema});return ${standard}.validate(${transformed},${options})},jsonSchema:${standard}.jsonSchema},writable:!1,enumerable:!0,configurable:!1}),wrapper}`;
+    bundle = bundle.replace(nullTransformMatch[0], replacement);
+    writeFileSync("../agent_embed_bundle.js", bundle);
+    packagePatchApplied("mastra-schema-null-transform-prototype", `${fn}: OpenAI structured-output null wrapper preserves schema prototype`);
+  } else {
+    packagePatchMissed("mastra-schema-null-transform-prototype", "could not find @mastra/schema-compat wrapSchemaWithNullTransform helper");
   }
 
   // Patch getTiktoken() to use getEncoding('o200k_base') with fallback
+  requirePackagePatch("tiktoken-fallback");
   const tiktokenFnPattern = /async function (\w+)\(\)\{let e=globalThis\[(\w+)\];if\(e\)return e;/;
   const tiktokenFnMatch = bundle.match(tiktokenFnPattern);
   if (tiktokenFnMatch) {
@@ -695,8 +791,12 @@ import { readFileSync } from "node:fs";
       const replacement = `async function ${fn}(){let e=globalThis[${key}];if(e)return e;try{let I=${encFn}("o200k_base");return globalThis[${key}]=I,I}catch(_){var F={encode:function(s){return Array.from({length:Math.ceil((s||"").length/4)},function(_,i){return i})},decode:function(t){return"[decoded]"}};return globalThis[${key}]=F,F}}`;
       bundle = bundle.replace(oldFn, replacement);
       writeFileSync("../agent_embed_bundle.js", bundle);
-      console.log(`Patched ${fn}: getTiktoken uses ${encFn}('o200k_base') with fallback`);
+      packagePatchApplied("tiktoken-fallback", `${fn}: getTiktoken uses ${encFn}('o200k_base') with fallback`);
+    } else {
+      packagePatchMissed("tiktoken-fallback", "found getTiktoken helper but could not find o200k_base encoder function");
     }
+  } else {
+    packagePatchMissed("tiktoken-fallback", "could not find getTiktoken helper");
   }
 }
 

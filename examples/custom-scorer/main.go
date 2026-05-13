@@ -156,7 +156,7 @@ const llmScorer = createScorer({
     judge: {
         model: model("openai", "gpt-4o-mini"),
         instructions:
-            "You grade whether an assistant reply cites a source. Citations can be explicit markers like '[doc:1]' OR implicit phrases like 'according to doc 7'. Reply with ONLY the number 0 or 1.",
+            "You grade whether an assistant reply cites a source. Citations can be explicit markers like '[doc:1]' OR implicit phrases like 'according to doc 7'. Return JSON only with a numeric score field: {\"score\":0} or {\"score\":1}.",
     },
     createPrompt: ({ run }) => {
         const q = (run && run.input && run.input[0] && run.input[0].content) || "";
@@ -179,10 +179,8 @@ bus.on("score", async (msg) => {
             input: [{ role: "user", content: item.input }],
             output: { role: "assistant", text: item.output },
         };
-        const [rx, jd] = await Promise.all([
-            regexScorer.run(run),
-            llmScorer.run(run),
-        ]);
+        const rx = await regexScorer.run(run);
+        const jd = await llmScorer.run(run);
         rows.push({
             input: item.input,
             regexScore: Number(rx.score) || 0,

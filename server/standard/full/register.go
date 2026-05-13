@@ -10,5 +10,6 @@ import (
 	_ "github.com/brainlet/brainkit/server/standard/dev"
 	_ "github.com/brainlet/brainkit/server/standard/integrations"
 	_ "github.com/brainlet/brainkit/server/standard/observability"
+	_ "github.com/brainlet/brainkit/server/standard/packages"
 	_ "github.com/brainlet/brainkit/server/standard/server"
 )

@@ -275,11 +275,13 @@ const zlibJS = `
     gunzipSync: function(buf) { return toBuf(fromB64(__go_gzip_decompress(toB64(bytesOf(buf))))); },
     gzipSync: function(buf) { return toBuf(fromB64(__go_gzip_compress(toB64(bytesOf(buf))))); },
     inflateRawSync: function(buf) { return toBuf(fromB64(__go_raw_inflate(toB64(bytesOf(buf))))); },
-    deflateRawSync: function(buf, opts) {
-      var level = (opts && opts.level !== undefined) ? opts.level : -1;
-      return toBuf(fromB64(__go_raw_deflate(toB64(bytesOf(buf)), level)));
-    },
-    // Stream creators (return Transform-like objects)
+	    deflateRawSync: function(buf, opts) {
+	      var level = (opts && opts.level !== undefined) ? opts.level : -1;
+	      return toBuf(fromB64(__go_raw_deflate(toB64(bytesOf(buf)), level)));
+	    },
+	    brotliCompressSync: function() { throw new Error("brotliCompressSync: not available in QuickJS"); },
+	    brotliDecompressSync: function() { throw new Error("brotliDecompressSync: not available in QuickJS"); },
+	    // Stream creators (return Transform-like objects)
     createGzip: function() {
       var S = globalThis.stream;
       if (!S) throw new Error("createGzip: streams not available");

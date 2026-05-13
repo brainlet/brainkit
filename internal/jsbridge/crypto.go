@@ -14,8 +14,8 @@ import (
 
 	"golang.org/x/crypto/pbkdf2"
 
-	"github.com/google/uuid"
 	quickjs "github.com/buke/quickjs-go"
+	"github.com/google/uuid"
 )
 
 // CryptoPolyfill provides crypto.randomUUID and Node.js-style createHash/createHmac.
@@ -386,8 +386,14 @@ globalThis.crypto.getRandomValues = function(arr) {
   // Merge Node.js crypto methods onto globalThis.crypto (which already has WebCrypto: subtle, randomUUID, getRandomValues).
   // This matches Node.js behavior where require('crypto') returns one object with both WebCrypto and Node.js APIs.
   var _cryptoTarget = globalThis.crypto || {};
-  Object.assign(_cryptoTarget, {
-    createHash: function(alg) {
+	  Object.assign(_cryptoTarget, {
+	    createCipheriv: function() { throw new Error("createCipheriv: not available in QuickJS"); },
+	    createDecipheriv: function() { throw new Error("createDecipheriv: not available in QuickJS"); },
+	    createSign: function() { throw new Error("createSign: not available in QuickJS"); },
+	    createVerify: function() { throw new Error("createVerify: not available in QuickJS"); },
+	    scrypt: function() { throw new Error("scrypt: not available in QuickJS"); },
+	    scryptSync: function() { throw new Error("scryptSync: not available in QuickJS"); },
+	    createHash: function(alg) {
       var _bytes = new Uint8Array(0);
       return {
         update: function(d, enc) { _bytes = concatBytes(_bytes, bytesOf(d)); return this; },

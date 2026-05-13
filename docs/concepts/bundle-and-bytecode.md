@@ -10,8 +10,8 @@ subprocess bring-up.
 
 ## What the Bundle Contains
 
-`internal/embed/agent/agent_embed_bundle.js` (~16 MB) and the
-accompanying `.bc` file (~15 MB) cover:
+`internal/embed/agent/agent_embed_bundle.js` (~19.2 MiB) and the
+accompanying `.bc` file (~21.7 MiB) cover:
 
 - **Mastra core** — `Agent`, `createTool`, `createWorkflow`,
   `createStep`, `Memory`, `RequestContext`, `Observability`,
@@ -46,20 +46,61 @@ Bundle production lives in `internal/embed/agent/bundle/`:
 
 ```
 bundle/
+├── compat/
+│   ├── manifest.json ← declared Node/Web/package compatibility surface
+│   ├── report.json   ← checked report generated from manifest + meta.json
+│   └── inventory.json ← package/version to platform-surface inventory
 ├── build.mjs      ← esbuild driver
 ├── entry.mjs      ← re-exports every public symbol
 ├── meta.json      ← esbuild metadata for size reports
-├── node_modules/  ← npm install output used by build.mjs
+├── node_modules/  ← pnpm install output used by build.mjs
+├── pnpm-lock.yaml ← authoritative lockfile for the agent bundle
 └── package.json
 ```
 
 To rebuild:
 
 ```bash
-cd internal/embed/agent/bundle && node build.mjs          # 1. Rebuild JS
-go run internal/embed/agent/cmd/compile-bundle/main.go     # 2. Recompile bytecode
-go build ./...                                             # 3. Re-embed both
+make agent-embed-rebuild
 ```
+
+For a Mastra or AI SDK dependency upgrade, use the full compatibility gate:
+
+```bash
+make agent-embed-rebuild-check
+```
+
+That target rebuilds the JS bundle, recompiles QuickJS bytecode, checks the
+compatibility report against `bundle/compat/report.json`, runs the manifest and
+package-patch guard tests, and then runs the focused jsbridge/embed/fixture
+runtime checks. Use `make jsbridge-compat-report` to print the current
+compatibility surface and `make jsbridge-compat-report-save` only when the
+changed report is expected and reviewed. Use `make jsbridge-compat-inventory`
+to inspect which packages and versions are responsible for each platform
+surface; `make jsbridge-compat-inventory-save` updates the checked
+`inventory.json`.
+
+Use the maintenance gates by scope:
+
+- `make jsbridge-compat-check` checks compatibility metadata, the package
+  patch registry, bundle stubs, inventory, and the Mastra capability matrix
+  without rebuilding artifacts.
+- `make jsbridge-lifecycle-check` checks runtime lifecycle and scale behavior:
+  bridge resource cancellation, active async handler unmount, shared
+  `bus.call` / `bus.callStream` concurrency, and gateway stream shutdown.
+- `make agent-embed-check` checks the current checked-in artifacts against
+  jsbridge, jsruntime, agent embed, and the focused fixture set.
+- `make agent-embed-rebuild-check` is the upgrade gate after dependency,
+  package patch, stub, bundle, or bytecode changes.
+- `make examples-smoke-live` runs provider-backed examples when
+  `OPENAI_API_KEY` is available in the repo root environment; use
+  `make examples-smoke-all` before release or broad runtime/profile changes.
+
+Raw TypeScript deployment is separate from the agent embed bundle. Default
+runtime and package profiles still prepare `.ts` source through the package
+source pipeline and `vendor_typescript`; artifact-only runtime profiles reject
+raw TypeScript and accept normalized JavaScript artifacts. Do not use the agent
+bundle or bytecode path as a reason to remove raw `.ts` support.
 
 esbuild settings (`format: "iife"`, `platform: "browser"`, `minify:
 true`, `treeShaking: true`) produce a single IIFE that attaches its
@@ -71,20 +112,55 @@ exports to `globalThis.__agent_embed`. A custom plugin —
 ```javascript
 // build.mjs — stream stub excerpt
 "stream": `
-  var s = globalThis.stream || {};
-  export var Readable = s.Readable;
-  export var Writable = s.Writable;
-  export var Duplex = s.Duplex;
-  export var Transform = s.Transform;
-  export default s;
+  var S = globalThis.stream;
+  export var Readable = S.Readable;
+  export var Writable = S.Writable;
+  export var Duplex = S.Duplex;
+  export var Transform = S.Transform;
+  export var PassThrough = S.PassThrough;
+  export var pipeline = S.pipeline;
+  export var finished = S.finished;
+  export default S;
 `,
 ```
 
 The stubs never contain logic — the actual implementations are the Go
 polyfills in `internal/jsbridge/*.go` (loaded into the same
 `globalThis` before the bundle evaluates). That invariant —
-"jsbridge-first, bundle stubs are re-exports" — is enforced by CLAUDE.md
-and spot-checked in `jsbridge/*_test.go`.
+"jsbridge-first, bundle stubs are re-exports" — is enforced by the
+compatibility manifest tests and by `make jsbridge-compat-check`.
+
+## Compatibility Artifacts
+
+The bundle has a checked compatibility inventory under
+`internal/embed/agent/bundle/compat/`:
+
+- `manifest.json` declares every Node module/subpath, web global,
+  dynamic `require()`, external package, and package patch.
+- `report.json` is generated from the manifest plus esbuild
+  `meta.json`.
+- `inventory.json` is generated from the manifest, `meta.json`, and
+  bundle `package.json`. It links package names/versions to Node APIs,
+  external imports, package patches, dependency class, resources/tests,
+  and external-service flags.
+
+Unknown Node builtins and subpaths fail the bundle build. Known
+unsupported APIs are owned by jsbridge polyfills that throw typed
+errors. Package-specific build quirks are registered as
+`package-patch` rows with package, version range, patch type,
+required/optional miss policy, expected pattern, tests, and removal
+condition.
+
+Use the report target while upgrading dependencies:
+
+```bash
+make jsbridge-compat-report
+make jsbridge-compat-inventory
+make jsbridge-compat-check
+make jsbridge-lifecycle-check
+make agent-embed-check
+make agent-embed-rebuild-check
+```
 
 ## The Load Order
 
@@ -95,13 +171,22 @@ order:
 1. runtimeGlobalsJS  (pre-lockdown captures + require() shim)
 2. sesPolyfillsSource (ses_polyfills.js — console/Iterator fixes)
 3. sesSource          (ses.umd.js — Compartment/harden/lockdown)
-4. sesLockdownJS      (calls lockdown() with tame-friendly options)
-5. bundleBytecode     (agent_embed_bundle.bc — preferred)
+4. bundleBytecode     (agent_embed_bundle.bc — preferred)
     OR bundleSource   (agent_embed_bundle.js — fallback)
+5. sesLockdownJS      (calls lockdown() with tame-friendly options)
 ```
 
 After phase 5, `globalThis.__agent_embed` is populated and the Kit's
 Compartment factory can use it to build per-deployment endowments.
+
+Bundle load errors are wrapped with JS diagnostics. A failure during
+globals setup, SES load, bytecode load, bundle source load, or lockdown
+reports `owner=agent-embed`, the load phase, the source artifact, a
+safe bridge resource snapshot, and the JavaScript stack/cause when
+QuickJS provides one. Use that context before changing the bundle: a
+`not a function` error usually means either stale bytecode, a missing
+jsbridge-owned platform surface, or a declared package patch that no
+longer matches the dependency version.
 
 ### Pre-lockdown captures
 
@@ -144,7 +229,8 @@ become empty objects.
 QuickJS supports compiling JavaScript to a portable bytecode that
 loads without parsing. `internal/embed/agent/cmd/compile-bundle/main.go`
 runs the bundle through `Bridge.CompileBytecode()` and writes
-`agent_embed_bundle.bc` (~15 MB) next to the source.
+`agent_embed_bundle.bc` (~21.7 MiB in the current build) next to the
+source.
 
 Both files are embedded in the Go binary:
 
@@ -171,13 +257,13 @@ val, err := b.EvalAsync("agent-embed-bundle.js", bundleSource)
 
 ### The stale bytecode trap
 
-This has burned real bugs. If you change `build.mjs`, you MUST
-rebuild both the JS bundle and the bytecode. The three-step sequence
-above is non-optional; the rule lives in `CLAUDE.md`:
+This has burned real bugs. If you change `build.mjs`, `entry.mjs`, or any
+agent embed package dependency, you MUST rebuild both the JS bundle and the
+bytecode. The checked command is:
 
-> After modifying `internal/embed/agent/bundle/build.mjs` (esbuild
-> stubs for Node.js modules), you MUST rebuild THREE things in order:
-> JS bundle → bytecode cache (.bc) → `go build ./...`.
+```bash
+make agent-embed-rebuild-check
+```
 
 Skipping the bytecode step leaves the old code live — the new `.js`
 is ignored because the Kit preferentially loads the `.bc`. Symptoms
@@ -199,22 +285,21 @@ removed)` line at debug level.
 
 | File                          | Size   |
 | ----------------------------- | ------ |
-| `agent_embed_bundle.js`       | ~16.6 MB |
-| `agent_embed_bundle.bc`       | ~15.0 MB |
+| `agent_embed_bundle.js`       | ~19.2 MiB |
+| `agent_embed_bundle.bc`       | ~21.7 MiB |
 
 Rough breakdown of the JS bundle:
 
 | Component                                  | Approx. size |
 | ------------------------------------------ | ------------ |
-| Mastra core + workflows + agents           | ~6 MB        |
-| AI SDK + 12 provider factories             | ~4 MB        |
-| `tiktoken` (tokenizer for RAG)             | ~2 MB        |
-| MongoDB driver                             | ~600 KB      |
-| PostgreSQL driver                          | ~400 KB      |
-| Zod v4                                     | ~500 KB      |
-| `@libsql/client` (HTTP mode)               | ~200 KB      |
-| sentiment, xxhash, misc helpers            | ~2 MB        |
-| IIFE wrappers, minification overhead        | ~800 KB      |
+| `js-tiktoken` tokenizer data/code          | ~5.3 MiB     |
+| PDF.js runtime + worker                    | ~3.1 MiB     |
+| Mastra core + workflows + agents           | ~3 MiB+      |
+| Mammoth document parser                    | ~860 KiB     |
+| Mastra observability                       | ~790 KiB     |
+| Mastra memory                              | ~950 KiB     |
+| Mastra storage adapters                    | ~1.6 MiB     |
+| AI SDK + provider factories                | ~1 MiB+      |
 
 Numbers are approximate and drift with releases — read `meta.json`
 after a build for the authoritative report.

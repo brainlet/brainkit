@@ -1,4 +1,4 @@
-.PHONY: all brainkit install deps deps-go deps-npm deps-root deps-root-save deps-root-check deps-profiles deps-profile-check deps-modules build generate test test-v test-compile test-suite test-full test-all test-campaigns-transport test-campaigns-transport-embedded test-campaigns-transport-nats test-campaigns-transport-amqp test-campaigns-transport-redis test-campaigns-transport-external bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples examples-smoke examples-smoke-compile examples-smoke-offline examples-smoke-live examples-smoke-server examples-smoke-external examples-smoke-all plugins-build plugins-test plugins-smoke clean podman-init podman-start podman-up podman-launchd-up podman-launchd-down podman-link-socket podman-verify podman-down podman-status podman-reset podman-nuke podman-ensure type-check
+.PHONY: all brainkit install deps deps-go deps-npm deps-root deps-root-save deps-root-check deps-profiles deps-profile-check deps-modules build agent-embed-rebuild jsbridge-compat-report jsbridge-compat-report-save jsbridge-compat-inventory jsbridge-compat-inventory-save jsbridge-compat-inventory-check agent-embed-capability-matrix-check jsbridge-compat-check jsbridge-lifecycle-check agent-embed-check agent-embed-rebuild-check generate test test-v test-compile test-suite test-full test-all test-campaigns-transport test-campaigns-transport-embedded test-campaigns-transport-nats test-campaigns-transport-amqp test-campaigns-transport-redis test-campaigns-transport-external bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples examples-smoke examples-smoke-compile examples-smoke-offline examples-smoke-live examples-smoke-server examples-smoke-external examples-smoke-all plugins-build plugins-test plugins-smoke clean podman-init podman-start podman-up podman-launchd-up podman-launchd-down podman-link-socket podman-verify podman-down podman-status podman-reset podman-nuke podman-ensure type-check
 
 PODMAN_MACHINE ?= brainkit
 PODMAN_CPUS ?= 4
@@ -16,7 +16,8 @@ PLUGIN_BUILD_DIR ?=
 PLUGIN_TEST_TIMEOUT ?= 600s
 ROOT_DEPS_MANIFEST ?= api/brainkit-root.deps
 ROOT_DEPS_CMD = go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' . | sed '/^$$/d' | sort -u
-PROFILE_DEPS_PACKAGES ?= . ./server ./server/configfile ./server/standard ./server/standard/runtime ./server/standard/artifactruntime ./server/standard/packages ./presets/standard/core ./presets/standard/runtime ./presets/standard/artifactruntime ./presets/standard/packages ./modules/jsruntime ./modules/jsruntime/artifact ./modules/packages ./modules/packages/bundlers/esbuild ./modules/packages/source ./modules/packages/client ./modules/packages/scaffold
+PROFILE_DEPS_PACKAGES ?= . ./server ./server/configfile ./server/standard ./server/standard/commands ./server/standard/runtime ./server/standard/artifactruntime ./server/standard/packages ./server/standard/full ./presets/standard/core ./presets/standard/commands ./presets/standard/runtime ./presets/standard/artifactruntime ./presets/standard/packages ./modules/jsruntime ./modules/jsruntime/artifact ./modules/packages ./modules/packages/bundlers/esbuild ./modules/packages/source ./modules/packages/client ./modules/packages/scaffold
+AGENT_EMBED_FIXTURE_RUN ?= TestFixtures/(polyfill|agent|ai|rag|storage|voice|workspace|evals)
 
 # Default: build the CLI binary
 all: brainkit
@@ -64,16 +65,16 @@ deps-profiles:
 
 # Check profile dependency budgets and boundary docs.
 deps-profile-check:
-	go test . -run 'TestDependencyProfileBudgetsStayBounded|TestRootDependencyManifest|TestRootImportBoundary|TestStandardProfilesStayScoped|TestPackageBuilderStaysOptional|TestConfigFilePackageBootStaysOptional|TestRuntimeProfileDocsStayExplicit' -count=1 -timeout=240s
+	go test . -run 'TestDependencyProfileBudgetsStayBounded|TestRootDependencyManifest|TestRootImportBoundary|TestStandardProfilesStayScoped|TestStandardServerProfileImportsStayExplicit|TestDocsAndScaffoldsDoNotTeachBareStandardServerImport|TestPackageBuilderStaysOptional|TestConfigFilePackageBootStaysOptional|TestRuntimeProfileDocsStayExplicit' -count=1 -timeout=240s
 
 # List nested Go modules so module-boundary drift is visible.
 deps-modules:
 	@find . -path './.git' -prune -o -name go.mod -print | sort
 
-# Install npm dependencies for all embed packages
+# Install JavaScript dependencies for all embed packages.
 deps-npm:
 	cd internal/embed/ai/bundle && npm install
-	cd internal/embed/agent/bundle && npm install
+	cd internal/embed/agent/bundle && pnpm install --frozen-lockfile
 	cd internal/embed/compiler/bundle && npm install
 
 # Build all JS bundles
@@ -81,6 +82,52 @@ build:
 	cd internal/embed/ai/bundle && node build.mjs
 	cd internal/embed/agent/bundle && node build.mjs
 	cd internal/embed/compiler/bundle && node build.mjs
+
+# Rebuild the Mastra agent embed bundle and bytecode.
+agent-embed-rebuild:
+	cd internal/embed/agent/bundle && pnpm run build
+	go run ./internal/embed/agent/cmd/compile-bundle
+
+# Print or save the agent embed compatibility report generated from bundle meta.
+jsbridge-compat-report:
+	go run ./internal/embed/agent/cmd/compat-report
+
+jsbridge-compat-report-save:
+	go run ./internal/embed/agent/cmd/compat-report -out internal/embed/agent/bundle/compat/report.json
+
+jsbridge-compat-inventory:
+	go run ./internal/embed/agent/cmd/compat-inventory
+
+jsbridge-compat-inventory-save:
+	go run ./internal/embed/agent/cmd/compat-inventory -out internal/embed/agent/bundle/compat/inventory.json
+
+jsbridge-compat-inventory-check:
+	go run ./internal/embed/agent/cmd/compat-inventory -check internal/embed/agent/bundle/compat/inventory.json
+
+agent-embed-capability-matrix-check:
+	go test ./internal/embed/agent -run TestMastraCapabilityMatrixIsWellFormed -count=1 -timeout=600s
+
+# Check compatibility metadata without rebuilding the bundle.
+jsbridge-compat-check: jsbridge-compat-inventory-check agent-embed-capability-matrix-check
+	node --check internal/embed/agent/bundle/build.mjs
+	go run ./internal/embed/agent/cmd/compat-report -check internal/embed/agent/bundle/compat/report.json
+	go test ./internal/embed/agent -run 'TestCompat|TestBundleMeta|TestBundleStubs|TestJSBridgeOwned|TestDynamicRequire|TestPackagePatch|TestPostBuild' -count=1 -timeout=600s
+
+# Focused lifecycle and scale gate for bridge resources, agent calls, runtime
+# unmount, JS caller streams, and gateway streams.
+jsbridge-lifecycle-check:
+	go test ./internal/jsbridge ./internal/embed/agent ./internal/jsruntime ./modules/gateway ./modules/plugins -run 'Test.*(Close|Cancel|Stream|Remount|Resource|Concurrent|Unmount).*' -count=1 -timeout=600s
+	go test . -run TestJSRuntimeUnmountCancelsActiveAsyncHandlerAndRemounts -count=1 -timeout=600s
+	go test ./test/suite/bus -run 'TestBus/bus/(ts_bus_call_and_call_stream_stay_async_under_concurrency|ts_bus_call_stream_happy_path|ts_bus_call_service_stream_happy_path|call_stream_all_delivered|call_stream_handler_error_aborts)' -count=1 -timeout=600s
+	go test ./test/suite/gateway -run 'TestGateway/gateway/(stream_concurrent|stream_gateway_shutdown|bus_api/stream_ndjson|stream_heartbeat_timeout)' -count=1 -timeout=600s
+
+# Runtime gate for the current agent embed artifacts.
+agent-embed-check: jsbridge-compat-check
+	go test ./internal/jsbridge ./internal/jsruntime ./internal/embed/agent -count=1 -timeout=600s
+	go test ./test/fixtures -run '$(AGENT_EMBED_FIXTURE_RUN)' -count=1 -timeout=600s
+
+# Full future-upgrade gate: rebuild artifacts, then run compatibility/runtime checks.
+agent-embed-rebuild-check: agent-embed-rebuild agent-embed-check
 
 # Regenerate typed wrappers for SDK and module-owned message packages.
 # Run after adding / renaming anything in sdk/*_messages.go or module message files.

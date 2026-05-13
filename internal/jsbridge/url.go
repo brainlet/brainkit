@@ -105,6 +105,13 @@ globalThis.URL = class URL {
     this.origin = p.origin; this.username = p.username;
     this.password = p.password;
     this.searchParams = new URLSearchParams(this.search);
+    this.searchParams._url = this;
+  }
+  _setSearchFromParams(params) {
+    const q = params.toString();
+    this.search = q ? "?" + q : "";
+    const auth = (this.username || this.password) ? (this.username + (this.password ? ":" + this.password : "") + "@") : "";
+    this.href = this.protocol + "//" + auth + this.host + this.pathname + this.search + this.hash;
   }
   toString() { return this.href; }
   toJSON() { return this.href; }
@@ -122,12 +129,13 @@ globalThis.URLSearchParams = class URLSearchParams {
       }
     }
   }
+  _notify() { if (this._url) this._url._setSearchFromParams(this); }
   get(n) { const e = this._p.find(([k]) => k === n); return e ? e[1] : null; }
   getAll(n) { return this._p.filter(([k]) => k === n).map(([,v]) => v); }
   has(n) { return this._p.some(([k]) => k === n); }
-  set(n, v) { this.delete(n); this._p.push([n, String(v)]); }
-  append(n, v) { this._p.push([n, String(v)]); }
-  delete(n) { this._p = this._p.filter(([k]) => k !== n); }
+  set(n, v) { this._p = this._p.filter(([k]) => k !== n); this._p.push([n, String(v)]); this._notify(); }
+  append(n, v) { this._p.push([n, String(v)]); this._notify(); }
+  delete(n) { this._p = this._p.filter(([k]) => k !== n); this._notify(); }
   toString() {
     return this._p.map(([k,v]) => encodeURIComponent(k)+'='+encodeURIComponent(v)).join('&');
   }
@@ -135,6 +143,50 @@ globalThis.URLSearchParams = class URLSearchParams {
   keys() { return this._p.map(([k]) => k)[Symbol.iterator](); }
   values() { return this._p.map(([,v]) => v)[Symbol.iterator](); }
   [Symbol.iterator]() { return this.entries(); }
-  forEach(fn) { this._p.forEach(([k,v]) => fn(v,k,this)); }
-};
-`
+	  forEach(fn) { this._p.forEach(([k,v]) => fn(v,k,this)); }
+	};
+
+	function fileURLToPath(u) {
+	  return typeof u === "string" ? u.replace("file://", "") : String(u);
+	}
+	function pathToFileURL(p) {
+	  return new URL("file://" + p);
+	}
+	function format(urlObj) {
+	  if (typeof urlObj === "string") return urlObj;
+	  if (urlObj instanceof URL) return urlObj.toString();
+	  return String(urlObj.protocol || "http:") + (urlObj.slashes === false ? "" : "//") +
+	    String(urlObj.host || (urlObj.hostname || "") + (urlObj.port ? ":" + urlObj.port : "")) +
+	    String(urlObj.pathname || "") + String(urlObj.search || "") + String(urlObj.hash || "");
+	}
+	function parse(s) {
+	  try {
+	    var u = new URL(s);
+	    return {
+	      protocol: u.protocol,
+	      host: u.host,
+	      hostname: u.hostname,
+	      port: u.port,
+	      pathname: u.pathname,
+	      search: u.search,
+	      hash: u.hash,
+	      href: u.href,
+	      path: u.pathname + u.search,
+	    };
+	  } catch (_) {
+	    return { href: String(s) };
+	  }
+	}
+	function resolve(base, rel) {
+	  try { return new URL(rel, base).toString(); } catch (_) { return rel; }
+	}
+	globalThis.node_url = {
+	  URL: globalThis.URL,
+	  URLSearchParams: globalThis.URLSearchParams,
+	  fileURLToPath: fileURLToPath,
+	  pathToFileURL: pathToFileURL,
+	  format: format,
+	  parse: parse,
+	  resolve: resolve,
+	};
+	`

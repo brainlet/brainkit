@@ -5,7 +5,7 @@
 //	go run ./cmd/compile-bundle
 //
 // Reads agent_embed_bundle.js, compiles to bytecode, writes agent_embed_bundle.bc.
-// Run this after rebuilding the JS bundle (npm run build).
+// Run this after rebuilding the JS bundle (pnpm run build).
 package main
 
 import (

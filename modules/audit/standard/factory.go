@@ -1,5 +1,5 @@
-// Package standard registers the audit module factory used by
-// server/standard YAML assembly.
+// Package standard registers the audit module factory used by standard
+// observability/full YAML assembly.
 package standard
 
 import (

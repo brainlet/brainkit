@@ -1,13 +1,15 @@
-// Package standard registers Brainkit's full standard server module catalog.
+// Package standard documents Brainkit's standard server module profiles.
 //
-// Import it for side effects in binaries that want configfile.Load to accept the
-// built-in modules in YAML:
+// This package intentionally has no side-effect registrations. Import explicit
+// profiles in binaries that want configfile.Load to accept built-in modules in
+// YAML:
 //
-//	import _ "github.com/brainlet/brainkit/server/standard"
+//	import _ "github.com/brainlet/brainkit/server/standard/full"
 //
-// Custom binaries should prefer the narrower profiles:
+// Custom binaries should usually prefer narrower profiles:
 //
 //	import _ "github.com/brainlet/brainkit/server/standard/commands"
+//	import _ "github.com/brainlet/brainkit/server/standard/packages"
 //	import _ "github.com/brainlet/brainkit/server/standard/server"
 //
 // Other profiles include observability, automation, integrations, dev, core,

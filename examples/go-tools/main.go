@@ -57,7 +57,7 @@ func run() error {
 		Namespace: "go-tools-demo",
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
-		Modules: append(standard.CommandSet(),
+		Modules: append(standard.FullCommandSet(),
 			toolsmod.GoTool("weather", toolsmod.TypedTool[WeatherInput]{
 				Description: "Stubbed weather lookup for demo purposes.",
 				Execute: func(_ context.Context, in WeatherInput) (any, error) {

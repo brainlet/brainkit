@@ -1,5 +1,4 @@
-// Package standard composes the built-in command modules that make up the
-// default Kit bus surface.
+// Package standard composes built-in module presets for common Kit assemblies.
 package standard
 
 import (
@@ -36,9 +35,19 @@ func PackageSet() []bkmodule.Module {
 	return packagepreset.Set()
 }
 
-// CommandSet returns the standard bus command/runtime modules. Each call
-// returns fresh module instances so callers can append, reorder, or mount the
-// result without sharing mutable module state.
+// CommandSet returns the light standard bus command/control-plane modules. It
+// does not link the embedded JS runtime or TypeScript package bundler. Each
+// call returns fresh module instances so callers can append, reorder, or mount
+// the result without sharing mutable module state.
 func CommandSet() []bkmodule.Module {
 	return commands.Set()
+}
+
+// FullCommandSet returns the batteries-included command/runtime modules: the
+// light command/control plane plus JS runtime/eval/package deployment and the
+// standard source package builder.
+func FullCommandSet() []bkmodule.Module {
+	mods := core.Set()
+	mods = append(mods, packagepreset.Set()...)
+	return mods
 }

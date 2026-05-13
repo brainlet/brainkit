@@ -43,6 +43,14 @@ type ExecPolyfill struct {
 
 func (p *ExecPolyfill) SetBridge(b *Bridge) { p.bridge = b }
 
+func (p *ExecPolyfill) debugResources() map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return map[string]int{
+		"exec.spawnedProcesses": len(p.procs),
+	}
+}
+
 // SetRoot attaches the Kit FSRoot so relative `cwd` args on
 // spawn/exec are rebased under it (matching the fs polyfill).
 func (p *ExecPolyfill) SetRoot(root string) { p.root = root }
@@ -141,7 +149,11 @@ func runWatchedCommand(ctx context.Context, cmd *exec.Cmd) error {
 
 func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 	if p.bridge != nil {
-		context.AfterFunc(p.bridge.GoContext(), p.cleanupSpawnedProcesses)
+		p.bridge.RegisterResourceProvider(p.debugResources)
+		p.bridge.Go(func(goCtx context.Context) {
+			<-goCtx.Done()
+			p.cleanupSpawnedProcesses()
+		})
 	}
 
 	// Async exec: shell command runs in a separate goroutine.
@@ -163,6 +175,8 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 		return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
 			polyfill := p
 			if !polyfill.bridge.TryGo(func(goCtx context.Context) {
+				release := polyfill.bridge.TrackResource("exec.commands")
+				defer release()
 				var cmd *exec.Cmd
 				if runtime.GOOS == "windows" {
 					cmd = exec.CommandContext(goCtx, "cmd", "/C", command)
@@ -547,6 +561,75 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 		return qctx.NewString(string(b))
 	}))
 
+	// __go_exec_file(file, argsJSON, cwd) → Promise<JSON { stdout, stderr, exitCode }>
+	ctx.Globals().Set("__go_exec_file", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 1 {
+			return qctx.ThrowError(fmt.Errorf("execFile: file argument required"))
+		}
+		file := args[0].ToString()
+		var cmdArgs []string
+		if len(args) >= 2 && args[1].ToString() != "[]" {
+			if err := json.Unmarshal([]byte(args[1].ToString()), &cmdArgs); err != nil {
+				return qctx.ThrowError(fmt.Errorf("execFile: json unmarshal args: %w", err))
+			}
+		}
+		cwd := ""
+		if len(args) >= 3 {
+			cwd = p.resolveCwd(args[2].ToString())
+		} else if p.root != "" {
+			cwd = p.root
+		}
+
+		return qctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
+			if !p.bridge.TryGo(func(goCtx context.Context) {
+				release := p.bridge.TrackResource("exec.commands")
+				defer release()
+				cmd := exec.CommandContext(goCtx, file, cmdArgs...)
+				configureCommandProcessGroup(cmd)
+				if cwd != "" {
+					cmd.Dir = cwd
+				}
+
+				var stdoutBuf, stderrBuf strings.Builder
+				cmd.Stdout = &stdoutBuf
+				cmd.Stderr = &stderrBuf
+
+				exitCode := 0
+				err := runWatchedCommand(goCtx, cmd)
+				if goCtx.Err() != nil {
+					return
+				}
+				if err != nil {
+					if exitErr, ok := err.(*exec.ExitError); ok {
+						exitCode = exitErr.ExitCode()
+					} else {
+						qctx.Schedule(func(qctx *quickjs.Context) {
+							errVal := qctx.NewError(fmt.Errorf("execFile %s: %w", file, err))
+							defer errVal.Free()
+							reject(errVal)
+						})
+						return
+					}
+				}
+
+				b, _ := json.Marshal(map[string]interface{}{
+					"stdout":   stdoutBuf.String(),
+					"stderr":   stderrBuf.String(),
+					"exitCode": exitCode,
+				})
+				resultJSON := string(b)
+
+				qctx.Schedule(func(qctx *quickjs.Context) {
+					resolve(qctx.NewString(resultJSON))
+				})
+			}) {
+				errVal := qctx.NewError(context.Canceled)
+				defer errVal.Free()
+				reject(errVal)
+			}
+		})
+	}))
+
 	// __go_exec_file_sync(file, argsJSON, cwd) → JSON { stdout, stderr, exitCode }
 	ctx.Globals().Set("__go_exec_file_sync", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 1 {
@@ -589,6 +672,10 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 	return evalJS(ctx, `
 globalThis.child_process = {
   async exec(command) { return JSON.parse(await __go_exec(command)); },
+  async execFile(file, args, options) {
+    var cwd = (options && options.cwd) || "";
+    return JSON.parse(await __go_exec_file(file, JSON.stringify(args || []), cwd));
+  },
   execSync: function(command) {
     var result = JSON.parse(__go_exec_sync(command));
     if (result.exitCode !== 0) {

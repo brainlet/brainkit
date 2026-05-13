@@ -1,18 +1,17 @@
-// Package commands builds the standard command/runtime module set.
+// Package commands builds the light standard command/control-plane module set.
 //
-// It composes the light core command plane with source package deployment
-// modules.
+// It intentionally avoids the JS runtime and source package deployment. Import
+// presets/standard/packages or use standard.FullCommandSet when package.deploy
+// and runtime TypeScript support are required.
 package commands
 
 import (
 	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/presets/standard/core"
-	packagepreset "github.com/brainlet/brainkit/presets/standard/packages"
 )
 
-// Set returns fresh module instances for the standard command/runtime profile.
+// Set returns fresh module instances for the light command/control-plane
+// profile.
 func Set() []bkmodule.Module {
-	mods := core.Set()
-	mods = append(mods, packagepreset.Set()...)
-	return mods
+	return core.Set()
 }

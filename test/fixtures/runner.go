@@ -366,7 +366,7 @@ func newKitWithMCP(t *testing.T) *brainkit.Kit {
 		envVars["OPENAI_API_KEY"] = key
 	}
 
-	mods := append(standard.CommandSet(), mcppkg.New(map[string]mcppkg.ServerConfig{
+	mods := append(standard.FullCommandSet(), mcppkg.New(map[string]mcppkg.ServerConfig{
 		"test": {URL: mcpURL},
 	}))
 

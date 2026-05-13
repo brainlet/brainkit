@@ -25,7 +25,7 @@ kit, _ := brainkit.New(brainkit.Config{
     Providers: []brainkit.ProviderConfig{
         brainkit.OpenAI(os.Getenv("OPENAI_API_KEY")),
     },
-    Modules: append(standard.CommandSet(),
+    Modules: append(standard.FullCommandSet(),
         toolsmod.GoTool("add", toolsmod.TypedTool[struct{ A, B int }]{
             Description: "adds two numbers",
             Execute: func(_ context.Context, in struct{ A, B int }) (any, error) {
@@ -159,7 +159,9 @@ didn't ask for. The standard presets are intentionally visible code:
 builders, `presets/standard/artifactruntime.Set()` adds a normalized-JS-only
 runtime/eval profile, `presets/standard/packages.Set()` adds package
 deployment plus the standard esbuild builder, and
-`presets/standard.CommandSet()` keeps the aggregate command/runtime set.
+`presets/standard.CommandSet()` is the light command/control-plane convenience
+alias. Use `presets/standard.FullCommandSet()` for the batteries-included
+core plus package deployment profile.
 
 Choose the smallest profile that owns the boundary you need:
 
@@ -169,7 +171,8 @@ Choose the smallest profile that owns the boundary you need:
 | `standard.RuntimeSet()` | You need the embedded JS runtime/eval, but not package deploy commands. | Default raw `.ts` source deploys are transpiled before evaluation. |
 | `standard.ArtifactRuntimeSet()` | Your product already builds JavaScript artifacts and wants to avoid runtime TypeScript preparation. | Only normalized JavaScript artifacts; raw TypeScript syntax is rejected. A logical source name may still end in `.ts` for `ts.<source>.<topic>` routing when the artifact is marked normalized. |
 | `standard.PackageSet()` | Normal application `.ts` deployment through `packageclient.Deploy`. | Package/file graphs are bundled to normalized JavaScript by the package builder before runtime handoff. |
-| `standard.CommandSet()` | Batteries-included command/runtime surface. | Core commands plus package deployment. |
+| `standard.CommandSet()` | Light command/control-plane convenience alias. | No JavaScript runtime. |
+| `standard.FullCommandSet()` | Batteries-included command/runtime surface. | Core commands plus package deployment. |
 
 | Module | Maturity | What it adds |
 |---|---|---|

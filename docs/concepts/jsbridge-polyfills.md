@@ -37,9 +37,9 @@ type BridgeAware interface {
 
 `Bridge.Go(fn)` starts a tracked goroutine that counts toward the
 bridge's `WaitGroup` and receives a context that cancels on `Close`.
-No polyfill uses bare `go` — every goroutine ends deterministically
-when the Kit shuts down, which is what makes `kit.Close()` safe
-against QuickJS being freed mid-call.
+Long-lived runtime goroutines must be bridge-tracked; short helper
+goroutines must be scoped to a bridge-tracked owner. This is what makes
+`kit.Close()` safe against QuickJS being freed mid-call.
 
 ## The Polyfill Set
 
@@ -69,6 +69,8 @@ b, err := jsbridge.New(bridgeCfg,
     // --- Node.js module APIs ---
     jsbridge.NodeStreams(),    // Readable, Writable, Duplex, Transform — after Events
     jsbridge.Buffer(),         // Buffer.from/alloc/concat — after Encoding
+    jsbridge.Path(),           // path and path.posix helpers
+    jsbridge.NodeCompat(),     // assert, querystring, util, perf_hooks shapes
     jsbridge.OS(),             // os.platform, arch, tmpdir, homedir
     jsbridge.Net(),            // Socket extends Duplex — after NodeStreams + Buffer
     jsbridge.DNS(),            // dns.lookup, dns.promises — after Net
@@ -82,9 +84,9 @@ b, err := jsbridge.New(bridgeCfg,
 )
 ```
 
-29 polyfills in total. The exact list is the source of truth —
-`sandbox.go` imports them in the order above, and SES lockdown runs
-afterwards. Each polyfill has focused Go tests in
+31 installed polyfills and compatibility layers in total. The exact list
+is the source of truth — `sandbox.go` imports them in the order above,
+and SES lockdown runs afterwards. Each polyfill has focused Go tests in
 `internal/jsbridge/*_test.go`.
 
 ## Why Order Matters
@@ -111,7 +113,11 @@ Polyfills set their canonical globals directly:
 | Polyfill     | globalThis target                                    |
 | ------------ | ---------------------------------------------------- |
 | NodeStreams  | `globalThis.stream`                                  |
+| Buffer       | `globalThis.Buffer`                                  |
 | Crypto       | merged onto `globalThis.crypto`                      |
+| Path         | `globalThis.path`                                    |
+| NodeCompat   | `globalThis.assert`, `querystring`, `util`, etc.     |
+| Process      | `globalThis.process`                                 |
 | Net          | `globalThis.net`                                     |
 | OS           | `globalThis.os`                                      |
 | DNS          | `globalThis.dns`                                     |
@@ -123,8 +129,8 @@ Polyfills set their canonical globals directly:
 An older generation used `__node_*` prefixes (`__node_stream`,
 `__node_crypto`), which required remapping inside the bundle stubs.
 That was removed — today the names match what Node.js exposes and
-what the bundle expects. The CLAUDE.md rule is explicit: "Polyfills
-set clean names directly on globalThis. No `__node_*` prefix."
+what the bundle expects. The compatibility manifest and embed tests
+guard that bundle stubs only reference declared globals.
 
 ## Crypto Merge
 
@@ -158,12 +164,15 @@ esbuild plugin that emits tiny stubs:
 ```javascript
 // build.mjs — stream stub
 "stream": `
-    var S = globalThis.stream || {};
+    var S = globalThis.stream;
     export var Readable = S.Readable;
     export var Writable = S.Writable;
     export var Duplex = S.Duplex;
     export var Transform = S.Transform;
-    export default { Readable, Writable, Duplex, Transform };
+    export var PassThrough = S.PassThrough;
+    export var pipeline = S.pipeline;
+    export var finished = S.finished;
+    export default S;
 `,
 ```
 
@@ -171,12 +180,256 @@ No classes, no logic, no implementations. Every symbol comes from a
 Go polyfill that is loaded before the bundle. Putting implementation
 code into a stub is a maintenance trap — the stubs live inside
 `build.mjs` JS strings where they are not covered by Go tests and
-ship with the bundle at build time. The rule, encoded in CLAUDE.md:
+ship with the bundle at build time.
 
-> When a bundled library fails because a Node.js API is missing, add
-> it to `internal/jsbridge/*.go` with a Go test. `build.mjs` module
-> stubs are thin re-exports from globalThis — no logic. Never put
-> implementations in build.mjs.
+The checked rule is:
+
+- jsbridge-owned stubs are mechanical re-exports from declared
+  `globalThis` symbols;
+- unknown Node builtins and subpaths fail the bundle build;
+- unsupported surfaces throw typed errors from their jsbridge owner;
+- package-specific exceptions are declared as package patches.
+
+Those guardrails are enforced by the compatibility manifest tests under
+`internal/embed/agent`.
+
+## Compatibility Manifest
+
+The agent embed compatibility surface is declared in
+`internal/embed/agent/bundle/compat/manifest.json`. It records every
+Node module/subpath, dynamic `require()`, web global, external package,
+and package patch that the Mastra bundle depends on.
+
+Each row has an owner, reason, tests, globals/exports when applicable,
+and one status:
+
+| Status | Meaning |
+| ------ | ------- |
+| `exact` | Intended to match the used Node/Web semantics. |
+| `compat` | Partial by design, but enough for the dependency closure. |
+| `stub` | Shape-only no-op for optional paths that are known not to need behavior. |
+| `unsupported` | Explicitly unavailable and expected to throw a typed error. |
+
+`internal/embed/agent/bundle/compat/report.json` is the checked report
+generated from the manifest and esbuild metadata. The Make targets are:
+
+```bash
+make jsbridge-compat-report
+make jsbridge-compat-inventory
+make jsbridge-compat-check
+make jsbridge-lifecycle-check
+make agent-embed-rebuild-check
+```
+
+`internal/embed/agent/bundle/compat/inventory.json` is the richer review
+artifact. It is generated from the manifest, esbuild metadata, and bundle
+`package.json`; it links package names/versions to Node/Web APIs, external
+imports, package patches, dependency class, resource/tests, and
+external-service flags. Use it to answer "which dependency needs this
+polyfill or patch?" before adding new platform behavior.
+
+`internal/embed/agent/bundle/compat/capability-matrix.json` is the
+capability-level view. It maps Agent, AI SDK, workflow, tools, memory, RAG,
+vector/storage, observability, voice, provider, scorer, and eval surfaces to
+proof tiers:
+
+- `import-only` for constructor/import shape without external credentials;
+- `offline-fake` for fake model or provider-independent runtime proof;
+- `local-service` for local HTTP/WebSocket/service probes;
+- `live-provider` for OpenAI or other provider-backed runs;
+- `external-service` for Podman-backed storage/vector/service dependencies.
+
+The matrix is checked by `make agent-embed-capability-matrix-check` and is
+included in `make jsbridge-compat-check`. Use it before claiming a Mastra
+capability is supported; every row must point at real fixtures, examples, or
+tests.
+
+Use `make jsbridge-compat-report-save` only when a dependency upgrade
+intentionally changes the compatibility surface and the diff has been
+reviewed.
+
+## Intentional Compatibility Contracts
+
+Some manifest rows are deliberately partial because the current dependency
+closure needs import/runtime shape, not full Node behavior:
+
+- `async_hooks` is shape-only except for synchronous
+  `AsyncLocalStorage.run`, `enterWith`, `disable`, and
+  `AsyncResource.runInAsyncScope`. It does not propagate context through
+  arbitrary async work, and `executionAsyncId` / `triggerAsyncId` return `0`.
+- `diagnostics_channel` is a no-op surface. `channel().subscribe()` and
+  `publish()` are accepted, but subscribers are not retained or invoked and
+  `hasSubscribers` stays `false` until a tracing owner provides real behavior.
+- `module.createRequire` is bundle-local. It returns the same dynamic
+  `require()` shim used by the agent embed, not a filesystem-aware Node
+  module resolver.
+- Dynamic `require("zod")` and `require("zod/v4")` resolve to the same
+  bundled Zod v4 singleton. Dynamic `require("@opentelemetry/api")` returns a
+  no-op tracer shape. Dynamic LSP/jsonrpc requires return optional
+  shape-only objects. Dynamic `require("execa")` returns the explicit execa
+  hook and otherwise throws from that hook when process execution is not
+  available.
+
+These are not hidden fallbacks. They are manifest rows with focused tests and
+must stay documented until a real owner upgrades the behavior.
+
+## Package Patch Registry
+
+Some compatibility work is package-specific rather than a Node/Web API.
+Those patches are manifest rows with `kind: "package-patch"` and must
+declare:
+
+- `package`
+- `versionRange`
+- `patchType`
+- `required`
+- `expected`
+- `removalCondition`
+- `reason`
+- `tests`
+
+Required patch misses fail the bundle build. Optional patch misses print
+an explicit optional-not-applied message, so a package upgrade does not
+silently invalidate a regex rewrite.
+
+The current registry covers the known exceptional cases: `ws` aliasing,
+`lru-cache` CJS resolution, `big.js`, Zod unification,
+`vscode-jsonrpc/node`, optional libsql serialization, execa dynamic
+import replacement, Mastra RAG Zod function validation, Mastra OpenAI
+structured-output schema wrapping, optional tiktoken fallback, and the
+disabled Gemini live voice entry.
+
+## Resource Accounting
+
+`Bridge.DebugSnapshot()` exposes a `Resources` map with aggregate counts
+for active bridge-owned resources. Polyfills either call
+`Bridge.TrackResource(kind)` for scoped lifetimes or register a provider
+that reports the size of an owner map.
+
+Current counters include:
+
+- `timers.timeouts`
+- `fetch.requests`
+- `fetch.responseBodies`
+- `fs.fileHandles`
+- `fs.watchers`
+- `net.tcpSockets`
+- `net.tlsSockets`
+- `websocket.connections`
+- `websocket.pendingDials`
+- `exec.spawnedProcesses`
+- `exec.commands`
+- `wasm.runtimes`
+- `wasm.modules`
+- `audio.playing`
+- `audio.waiters`
+
+Resource counters are intentionally aggregate only: they are useful for
+teardown proof and diagnostics without exposing QuickJS values or raw Go
+handles.
+
+## Lifecycle And Scale Gate
+
+`make jsbridge-lifecycle-check` is the focused runtime maintenance gate. It
+does not rebuild the agent bundle; it proves that the current runtime surfaces
+shut down and scale correctly:
+
+- bridge close cancellation for pending fetches, timers, fs handles, spawned
+  processes, WebSocket handshakes, and other tracked resources;
+- concurrent Mastra Agent fake-provider generation;
+- sandbox close while provider-backed generation is pending;
+- `modules/jsruntime` hot-unmount while an async JS handler is active, followed
+  by clean remount;
+- concurrent JavaScript `bus.call` and `bus.callStream` through the shared
+  caller path;
+- gateway stream concurrency and shutdown behavior;
+- plugin and bridge lifecycle regressions that match the focused test names.
+
+When a new polyfill or embed feature owns a long-lived resource, add three
+things together: a `Bridge.DebugSnapshot()` resource counter, a direct close or
+cancel regression, and coverage in `make jsbridge-lifecycle-check`. A feature
+that only works while the Kit lives forever is not complete enough for
+hot-mountable Brainkit modules.
+
+## Reading JS Diagnostics
+
+JavaScript failures that cross into Go are wrapped with
+`jsbridge.DiagnosticError`. The wrapper preserves the original error for
+`errors.As` / `errors.Is`, including `*quickjs.Error`, and adds safe
+runtime context:
+
+```text
+brainkit js error (owner=jsruntime, phase=eval, source=diagnostic-runtime.ts):
+TypeError: missing runtime surface: runtime.getVersionOverrides is not a function
+Bridge snapshot: closing=false closed=false activeGoroutines=5 resources={wasm.modules=1, wasm.runtimes=1}
+JavaScript stack:
+...
+```
+
+Fields mean:
+
+- `owner` is the runtime boundary that observed the failure, usually
+  `agent-embed` or `jsruntime`.
+- `phase` names the step: bundle load, runtime eval, call, stream,
+  scorer run, workflow step, or provider request when known.
+- `source` is the bundle file, deployment source, module path, or
+  synthetic dispatch file.
+- `function`, `provider`, and `model` appear only when that context is
+  known and safe to expose.
+- `Bridge snapshot` is aggregate lifecycle/resource state, not raw
+  QuickJS values.
+- `JavaScript cause` and `JavaScript stack` preserve the underlying
+  dependency failure. For scorer/Agent failures, the useful line is
+  often the cause below an outer Mastra message such as
+  `Scorer Run Failed`.
+
+Diagnostics intentionally avoid prompt bodies, API keys, request bodies,
+and provider payloads by default. If a failure only says
+`not a function`, add the missing surface name at the owner boundary or
+in the package patch so the final diagnostic names the actionable API,
+for example `runtime.getVersionOverrides is not a function`.
+
+## Conformance Packs
+
+`internal/jsbridge/conformance_test.go` runs table-driven snippets in a
+real QuickJS bridge. The packs cover:
+
+- Web APIs: URL, URLSearchParams, AbortController, EventTarget, Fetch
+  classes, FormData, Blob/File, Web Streams, and Audio shape.
+- Node core: process, Buffer, crypto, os, path, EventEmitter, streams,
+  timers/promises, fs, child_process, assert, querystring, StringDecoder,
+  util.types, zlib, and dns.
+- Unsupported typed failures: http, https, worker_threads, unsupported
+  crypto cipher creation, and zlib brotli.
+
+`internal/embed/agent/conformance_test.go` covers the SES and bundle load
+contract: bundle exports survive lockdown, Compartment/harden/lockdown
+exist, intrinsics are frozen, pre-lockdown Math/Date captures exist, and
+Compartment endowments evaluate correctly.
+
+## Dependency Failure Playbook
+
+When a Mastra, AI SDK, provider, or storage dependency fails in QuickJS:
+
+1. Reproduce with `make agent-embed-rebuild-check` or a focused fixture.
+2. Read the `brainkit js error (...)` context first. Confirm the owner,
+   phase, source, provider/model identifiers when present, bridge
+   snapshot, JavaScript cause, and JavaScript stack.
+3. Inspect `make jsbridge-compat-report` for new builtins, subpaths,
+   dynamic requires, externals, or package patch drift.
+4. Add or update the manifest row with owner, status, reason, tests, and
+   resources.
+5. Implement runtime behavior in `internal/jsbridge` when the gap is a
+   Node/Web API. Keep `build.mjs` as a mechanical re-export.
+6. Use a package-patch row only for dependency-specific build or source
+   quirks. Mark misses required unless the package version legitimately
+   may not contain the pattern.
+7. Add direct conformance/unit coverage and, where needed, a fixture under
+   `test/fixtures`.
+8. If the failure involves cancellation, streams, goroutines, timers, sockets,
+   subprocesses, or mount/unmount behavior, add a lifecycle regression and run
+   `make jsbridge-lifecycle-check`.
+9. Rebuild bytecode and rerun `make agent-embed-rebuild-check`.
 
 ## Key Polyfill Internals
 
@@ -283,28 +536,46 @@ cryptography libraries) load transparently in QuickJS.
 
 ## Testing Story
 
-Every polyfill ships with Go unit tests under
-`internal/jsbridge/*_test.go`. Representative coverage:
+Every polyfill ships with Go unit tests under `internal/jsbridge/*_test.go`,
+with conformance packs for cross-surface behavior. Representative coverage:
 
 - `crypto_test.go` — hash, hmac, pbkdf2Sync, randomBytes,
   timingSafeEqual, subtle digest/sign/deriveBits.
 - `nodestreams_test.go` — `for await` iteration, `pipe`, `return()`
   data transfer.
+- `nodecompat_test.go` — assert, querystring, StringDecoder, util,
+  perf_hooks, unsupported http/https, worker_threads, async_hooks, and
+  diagnostics_channel shapes.
 - `net_test.go` — TCP connect/write/close, TLS upgrade.
 - `dns_test.go` — `dns.lookup` (sync + promises).
 - `zlib_test.go` — inflate/deflate/gzip round trips.
-- `fetch_test.go` — status, headers, streaming bodies, `AbortSignal`,
-  multipart/form-data + binary body round trips.
-- `fs_test.go` — workspace escape, readFile/writeFile, promises API,
-  binary-safe `createReadStream` chunks.
+- `bridge_test.go` — fetch, timers, fs, exec, resource snapshots, close
+  behavior, and cross-polyfill bridge behavior.
 - `websocket_test.go` — text + binary round-trip, `Authorization`
   header forwarded through the handshake.
 - `audio_test.go` — sink dispatch, mime sniff, pause/cancel,
   Null default.
+- `conformance_test.go` — Web API, Node core, unsupported typed-failure,
+  and resource-drain packs.
+- `internal/embed/agent/conformance_test.go` — SES/load-order, bundle
+  export contract, dynamic `require()`, and `module.createRequire` contract.
 
-The tests run under the standard Go toolchain — no Node, no esbuild,
-no browser — because the polyfills are Go code. That is the whole
-point.
+The jsbridge tests run under the standard Go toolchain — no Node, no
+esbuild, no browser — because the polyfills are Go code. Bundle-level
+checks are intentionally separate and run through `make jsbridge-compat-check`
+or the full `make agent-embed-rebuild-check` upgrade gate.
+
+Use this gate split during development:
+
+- `make jsbridge-compat-check` for manifest, inventory, capability-matrix,
+  package-patch, and bundle-stub drift.
+- `make jsbridge-lifecycle-check` for cancellation, streaming, runtime
+  unmount, resource-drain, and shared-caller scale proof.
+- `make agent-embed-check` for current artifacts plus the focused fixture set.
+- `make agent-embed-rebuild-check` after dependency, patch, stub, or bytecode
+  changes.
+- `make examples-smoke-live` when provider-backed examples should be exercised
+  with `OPENAI_API_KEY` loaded from the repo root environment.
 
 ## See Also
 

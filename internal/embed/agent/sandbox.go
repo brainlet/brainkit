@@ -99,6 +99,8 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 		// Node.js module APIs
 		jsbridge.NodeStreams(),       // Readable, Writable, Duplex, Transform — must be after Events
 		jsbridge.Buffer(),            // Buffer.from, alloc, concat — must be after Encoding
+		jsbridge.Path(),              // path/path.posix helpers
+		jsbridge.NodeCompat(),        // pure assert/querystring/util/string_decoder/perf_hooks surfaces
 		jsbridge.OS(),                // os.platform, arch, tmpdir, homedir
 		jsbridge.Net(),               // Socket extends Duplex — must be after NodeStreams + Buffer
 		jsbridge.DNS(),               // dns.lookup, dns.promises — must be after Net
@@ -305,8 +307,28 @@ func (s *Sandbox) Eval(ctx context.Context, filename, code string) (string, erro
 
 	val, err := s.bridge.EvalAsync(filename, code)
 	if err != nil {
-		return "", err
+		return "", s.wrapEvalError("eval", filename, "", "", "", err)
 	}
 	defer val.Free()
 	return val.String(), nil
+}
+
+func (s *Sandbox) wrapEvalError(phase, source, fn, provider, model string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var snap *jsbridge.DebugSnapshot
+	if s != nil && s.bridge != nil {
+		snapshot := s.bridge.DebugSnapshot()
+		snap = &snapshot
+	}
+	return jsbridge.WrapError(err, jsbridge.DiagnosticContext{
+		RuntimeOwner:   "agent-embed",
+		Phase:          phase,
+		Source:         source,
+		Function:       fn,
+		Provider:       provider,
+		Model:          model,
+		BridgeSnapshot: snap,
+	})
 }

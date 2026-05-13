@@ -29,5 +29,8 @@ func TestWebAssemblyInstantiate(t *testing.T) {
 	if val.String() != "42" {
 		t.Errorf("add(40, 2) = %s, want 42", val.String())
 	}
+	if got := resourceCount(b, "wasm.modules"); got != 1 {
+		t.Fatalf("wasm module resources = %d, want 1 snapshot=%+v", got, b.DebugSnapshot())
+	}
 	t.Logf("WebAssembly add(40, 2) = %s", val.String())
 }

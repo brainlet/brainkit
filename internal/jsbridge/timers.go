@@ -2,8 +2,8 @@ package jsbridge
 
 import (
 	"context"
-	"strconv"
 	"github.com/brainlet/brainkit/internal/syncx"
+	"strconv"
 	"time"
 
 	quickjs "github.com/buke/quickjs-go"
@@ -129,8 +129,12 @@ func (p *TimersPolyfill) Setup(ctx *quickjs.Context) error {
 		delayMs := args[1].ToInt32()
 
 		p.bridge.Go(func(goCtx context.Context) {
+			release := p.bridge.TrackResource("timers.timeouts")
+			defer release()
+			timer := time.NewTimer(time.Duration(delayMs) * time.Millisecond)
+			defer timer.Stop()
 			select {
-			case <-time.After(time.Duration(delayMs) * time.Millisecond):
+			case <-timer.C:
 			case <-goCtx.Done():
 				return
 			}

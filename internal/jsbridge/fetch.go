@@ -69,6 +69,9 @@ func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
 
 		return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
 			polyfill.bridge.Go(func(goCtx context.Context) {
+				releaseRequest := polyfill.bridge.TrackResource("fetch.requests")
+				defer releaseRequest()
+
 				var req struct {
 					URL     string            `json:"url"`
 					Method  string            `json:"method"`
@@ -145,6 +148,8 @@ func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
 				if finishSpan != nil {
 					finishSpan(resp.StatusCode, nil)
 				}
+				releaseBody := polyfill.bridge.TrackResource("fetch.responseBodies")
+				defer releaseBody()
 
 				respHeaders := make(map[string]string)
 				for k, v := range resp.Header {
@@ -446,7 +451,17 @@ globalThis.Headers = class Headers {
 globalThis.Response = class Response {
   constructor(body, init) {
     this._formData = null;
-    if (body && typeof body === 'object' && body.body) {
+    if (typeof ReadableStream !== 'undefined' && body instanceof ReadableStream) {
+      this._body = null;
+      this._bodyStream = body;
+      this._bodyEncoding = '';
+      init = init || {};
+      this.status = init.status || 200;
+      this.ok = this.status >= 200 && this.status < 300;
+      this.statusText = init.statusText || '';
+      this.headers = new Headers(init.headers);
+      this.url = '';
+    } else if (body && typeof body === 'object' && body.body) {
       // Streaming response from Go — body is {status, headers, url, body: ReadableStream}
       this._body = null;
       this._bodyStream = body.body;

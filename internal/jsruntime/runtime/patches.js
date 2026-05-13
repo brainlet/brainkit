@@ -39,16 +39,33 @@
     } catch(e) {}
   }
 
-  var _workflowStorageShim = {
-    getStorage: function() { return _storeHolder.store; },
-    getLogger: function() { return undefined; },
-    generateId: function() { return crypto.randomUUID(); },
-    get observability() { return _observability; },
-    addWorkspace: function() {},
-    getWorkspace: function() { return undefined; },
-    getScorerById: function() { return undefined; },
-    listGateways: function() { return undefined; },
-  };
+  // Agent.generate creates internal Mastra workflows for stream/memory/tool
+  // orchestration. Keep those snapshots in-memory so they do not compete with
+  // user-configured stores that Memory may be writing to during the same turn.
+  var _agentWorkflowStore = new embed.InMemoryStore();
+  function _makeMastraShim(getStorage) {
+    return {
+      getStorage: getStorage,
+      getLogger: function() { return undefined; },
+      generateId: function() { return crypto.randomUUID(); },
+      get observability() { return _observability || {}; },
+      getServer: function() { return undefined; },
+      getVersionOverrides: function() { return undefined; },
+      addWorkspace: function() {},
+      getWorkspace: function() { return undefined; },
+      getScorerById: function() { return undefined; },
+      listGateways: function() { return undefined; },
+    };
+  }
+  var _workflowStorageShim = _makeMastraShim(function() { return _storeHolder.store; });
+  var _agentWorkflowStorageShim = _makeMastraShim(function() { return _agentWorkflowStore; });
+  function _shimForWorkflow(workflow) {
+    var id = workflow && workflow.id;
+    if (id === "execution-workflow" || id === "agentic-loop") {
+      return _agentWorkflowStorageShim;
+    }
+    return _workflowStorageShim;
+  }
 
   if (_observability && typeof _observability.setMastraContext === "function") {
     try { _observability.setMastraContext({ mastra: _workflowStorageShim }); } catch(e) {}
@@ -67,7 +84,7 @@
     if (_origCommit) {
       WorkflowProto.commit = function() {
         if (typeof this.__registerMastra === "function") {
-          try { this.__registerMastra(_workflowStorageShim); } catch(e) {}
+          try { this.__registerMastra(_shimForWorkflow(this)); } catch(e) {}
         }
         return _origCommit.apply(this, arguments);
       };

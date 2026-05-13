@@ -38,9 +38,10 @@ type Config struct {
 
 // DebugSnapshot reports Bridge-owned goroutine and close lifecycle state.
 type DebugSnapshot struct {
-	Closing          bool `json:"closing"`
-	Closed           bool `json:"closed"`
-	ActiveGoroutines int  `json:"activeGoroutines"`
+	Closing          bool           `json:"closing"`
+	Closed           bool           `json:"closed"`
+	ActiveGoroutines int            `json:"activeGoroutines"`
+	Resources        map[string]int `json:"resources,omitempty"`
 }
 
 // Bridge wraps a native QuickJS runtime with polyfills and bridge functions.
@@ -69,6 +70,10 @@ type Bridge struct {
 	activeGoroutine atomic.Int64
 	closeOnce       sync.Once
 	closeDone       chan struct{}
+
+	resourceMu        sync.Mutex
+	resourceCounts    map[string]int
+	resourceProviders []func() map[string]int
 
 	// Pump signal — fires when Schedule'd callbacks are pending.
 	// Buffered 1: coalesces rapid-fire Schedule calls into one pump wake.
@@ -106,14 +111,15 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 	goCtx, goCancel := context.WithCancel(context.Background())
 
 	b := &Bridge{
-		runtime:    rt,
-		ctx:        ctx,
-		stdout:     cfg.Stdout,
-		stderr:     cfg.Stderr,
-		goCtx:      goCtx,
-		goCancel:   goCancel,
-		pumpSignal: make(chan struct{}, 1),
-		closeDone:  make(chan struct{}),
+		runtime:        rt,
+		ctx:            ctx,
+		stdout:         cfg.Stdout,
+		stderr:         cfg.Stderr,
+		goCtx:          goCtx,
+		goCancel:       goCancel,
+		pumpSignal:     make(chan struct{}, 1),
+		closeDone:      make(chan struct{}),
+		resourceCounts: make(map[string]int),
 	}
 
 	// Interrupt handler: checked by QuickJS periodically during eval.
@@ -199,7 +205,65 @@ func (b *Bridge) DebugSnapshot() DebugSnapshot {
 		Closing:          b.closing.Load(),
 		Closed:           b.closed.Load(),
 		ActiveGoroutines: int(b.activeGoroutine.Load()),
+		Resources:        b.resourceSnapshot(),
 	}
+}
+
+// TrackResource increments an active resource counter until the returned
+// release function is called. The debug snapshot exposes only aggregate
+// counters, never QuickJS values or resource handles.
+func (b *Bridge) TrackResource(kind string) func() {
+	if b == nil || strings.TrimSpace(kind) == "" {
+		return func() {}
+	}
+	b.resourceMu.Lock()
+	b.resourceCounts[kind]++
+	b.resourceMu.Unlock()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			b.resourceMu.Lock()
+			if b.resourceCounts[kind] > 1 {
+				b.resourceCounts[kind]--
+			} else {
+				delete(b.resourceCounts, kind)
+			}
+			b.resourceMu.Unlock()
+		})
+	}
+}
+
+// RegisterResourceProvider adds a callback used by DebugSnapshot to read
+// polyfill-owned resource maps such as sockets, file handles, or wasm modules.
+func (b *Bridge) RegisterResourceProvider(provider func() map[string]int) {
+	if b == nil || provider == nil {
+		return
+	}
+	b.resourceMu.Lock()
+	b.resourceProviders = append(b.resourceProviders, provider)
+	b.resourceMu.Unlock()
+}
+
+func (b *Bridge) resourceSnapshot() map[string]int {
+	b.resourceMu.Lock()
+	out := make(map[string]int, len(b.resourceCounts))
+	for kind, count := range b.resourceCounts {
+		if count > 0 {
+			out[kind] += count
+		}
+	}
+	providers := append([]func() map[string]int(nil), b.resourceProviders...)
+	b.resourceMu.Unlock()
+
+	for _, provider := range providers {
+		for kind, count := range provider() {
+			if count > 0 {
+				out[kind] += count
+			}
+		}
+	}
+	return out
 }
 
 func (b *Bridge) freeRuntime() {

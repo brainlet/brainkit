@@ -60,8 +60,8 @@ unmount context.
 
 The light `modules/schedules` package does not open stores or auto-register a
 YAML factory. Import `modules/schedules/standard` in config-driven binaries, or
-use `server/standard`, when `modules.schedules.path` should open a dedicated
-SQLite store.
+use `server/standard/automation` or `server/standard/full`, when
+`modules.schedules.path` should open a dedicated SQLite store.
 
 Close is retryable. If the schedule handler lease cannot detach, the lease and
 owned store remain attached for a later retry. If active schedule fires do not
