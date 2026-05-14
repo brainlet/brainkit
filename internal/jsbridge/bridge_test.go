@@ -516,12 +516,22 @@ func TestURLSearchParams(t *testing.T) {
 	b := newTestBridge(t, URL())
 	result := evalString(t, b, `
 		const p = new URLSearchParams("a=1&b=2&a=3");
-		JSON.stringify({ a: p.get("a"), b: p.get("b"), all: p.getAll("a") });
+		const q = new URLSearchParams([["z", "3"], ["a", "1"], ["a", "2"]]);
+		q.sort();
+		JSON.stringify({
+			a: p.get("a"),
+			b: p.get("b"),
+			all: p.getAll("a"),
+			pairs: Array.from(q.entries()),
+			rendered: q.toString(),
+		});
 	`)
 	var parsed struct {
-		A   string   `json:"a"`
-		B   string   `json:"b"`
-		All []string `json:"all"`
+		A        string     `json:"a"`
+		B        string     `json:"b"`
+		All      []string   `json:"all"`
+		Pairs    [][]string `json:"pairs"`
+		Rendered string     `json:"rendered"`
 	}
 	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 		t.Fatalf("parse: %v", err)
@@ -534,6 +544,12 @@ func TestURLSearchParams(t *testing.T) {
 	}
 	if len(parsed.All) != 2 {
 		t.Errorf("getAll('a') len = %d, want 2", len(parsed.All))
+	}
+	if parsed.Rendered != "a=1&a=2&z=3" {
+		t.Errorf("sorted iterable params = %q, want %q", parsed.Rendered, "a=1&a=2&z=3")
+	}
+	if len(parsed.Pairs) != 3 || parsed.Pairs[0][0] != "a" || parsed.Pairs[2][0] != "z" {
+		t.Errorf("iterable params pairs = %#v, want sorted a,a,z", parsed.Pairs)
 	}
 }
 

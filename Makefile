@@ -1,4 +1,4 @@
-.PHONY: all brainkit install deps deps-go deps-npm deps-root deps-root-save deps-root-check deps-profiles deps-profile-check deps-modules build agent-embed-rebuild jsbridge-compat-report jsbridge-compat-report-save jsbridge-compat-inventory jsbridge-compat-inventory-save jsbridge-compat-inventory-check agent-embed-capability-matrix-check jsbridge-compat-check jsbridge-lifecycle-check agent-embed-check agent-embed-rebuild-check generate test test-v test-compile test-suite test-full test-all test-campaigns-transport test-campaigns-transport-embedded test-campaigns-transport-nats test-campaigns-transport-amqp test-campaigns-transport-redis test-campaigns-transport-external bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples examples-smoke examples-smoke-compile examples-smoke-offline examples-smoke-live examples-smoke-server examples-smoke-external examples-smoke-all plugins-build plugins-test plugins-smoke clean podman-init podman-start podman-up podman-launchd-up podman-launchd-down podman-link-socket podman-verify podman-down podman-status podman-reset podman-nuke podman-ensure type-check
+.PHONY: all brainkit install deps deps-go deps-npm deps-root deps-root-save deps-root-check deps-profiles deps-profile-check deps-modules build agent-embed-rebuild jsbridge-compat-report jsbridge-compat-report-save jsbridge-compat-inventory jsbridge-compat-inventory-save jsbridge-compat-inventory-check agent-embed-capability-matrix-check agent-embed-node-api-target-check jsbridge-compat-check jsbridge-lifecycle-check agent-embed-check agent-embed-rebuild-check generate test test-v test-compile test-suite test-full test-all test-campaigns-transport test-campaigns-transport-embedded test-campaigns-transport-nats test-campaigns-transport-amqp test-campaigns-transport-redis test-campaigns-transport-external bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples examples-smoke examples-smoke-compile examples-smoke-offline examples-smoke-live examples-smoke-server examples-smoke-external examples-smoke-all plugins-build plugins-test plugins-smoke clean podman-init podman-start podman-up podman-launchd-up podman-launchd-down podman-link-socket podman-verify podman-down podman-status podman-reset podman-nuke podman-ensure type-check
 
 PODMAN_MACHINE ?= brainkit
 PODMAN_CPUS ?= 4
@@ -107,8 +107,11 @@ jsbridge-compat-inventory-check:
 agent-embed-capability-matrix-check:
 	go test ./internal/embed/agent -run TestMastraCapabilityMatrixIsWellFormed -count=1 -timeout=600s
 
+agent-embed-node-api-target-check:
+	go test ./internal/embed/agent -run TestNodeAPITargetIsWellFormed -count=1 -timeout=600s
+
 # Check compatibility metadata without rebuilding the bundle.
-jsbridge-compat-check: jsbridge-compat-inventory-check agent-embed-capability-matrix-check
+jsbridge-compat-check: jsbridge-compat-inventory-check agent-embed-capability-matrix-check agent-embed-node-api-target-check
 	node --check internal/embed/agent/bundle/build.mjs
 	go run ./internal/embed/agent/cmd/compat-report -check internal/embed/agent/bundle/compat/report.json
 	go test ./internal/embed/agent -run 'TestCompat|TestBundleMeta|TestBundleStubs|TestJSBridgeOwned|TestDynamicRequire|TestPackagePatch|TestPostBuild' -count=1 -timeout=600s

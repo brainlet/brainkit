@@ -3,6 +3,7 @@ package agentembed
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -339,6 +340,36 @@ func TestRuntimeGlobalsDynamicRequireConformance(t *testing.T) {
 			var vscode = req("vscode-jsonrpc/node");
 			var lsp = req("vscode-languageserver-protocol");
 			var moduleReq = createRequire("agent-embed-test");
+			var unknown = {};
+			try {
+				req("@brainkit/not-manifest-owned");
+			} catch (err) {
+				unknown = {
+					name: err && err.name,
+					code: err && err.code,
+					specifier: err && err.specifier,
+					module: err && err.module,
+					importPath: err && err.importPath,
+					boundaryClass: err && err.boundaryClass,
+					suggestedOwner: err && err.suggestedOwner,
+					boundaryCode: err && err.boundaryCode,
+					owner: err && err.owner,
+					message: err && err.message
+				};
+			}
+			var pgNative = {};
+			try {
+				req("pg-native");
+			} catch (err) {
+				pgNative = {
+					code: err && err.code,
+					importPath: err && err.importPath,
+					boundaryClass: err && err.boundaryClass,
+					suggestedOwner: err && err.suggestedOwner,
+					packageName: err && err.packageName,
+					owner: err && err.owner
+				};
+			}
 			return JSON.stringify({
 				require: typeof req,
 				createRequire: typeof createRequire,
@@ -350,7 +381,9 @@ func TestRuntimeGlobalsDynamicRequireConformance(t *testing.T) {
 				otelSpanContext: typeof span.spanContext,
 				execa: typeof execa.execa,
 				vscode: typeof vscode,
-				lsp: typeof lsp
+				lsp: typeof lsp,
+				unknown: unknown,
+				pgNative: pgNative
 			});
 		})()
 	`)
@@ -370,6 +403,26 @@ func TestRuntimeGlobalsDynamicRequireConformance(t *testing.T) {
 		Execa         string `json:"execa"`
 		VSCode        string `json:"vscode"`
 		LSP           string `json:"lsp"`
+		Unknown       struct {
+			Name           string `json:"name"`
+			Code           string `json:"code"`
+			Specifier      string `json:"specifier"`
+			Module         string `json:"module"`
+			ImportPath     string `json:"importPath"`
+			BoundaryClass  string `json:"boundaryClass"`
+			SuggestedOwner string `json:"suggestedOwner"`
+			BoundaryCode   string `json:"boundaryCode"`
+			Owner          string `json:"owner"`
+			Message        string `json:"message"`
+		} `json:"unknown"`
+		PGNative struct {
+			Code           string `json:"code"`
+			ImportPath     string `json:"importPath"`
+			BoundaryClass  string `json:"boundaryClass"`
+			SuggestedOwner string `json:"suggestedOwner"`
+			PackageName    string `json:"packageName"`
+			Owner          string `json:"owner"`
+		} `json:"pgNative"`
 	}
 	if err := json.Unmarshal([]byte(result), &got); err != nil {
 		t.Fatalf("parse result %q: %v", result, err)
@@ -385,6 +438,26 @@ func TestRuntimeGlobalsDynamicRequireConformance(t *testing.T) {
 	}
 	if got.Execa != "function" || got.VSCode != "object" || got.LSP != "object" {
 		t.Fatalf("optional dynamic require shape failed: %+v", got)
+	}
+	if got.Unknown.Name != "BrainkitUnsupportedDynamicRequireError" ||
+		got.Unknown.Code != "BRAINKIT_UNSUPPORTED_DYNAMIC_REQUIRE" ||
+		got.Unknown.BoundaryCode != "BRAINKIT_UNSUPPORTED_BOUNDARY" ||
+		got.Unknown.Specifier != "@brainkit/not-manifest-owned" ||
+		got.Unknown.Module != "@brainkit/not-manifest-owned" ||
+		got.Unknown.ImportPath != "@brainkit/not-manifest-owned" ||
+		got.Unknown.BoundaryClass != "unsupported-node-api" ||
+		got.Unknown.SuggestedOwner != "future resolver profile" ||
+		got.Unknown.Owner != "internal/embed/agent.runtimeGlobalsJS" ||
+		!strings.Contains(got.Unknown.Message, "Unsupported dynamic require") {
+		t.Fatalf("unknown dynamic require diagnostic failed: %+v", got.Unknown)
+	}
+	if got.PGNative.Code != "BRAINKIT_UNSUPPORTED_DYNAMIC_REQUIRE" ||
+		got.PGNative.ImportPath != "pg-native" ||
+		got.PGNative.BoundaryClass != "optional-native" ||
+		got.PGNative.PackageName != "pg-native" ||
+		got.PGNative.Owner != "internal/embed/agent.runtimeGlobalsJS" ||
+		!strings.Contains(got.PGNative.SuggestedOwner, "sidecar") {
+		t.Fatalf("pg-native dynamic require boundary failed: %+v", got.PGNative)
 	}
 }
 

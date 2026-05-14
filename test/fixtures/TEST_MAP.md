@@ -1,14 +1,44 @@
 # Fixtures Test Map
 
 **Purpose:** TS fixture integration tests. Deploy `index.ts`, read output, assert against `expect.json`.
-**Count:** 166 fixtures across 17 categories
+**Count:** 291 fixtures across 21 categories
 **Runner:** `test/fixtures/runner.go` (WalkDir + path-based classification via `classify.go`)
 **Entry:** `TestFixtures` in `fixtures_test.go` calls `runner.RunAll(t)`
-**Assertion:** `helpers.go` -- `"*"` (key exists), `"~prefix"` (contains substring), exact match, float delta 0.01
+**Assertion:** `helpers.go` -- `"*"` (key exists), `"~prefix"` (contains substring), exact match, float delta 0.01; `deployErrorContains` expects deployment to fail with the given substring.
+
+## Filesystem Count Summary
+
+Refreshed from `find fixtures/ts -name index.ts` on 2026-05-13.
+The category counts below are authoritative; the descriptive tables that follow
+are human-maintained summaries of representative fixture behavior.
+
+| Category | Fixtures |
+|----------|---------:|
+| agent | 43 |
+| ai | 32 |
+| bus | 17 |
+| composition | 2 |
+| cross-feature | 5 |
+| cross-kit | 1 |
+| ecosystem | 1 |
+| evals | 22 |
+| kit | 17 |
+| mcp | 2 |
+| memory | 26 |
+| observability | 9 |
+| plugin | 1 |
+| polyfill | 17 |
+| processors | 15 |
+| rag | 22 |
+| storage | 1 |
+| tools | 9 |
+| vector | 9 |
+| voice | 15 |
+| workflow | 25 |
 
 ## Categories
 
-### agent/ (30 fixtures)
+### agent/ (43 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
@@ -43,7 +73,7 @@
 | agent/tools/with-registered-tool | yes | no | Agent with Go-registered tool (multiply) |
 | agent/workspace | yes | no | Agent workspace support |
 
-### ai/ (21 fixtures)
+### ai/ (32 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
@@ -69,7 +99,7 @@
 | ai/stream-text/with-tools | yes | no | Streaming with tool calls (usage stats) |
 | ai/tool/with-suspend | yes | no | Tool suspension and resume with approval flow |
 
-### bus/ (13 fixtures)
+### bus/ (17 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
@@ -111,7 +141,13 @@
 
 **Note:** cross-kit and plugin categories are skipped by the general runner (see `skipCategories`). They run through campaign-specific runners.
 
-### evals/ (5 fixtures)
+### ecosystem/ (1 fixture)
+
+| Path | Needs AI | Needs Container | What it tests |
+|------|----------|-----------------|---------------|
+| ecosystem/bare-npm-rejected | no | no | Source package deployment rejects bare npm imports until a named resolver profile exists |
+
+### evals/ (22 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
@@ -150,7 +186,7 @@
 | mcp/agent-with-mcp-tool | yes | no | Agent with MCP tool (echo tool, 1 tool count) |
 | mcp/call-tool | no | no | MCP tool listing (1 tool) |
 
-### memory/ (22 fixtures)
+### memory/ (26 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
@@ -177,7 +213,7 @@
 | memory/working-memory/basic | yes | no | Working memory (knows name) |
 | memory/working-memory/schema | yes | no | Working memory with schema (knows Bob) |
 
-### observability/ (2 fixtures)
+### observability/ (9 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
@@ -192,7 +228,7 @@
 
 **Note:** Skipped by the general runner. Runs through campaign plugin runner.
 
-### polyfill/ (10 fixtures)
+### polyfill/ (17 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
@@ -207,7 +243,7 @@
 | polyfill/util/types | no | no | util.types checks (Date, RegExp, Map, Set, TypedArray, Buffer) |
 | polyfill/zlib/deflate-inflate | no | no | zlib deflate/inflate, gzip/gunzip, async, constants |
 
-### rag/ (9 fixtures)
+### rag/ (22 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
@@ -221,7 +257,17 @@
 | rag/rerank/functional | no | no | Functional reranking |
 | rag/vector-query-tool | yes | no | Vector query tool (has results, needs AI for embedding) |
 
-### tools/ (6 fixtures)
+### processors/ (15 fixtures)
+
+See the filesystem count summary for current count. Processor fixture behavior
+is covered by `fixtures/ts/processors/*`.
+
+### storage/ (1 fixture)
+
+See the filesystem count summary for current count. Storage fixture behavior is
+covered by `fixtures/ts/storage/*`.
+
+### tools/ (9 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
@@ -232,7 +278,7 @@
 | tools/register-list | no | no | Register and list tools |
 | tools/register-unregister | no | no | Register, find, unregister, verify removed |
 
-### vector/ (6 fixtures)
+### vector/ (9 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
@@ -243,7 +289,12 @@
 | vector/methods/mongodb | no | mongodb | MongoDB vector methods (upserted=2) |
 | vector/methods/pgvector | no | postgres | PgVector methods (resultCount=2) |
 
-### workflow/ (14 fixtures)
+### voice/ (15 fixtures)
+
+See the filesystem count summary for current count. Voice fixture behavior is
+covered by `fixtures/ts/voice/*`.
+
+### workflow/ (25 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|

@@ -68,6 +68,31 @@ func TestEventEmitter_EventNames(t *testing.T) {
 	}
 }
 
+func TestEventEmitter_CallableConstructor(t *testing.T) {
+	b := newTestBridge(t, Events())
+	val, err := b.Eval("test.js", `
+		function Child() { EventEmitter.call(this); }
+		Child.prototype = Object.create(EventEmitter.prototype);
+		Child.prototype.constructor = Child;
+		var target = new Child();
+		var called = false;
+		target.on("ready", function() { called = true; });
+		target.emit("ready");
+		JSON.stringify({
+			called: called,
+			constructed: EventEmitter() instanceof EventEmitter,
+		});
+	`)
+	if err != nil {
+		t.Fatalf("callable constructor: %v", err)
+	}
+	defer val.Free()
+	s := val.String()
+	if !strings.Contains(s, `"called":true`) || !strings.Contains(s, `"constructed":true`) {
+		t.Fatalf("expected callable EventEmitter constructor, got: %s", s)
+	}
+}
+
 func TestCrypto_GetFips(t *testing.T) {
 	b := newTestBridge(t, Crypto())
 	val, err := b.Eval("test.js", `

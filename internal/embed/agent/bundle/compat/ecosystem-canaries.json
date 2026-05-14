@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "canaries": [
+    {
+      "id": "ecosystem/http-gaxios-local",
+      "package": "gaxios",
+      "version": "7.1.4",
+      "lane": "agent-embed",
+      "apiFamilies": ["http", "https", "fetch", "headers", "body-streams", "url"],
+      "proofTier": "local-service",
+      "expected": "GET and POST against a local HTTP server return deterministic JSON and header/body round-trip evidence.",
+      "runner": "__agent_embed.ecosystemCanaries.run"
+    },
+    {
+      "id": "ecosystem/node-fetch-local",
+      "package": "node-fetch",
+      "version": "3.3.2",
+      "lane": "agent-embed",
+      "apiFamilies": ["http", "https", "stream", "zlib", "fetch-api"],
+      "proofTier": "local-service",
+      "expected": "Local server GET and JSON POST succeed through node-fetch; fetch API constructor exports are recorded as shape evidence.",
+      "runner": "__agent_embed.ecosystemCanaries.run"
+    },
+    {
+      "id": "ecosystem/readable-stream",
+      "package": "readable-stream",
+      "version": "4.7.0",
+      "lane": "agent-embed",
+      "apiFamilies": ["node-streams", "buffer", "eventemitter", "process", "string-decoder"],
+      "proofTier": "offline-fake",
+      "expected": "Readable plus Transform plus Writable pipeline returns BRAINKIT.",
+      "runner": "__agent_embed.ecosystemCanaries.run"
+    },
+    {
+      "id": "ecosystem/ajv-codegen",
+      "package": "ajv",
+      "version": "8.20.0",
+      "lane": "agent-embed",
+      "apiFamilies": ["schema-validation", "function-codegen", "ses"],
+      "proofTier": "offline-fake",
+      "expected": "Compiled schema validates a good object and rejects a bad object after SES lockdown.",
+      "runner": "__agent_embed.ecosystemCanaries.run"
+    },
+    {
+      "id": "ecosystem/yaml-parser",
+      "package": "yaml",
+      "version": "2.9.0",
+      "lane": "agent-embed",
+      "apiFamilies": ["pure-js-parser", "esm-exports"],
+      "proofTier": "offline-fake",
+      "expected": "Parse and stringify deterministic YAML without Node builtin assumptions.",
+      "runner": "__agent_embed.ecosystemCanaries.run"
+    },
+    {
+      "id": "ecosystem/frontmatter-parser",
+      "package": "gray-matter",
+      "version": "4.0.3",
+      "lane": "agent-embed",
+      "apiFamilies": ["pure-js-parser", "commonjs", "yaml-adjacent"],
+      "proofTier": "offline-fake",
+      "expected": "Parse in-memory frontmatter and content without using the file path.",
+      "runner": "__agent_embed.ecosystemCanaries.run"
+    },
+    {
+      "id": "ecosystem/xxhash-wasm",
+      "package": "xxhash-wasm",
+      "version": "1.1.0",
+      "lane": "agent-embed",
+      "apiFamilies": ["webassembly", "typed-arrays", "async-init"],
+      "proofTier": "offline-fake",
+      "expected": "h32 and h64 of brainkit match deterministic known values.",
+      "runner": "__agent_embed.ecosystemCanaries.run"
+    },
+    {
+      "id": "ecosystem/mongodb-boundary",
+      "package": "mongodb",
+      "version": "7.2.0",
+      "lane": "agent-embed",
+      "apiFamilies": ["db-client-import", "net", "tls", "dns", "optional-native"],
+      "proofTier": "import-only",
+      "expected": "MongoClient construction works without connecting; optional native peers throw typed optional-native boundaries.",
+      "runner": "__agent_embed.ecosystemCanaries.run"
+    },
+    {
+      "id": "ecosystem/chromadb-boundary",
+      "package": "chromadb",
+      "version": "3.4.3",
+      "lane": "agent-embed",
+      "apiFamilies": ["vector-client-import", "optional-native", "default-embedding"],
+      "proofTier": "import-only",
+      "expected": "ChromaClient construction shape exists; default embedding/native paths throw typed boundaries.",
+      "runner": "__agent_embed.ecosystemCanaries.run"
+    },
+    {
+      "id": "ecosystem/uuid-conditional",
+      "package": "uuid",
+      "version": "14.0.0",
+      "lane": "agent-embed",
+      "apiFamilies": ["conditional-exports", "crypto", "esm-exports"],
+      "proofTier": "offline-fake",
+      "expected": "Generated UUID validates in the curated agent bundle; source package deployment still has a separate bare-npm rejection fixture.",
+      "runner": "__agent_embed.ecosystemCanaries.run"
+    },
+    {
+      "id": "ecosystem/lru-cache-conditional",
+      "package": "lru-cache",
+      "version": "11.3.6",
+      "lane": "agent-embed",
+      "apiFamilies": ["conditional-exports", "diagnostics_channel", "node-engine"],
+      "proofTier": "offline-fake",
+      "expected": "Cache eviction is deterministic and diagnostics_channel subscriber state is real before and after publish.",
+      "runner": "__agent_embed.ecosystemCanaries.run"
+    },
+    {
+      "id": "ecosystem/bare-npm-rejected",
+      "package": "uuid",
+      "version": "14.0.0",
+      "lane": "user-package-deploy",
+      "apiFamilies": ["future-resolver", "bare-npm-import"],
+      "proofTier": "import-only",
+      "expected": "Default/source package deployment rejects the bare npm import until a named resolver profile exists.",
+      "runner": "fixtures/ts/ecosystem/bare-npm-rejected"
+    }
+  ]
+}

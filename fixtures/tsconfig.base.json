@@ -25,5 +25,8 @@
   "include": [
     "ts/**/*.ts",
     "../internal/dts/runtime/globals.d.ts"
+  ],
+  "exclude": [
+    "ts/ecosystem/bare-npm-rejected/**"
   ]
 }

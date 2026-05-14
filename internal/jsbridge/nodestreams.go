@@ -54,6 +54,9 @@ const nodeStreamsJS = `
       this._paused = true;
       this._buffer = [];
       this._ended = false;
+      this._endEmitted = false;
+      this.readableEnded = false;
+      this._readableState = { ended: false };
       this._readableObjectMode = opts && opts.readableObjectMode;
       if (opts && typeof opts.read === "function") this._read = opts.read;
     }
@@ -68,7 +71,12 @@ const nodeStreamsJS = `
     push(chunk) {
       if (chunk === null) {
         this._ended = true;
-        this.emit("end");
+        this.readableEnded = true;
+        this._readableState.ended = true;
+        if (!this._endEmitted && !this._paused) {
+          this._endEmitted = true;
+          this.emit("end");
+        }
         return false;
       }
       // Buffer if paused OR no "data" listeners
@@ -93,6 +101,10 @@ const nodeStreamsJS = `
       while (this._buffer.length && this._e["data"] && this._e["data"].length) {
         this.emit("data", this._buffer.shift());
       }
+      if (this._ended && !this._endEmitted) {
+        this._endEmitted = true;
+        this.emit("end");
+      }
       return this;
     }
 
@@ -107,15 +119,15 @@ const nodeStreamsJS = `
 
     pipe(dest, opts) {
       var self = this;
+      if (!opts || opts.end !== false) {
+        this.on("end", function() { if (dest.end) dest.end(); });
+      }
       this.on("data", function(chunk) {
         if (dest.write) {
           var ok = dest.write(chunk);
           if (ok === false && self.pause) self.pause();
         }
       });
-      if (!opts || opts.end !== false) {
-        this.on("end", function() { if (dest.end) dest.end(); });
-      }
       if (dest.on) {
         dest.on("drain", function() { if (self.resume) self.resume(); });
       }
@@ -226,9 +238,27 @@ const nodeStreamsJS = `
 
   Readable.from = function(iterable) {
     var r = new Readable();
+    if (
+      (typeof Buffer !== "undefined" && Buffer.isBuffer && Buffer.isBuffer(iterable)) ||
+      iterable instanceof Uint8Array ||
+      iterable instanceof ArrayBuffer
+    ) {
+      r.push(iterable instanceof ArrayBuffer ? new Uint8Array(iterable) : iterable);
+      r.push(null);
+      return r;
+    }
     if (iterable && iterable[Symbol.iterator]) {
       for (var v of iterable) r.push(v);
       r.push(null);
+    } else if (iterable && iterable[Symbol.asyncIterator]) {
+      (async function() {
+        try {
+          for await (var v of iterable) r.push(v);
+          r.push(null);
+        } catch (err) {
+          r.emit("error", err);
+        }
+      })();
     }
     return r;
   };
@@ -397,8 +427,41 @@ const nodeStreamsJS = `
   // ─── pipeline / finished stubs ─────────────────────────────────
   function pipeline() {
     var args = Array.prototype.slice.call(arguments);
-    var cb = args.pop();
-    if (typeof cb === "function") cb();
+    var cb = typeof args[args.length - 1] === "function" ? args.pop() : null;
+    if (args.length === 0) {
+      if (cb) cb();
+      return undefined;
+    }
+    var streams = args;
+    var done = false;
+    function finish(err) {
+      if (done) return;
+      done = true;
+      if (cb) cb(err || null);
+    }
+    for (var i = 0; i < streams.length; i++) {
+      if (streams[i] && typeof streams[i].on === "function") {
+        streams[i].on("error", finish);
+      }
+    }
+    for (var j = 0; j < streams.length - 1; j++) {
+      var src = streams[j];
+      var dest = streams[j + 1];
+      if (!src || typeof src.pipe !== "function") {
+        finish(new Error("stream.pipeline source is not pipeable"));
+        return dest;
+      }
+      src.pipe(dest);
+    }
+    var last = streams[streams.length - 1];
+    if (last && typeof last.on === "function") {
+      last.on("finish", function() { finish(); });
+      last.on("end", function() { finish(); });
+      last.on("close", function() { finish(); });
+    } else {
+      finish();
+    }
+    return last;
   }
 	  function finished(stream, cb) {
 	    if (cb) cb();

@@ -18,17 +18,19 @@ type compatManifest struct {
 }
 
 type compatEntry struct {
-	ID           string   `json:"id"`
-	Kind         string   `json:"kind"`
-	Status       string   `json:"status"`
-	Owner        string   `json:"owner"`
-	Aliases      []string `json:"aliases"`
-	Globals      []string `json:"globals"`
-	Exports      []string `json:"exports"`
-	Dependencies []string `json:"dependencies"`
-	Resources    []string `json:"resources"`
-	Tests        []string `json:"tests"`
-	Reason       string   `json:"reason"`
+	ID             string   `json:"id"`
+	Kind           string   `json:"kind"`
+	Status         string   `json:"status"`
+	Owner          string   `json:"owner"`
+	Aliases        []string `json:"aliases"`
+	Globals        []string `json:"globals"`
+	Exports        []string `json:"exports"`
+	Dependencies   []string `json:"dependencies"`
+	Resources      []string `json:"resources"`
+	Tests          []string `json:"tests"`
+	Reason         string   `json:"reason"`
+	BoundaryClass  string   `json:"boundaryClass"`
+	SuggestedOwner string   `json:"suggestedOwner"`
 
 	Package          string `json:"package"`
 	VersionRange     string `json:"versionRange"`
@@ -58,12 +60,16 @@ type capabilityMatrix struct {
 }
 
 type capabilityRow struct {
-	ID         string            `json:"id"`
-	Capability string            `json:"capability"`
-	Status     string            `json:"status"`
-	Tiers      []string          `json:"tiers"`
-	Proofs     []capabilityProof `json:"proofs"`
-	Notes      string            `json:"notes"`
+	ID                 string            `json:"id"`
+	Capability         string            `json:"capability"`
+	Status             string            `json:"status"`
+	SupportLevel       string            `json:"supportLevel"`
+	Tiers              []string          `json:"tiers"`
+	NodeAPIs           []string          `json:"nodeAPIs"`
+	KnownGaps          []string          `json:"knownGaps"`
+	PromotionCondition string            `json:"promotionCondition"`
+	Proofs             []capabilityProof `json:"proofs"`
+	Notes              string            `json:"notes"`
 }
 
 type capabilityProof struct {
@@ -71,6 +77,51 @@ type capabilityProof struct {
 	Path string `json:"path"`
 	Name string `json:"name"`
 	Tier string `json:"tier"`
+}
+
+type compatInventory struct {
+	SchemaVersion int                `json:"schemaVersion"`
+	Packages      []inventoryPackage `json:"packages"`
+	Surfaces      []inventorySurface `json:"surfaces"`
+}
+
+type inventoryPackage struct {
+	Name            string   `json:"name"`
+	Category        string   `json:"category"`
+	RuntimeRisks    []string `json:"runtimeRisks"`
+	ProofTiers      []string `json:"proofTiers"`
+	NodeAPIs        []string `json:"nodeAPIs"`
+	ExternalImports []string `json:"externalImports"`
+}
+
+type inventorySurface struct {
+	ID             string   `json:"id"`
+	RiskClass      string   `json:"riskClass"`
+	RuntimeRisks   []string `json:"runtimeRisks"`
+	ProofTiers     []string `json:"proofTiers"`
+	Status         string   `json:"status"`
+	BoundaryClass  string   `json:"boundaryClass"`
+	SuggestedOwner string   `json:"suggestedOwner"`
+}
+
+type nodeAPITarget struct {
+	SchemaVersion   int             `json:"schemaVersion"`
+	SourceArtifacts []string        `json:"sourceArtifacts"`
+	Families        []nodeAPIFamily `json:"families"`
+}
+
+type nodeAPIFamily struct {
+	ID                string   `json:"id"`
+	APIFamily         string   `json:"apiFamily"`
+	SemanticStatus    string   `json:"semanticStatus"`
+	Owner             string   `json:"owner"`
+	Surfaces          []string `json:"surfaces"`
+	PackagesUsing     []string `json:"packagesUsing"`
+	ConformanceTests  []string `json:"conformanceTests"`
+	AcceptedSemantics string   `json:"acceptedSemantics"`
+	KnownGaps         []string `json:"knownGaps"`
+	LifecycleImpact   []string `json:"lifecycleImpact"`
+	NextProof         string   `json:"nextProof"`
 }
 
 type esbuildMeta struct {
@@ -91,18 +142,27 @@ func TestCompatManifestIsWellFormed(t *testing.T) {
 	}
 
 	allowedKinds := map[string]bool{
-		"node-module":     true,
-		"node-subpath":    true,
-		"web-global":      true,
-		"dynamic-require": true,
-		"package-patch":   true,
-		"external":        true,
+		"node-module":       true,
+		"node-subpath":      true,
+		"node-api-boundary": true,
+		"web-global":        true,
+		"dynamic-require":   true,
+		"package-patch":     true,
+		"external":          true,
 	}
 	allowedStatuses := map[string]bool{
 		"exact":       true,
 		"compat":      true,
 		"stub":        true,
 		"unsupported": true,
+	}
+	allowedBoundaryClasses := map[string]bool{
+		"native-addon":         true,
+		"worker":               true,
+		"server-listener":      true,
+		"external-service":     true,
+		"optional-native":      true,
+		"unsupported-node-api": true,
 	}
 	allowedPatchTypes := map[string]bool{
 		"esbuild-plugin":     true,
@@ -128,6 +188,17 @@ func TestCompatManifestIsWellFormed(t *testing.T) {
 		}
 		if strings.TrimSpace(entry.Owner) == "" {
 			t.Fatalf("%s: owner is required", entry.ID)
+		}
+		if entry.Status == "unsupported" {
+			if !allowedBoundaryClasses[entry.BoundaryClass] {
+				t.Fatalf("%s: unsupported entry has invalid boundaryClass %q", entry.ID, entry.BoundaryClass)
+			}
+			if strings.TrimSpace(entry.SuggestedOwner) == "" {
+				t.Fatalf("%s: unsupported entry must name suggestedOwner", entry.ID)
+			}
+			if (entry.Kind == "external" || entry.Kind == "package-patch") && strings.TrimSpace(entry.Package) == "" {
+				t.Fatalf("%s: unsupported %s entry must name package", entry.ID, entry.Kind)
+			}
 		}
 		if len(entry.Tests) == 0 {
 			t.Fatalf("%s: tests are required", entry.ID)
@@ -195,14 +266,24 @@ func TestCompatManifestIsWellFormed(t *testing.T) {
 func TestMastraCapabilityMatrixIsWellFormed(t *testing.T) {
 	matrix := loadCapabilityMatrix(t)
 
-	if matrix.SchemaVersion != 1 {
-		t.Fatalf("schemaVersion = %d, want 1", matrix.SchemaVersion)
+	if matrix.SchemaVersion != 2 {
+		t.Fatalf("schemaVersion = %d, want 2", matrix.SchemaVersion)
 	}
 
 	allowedStatuses := map[string]bool{
-		"supported":   true,
-		"partial":     true,
-		"import-only": true,
+		"supported":             true,
+		"partial":               true,
+		"import-only":           true,
+		"unsupported-by-design": true,
+	}
+	allowedSupportLevels := map[string]bool{
+		"runtime-supported":     true,
+		"import-only":           true,
+		"live-provider":         true,
+		"local-service":         true,
+		"external-service":      true,
+		"mixed":                 true,
+		"unsupported-by-design": true,
 	}
 	allowedTiers := map[string]bool{
 		"import-only":      true,
@@ -229,7 +310,9 @@ func TestMastraCapabilityMatrixIsWellFormed(t *testing.T) {
 		"vector-stores":                   true,
 		"storage-adapters":                true,
 		"observability":                   true,
+		"observability.otel-diagnostics":  true,
 		"voice":                           true,
+		"voice.gemini-live":               true,
 		"openai-provider":                 true,
 		"provider-imports":                true,
 	}
@@ -249,8 +332,17 @@ func TestMastraCapabilityMatrixIsWellFormed(t *testing.T) {
 		if !allowedStatuses[row.Status] {
 			t.Fatalf("%s: invalid status %q", row.ID, row.Status)
 		}
+		if !allowedSupportLevels[row.SupportLevel] {
+			t.Fatalf("%s: invalid supportLevel %q", row.ID, row.SupportLevel)
+		}
 		if strings.TrimSpace(row.Notes) == "" {
 			t.Fatalf("%s: notes are required", row.ID)
+		}
+		if row.NodeAPIs == nil {
+			t.Fatalf("%s: nodeAPIs field is required", row.ID)
+		}
+		if row.KnownGaps == nil {
+			t.Fatalf("%s: knownGaps field is required", row.ID)
 		}
 		if len(row.Tiers) == 0 {
 			t.Fatalf("%s: tiers are required", row.ID)
@@ -290,6 +382,140 @@ func TestMastraCapabilityMatrixIsWellFormed(t *testing.T) {
 	assertCapabilityHasProof(t, seen["scorers-evals"], "example", "custom-scorer")
 	assertCapabilityHasProof(t, seen["agent.internal-workflow-storage"], "example", "working-memory")
 	assertCapabilityHasProof(t, seen["agent.internal-workflow-storage"], "test", "internal/engine/deployment_typescript_test.go")
+	for _, id := range []string{"provider-imports", "vector-stores", "storage-adapters", "voice", "voice.gemini-live"} {
+		if strings.TrimSpace(seen[id].PromotionCondition) == "" {
+			t.Fatalf("%s: promotionCondition is required for gated/import-only capability rows", id)
+		}
+	}
+	assertCapabilityGapMentions(t, seen["observability.otel-diagnostics"], "diagnostics_channel")
+	assertCapabilityGapMentions(t, seen["observability.otel-diagnostics"], "@opentelemetry/api")
+	assertCapabilityGapMentions(t, seen["voice.gemini-live"], "Gemini")
+}
+
+func TestNodeAPITargetIsWellFormed(t *testing.T) {
+	target := loadNodeAPITarget(t)
+	inventory := loadCompatInventory(t)
+	manifest := loadCompatManifest(t)
+
+	if target.SchemaVersion != 1 {
+		t.Fatalf("schemaVersion = %d, want 1", target.SchemaVersion)
+	}
+	if len(target.SourceArtifacts) == 0 {
+		t.Fatal("sourceArtifacts are required")
+	}
+	if len(target.Families) == 0 {
+		t.Fatal("families are required")
+	}
+
+	manifestIDs := map[string]bool{}
+	for _, entry := range manifest.Entries {
+		manifestIDs[entry.ID] = true
+	}
+	inventoryIDs := map[string]inventorySurface{}
+	for _, surface := range inventory.Surfaces {
+		inventoryIDs[surface.ID] = surface
+	}
+	coveredSurfaces := map[string]bool{}
+	allowedSemanticStatuses := map[string]bool{
+		"standard":             true,
+		"exact-used":           true,
+		"compat-partial":       true,
+		"shape-only":           true,
+		"unsupported-boundary": true,
+		"external-service":     true,
+		"package-patched":      true,
+	}
+	requiredFamilies := map[string]bool{
+		"module-system":              true,
+		"process-runtime":            true,
+		"async-context":              true,
+		"streams":                    true,
+		"buffer-encoding":            true,
+		"crypto":                     true,
+		"filesystem":                 true,
+		"network-fetch-http":         true,
+		"compression":                true,
+		"child-process":              true,
+		"wasm":                       true,
+		"diagnostics-observability":  true,
+		"worker-boundary":            true,
+		"native-optional-boundaries": true,
+		"package-patches":            true,
+	}
+
+	seen := map[string]nodeAPIFamily{}
+	for _, family := range target.Families {
+		if strings.TrimSpace(family.ID) == "" {
+			t.Fatal("node api family with empty id")
+		}
+		if _, exists := seen[family.ID]; exists {
+			t.Fatalf("duplicate node api family %q", family.ID)
+		}
+		seen[family.ID] = family
+		if strings.TrimSpace(family.APIFamily) == "" {
+			t.Fatalf("%s: apiFamily is required", family.ID)
+		}
+		if !allowedSemanticStatuses[family.SemanticStatus] {
+			t.Fatalf("%s: invalid semanticStatus %q", family.ID, family.SemanticStatus)
+		}
+		if strings.TrimSpace(family.Owner) == "" {
+			t.Fatalf("%s: owner is required", family.ID)
+		}
+		if len(family.PackagesUsing) == 0 {
+			t.Fatalf("%s: packagesUsing are required", family.ID)
+		}
+		if len(family.ConformanceTests) == 0 {
+			t.Fatalf("%s: conformanceTests are required", family.ID)
+		}
+		if strings.TrimSpace(family.AcceptedSemantics) == "" {
+			t.Fatalf("%s: acceptedSemantics is required", family.ID)
+		}
+		if len(family.KnownGaps) == 0 {
+			t.Fatalf("%s: knownGaps are required", family.ID)
+		}
+		if family.LifecycleImpact == nil {
+			t.Fatalf("%s: lifecycleImpact field is required", family.ID)
+		}
+		if strings.TrimSpace(family.NextProof) == "" {
+			t.Fatalf("%s: nextProof is required", family.ID)
+		}
+		for _, surface := range family.Surfaces {
+			if !manifestIDs[surface] {
+				t.Fatalf("%s: surface %q is missing from compat manifest", family.ID, surface)
+			}
+			coveredSurfaces[surface] = true
+		}
+		for _, testRef := range family.ConformanceTests {
+			assertManifestTestRefExists(t, family.ID, testRef)
+		}
+	}
+	for id := range requiredFamilies {
+		if _, ok := seen[id]; !ok {
+			t.Fatalf("required node api family %q is missing", id)
+		}
+	}
+	for _, want := range []struct {
+		id     string
+		status string
+	}{
+		{"async-context", "compat-partial"},
+		{"diagnostics-observability", "compat-partial"},
+		{"network-fetch-http", "compat-partial"},
+		{"worker-boundary", "unsupported-boundary"},
+		{"native-optional-boundaries", "unsupported-boundary"},
+		{"package-patches", "package-patched"},
+	} {
+		if got := seen[want.id].SemanticStatus; got != want.status {
+			t.Fatalf("%s semanticStatus = %q, want %q", want.id, got, want.status)
+		}
+	}
+	for _, surface := range inventory.Surfaces {
+		if surface.Status == "stub" || surface.Status == "unsupported" {
+			if !coveredSurfaces[surface.ID] {
+				t.Fatalf("stub/unsupported inventory surface %q is not covered by node-api-target.json", surface.ID)
+			}
+		}
+	}
 }
 
 func TestBundleStubsMatchCompatManifest(t *testing.T) {
@@ -365,6 +591,76 @@ func TestBundleMetaMatchesCompatReport(t *testing.T) {
 			t.Fatalf("external import %q manifest kind = %q", id, entry.Kind)
 		}
 	}
+}
+
+func TestCompatInventoryIncludesRiskAndProofClassification(t *testing.T) {
+	inventory := loadCompatInventory(t)
+	if inventory.SchemaVersion != 1 {
+		t.Fatalf("schemaVersion = %d, want 1", inventory.SchemaVersion)
+	}
+	if len(inventory.Packages) == 0 || len(inventory.Surfaces) == 0 {
+		t.Fatalf("inventory missing packages or surfaces: packages=%d surfaces=%d", len(inventory.Packages), len(inventory.Surfaces))
+	}
+	packages := map[string]inventoryPackage{}
+	for _, pkg := range inventory.Packages {
+		if strings.TrimSpace(pkg.Name) == "" {
+			t.Fatal("inventory package with empty name")
+		}
+		if strings.TrimSpace(pkg.Category) == "" {
+			t.Fatalf("%s: category is required", pkg.Name)
+		}
+		if len(pkg.RuntimeRisks) == 0 {
+			t.Fatalf("%s: runtimeRisks are required", pkg.Name)
+		}
+		if len(pkg.ProofTiers) == 0 {
+			t.Fatalf("%s: proofTiers are required", pkg.Name)
+		}
+		packages[pkg.Name] = pkg
+	}
+	for _, id := range []string{"@mastra/core", "mongodb", "pg", "node-fetch"} {
+		if _, ok := packages[id]; !ok {
+			t.Fatalf("inventory package %q is missing", id)
+		}
+	}
+	assertInventoryPackageRisk(t, packages["mongodb"], "optional-native")
+	assertInventoryPackageRisk(t, packages["mongodb"], "network")
+	assertInventoryPackageRisk(t, packages["pg"], "network")
+	assertInventoryPackageRisk(t, packages["node-fetch"], "network")
+
+	surfaces := map[string]inventorySurface{}
+	for _, surface := range inventory.Surfaces {
+		if strings.TrimSpace(surface.ID) == "" {
+			t.Fatal("inventory surface with empty id")
+		}
+		if strings.TrimSpace(surface.RiskClass) == "" {
+			t.Fatalf("%s: riskClass is required", surface.ID)
+		}
+		if len(surface.RuntimeRisks) == 0 {
+			t.Fatalf("%s: runtimeRisks are required", surface.ID)
+		}
+		if len(surface.ProofTiers) == 0 {
+			t.Fatalf("%s: proofTiers are required", surface.ID)
+		}
+		if surface.Status == "unsupported" {
+			if strings.TrimSpace(surface.BoundaryClass) == "" {
+				t.Fatalf("%s: boundaryClass is required for unsupported inventory surfaces", surface.ID)
+			}
+			if strings.TrimSpace(surface.SuggestedOwner) == "" {
+				t.Fatalf("%s: suggestedOwner is required for unsupported inventory surfaces", surface.ID)
+			}
+		}
+		surfaces[surface.ID] = surface
+	}
+	assertInventorySurface(t, surfaces, "http", "compat", "network", "local-service")
+	assertInventorySurface(t, surfaces, "https", "compat", "network", "local-service")
+	assertInventorySurface(t, surfaces, "worker_threads", "unsupported", "worker", "import-only")
+	assertInventorySurface(t, surfaces, "pg-native", "unsupported", "native-addon", "import-only")
+	assertInventoryBoundary(t, surfaces, "worker_threads", "worker")
+	assertInventoryBoundary(t, surfaces, "pg-native", "optional-native")
+	assertInventoryBoundary(t, surfaces, "http.createServer", "server-listener")
+	assertInventoryBoundary(t, surfaces, "https.createServer", "server-listener")
+	assertInventoryBoundary(t, surfaces, "net.createServer", "server-listener")
+	assertInventoryBoundary(t, surfaces, "tls.createServer", "server-listener")
 }
 
 func TestDynamicRequireShimMatchesCompatManifest(t *testing.T) {
@@ -480,6 +776,20 @@ func loadCapabilityMatrix(t *testing.T) capabilityMatrix {
 	return matrix
 }
 
+func loadNodeAPITarget(t *testing.T) nodeAPITarget {
+	t.Helper()
+	var target nodeAPITarget
+	readJSON(t, &target, "bundle", "compat", "node-api-target.json")
+	return target
+}
+
+func loadCompatInventory(t *testing.T) compatInventory {
+	t.Helper()
+	var inventory compatInventory
+	readJSON(t, &inventory, "bundle", "compat", "inventory.json")
+	return inventory
+}
+
 func buildCompatReport(t *testing.T, manifest compatManifest) compatReport {
 	t.Helper()
 	var meta esbuildMeta
@@ -552,6 +862,64 @@ func assertCapabilityHasProof(t *testing.T, row capabilityRow, kind, path string
 		}
 	}
 	t.Fatalf("%s: missing %s proof %q", row.ID, kind, path)
+}
+
+func assertCapabilityGapMentions(t *testing.T, row capabilityRow, want string) {
+	t.Helper()
+	needle := strings.ToLower(want)
+	for _, gap := range row.KnownGaps {
+		if strings.Contains(strings.ToLower(gap), needle) {
+			return
+		}
+	}
+	t.Fatalf("%s: knownGaps = %v, want mention of %q", row.ID, row.KnownGaps, want)
+}
+
+func assertInventoryPackageRisk(t *testing.T, pkg inventoryPackage, risk string) {
+	t.Helper()
+	if !containsString(pkg.RuntimeRisks, risk) {
+		t.Fatalf("%s runtimeRisks = %v, want %q", pkg.Name, pkg.RuntimeRisks, risk)
+	}
+}
+
+func assertInventorySurface(t *testing.T, surfaces map[string]inventorySurface, id, status, risk, proofTier string) {
+	t.Helper()
+	surface, ok := surfaces[id]
+	if !ok {
+		t.Fatalf("inventory surface %q is missing", id)
+	}
+	if surface.Status != status {
+		t.Fatalf("%s status = %q, want %q", id, surface.Status, status)
+	}
+	if !containsString(surface.RuntimeRisks, risk) {
+		t.Fatalf("%s runtimeRisks = %v, want %q", id, surface.RuntimeRisks, risk)
+	}
+	if !containsString(surface.ProofTiers, proofTier) {
+		t.Fatalf("%s proofTiers = %v, want %q", id, surface.ProofTiers, proofTier)
+	}
+}
+
+func assertInventoryBoundary(t *testing.T, surfaces map[string]inventorySurface, id, boundaryClass string) {
+	t.Helper()
+	surface, ok := surfaces[id]
+	if !ok {
+		t.Fatalf("inventory surface %q is missing", id)
+	}
+	if surface.BoundaryClass != boundaryClass {
+		t.Fatalf("%s boundaryClass = %q, want %q", id, surface.BoundaryClass, boundaryClass)
+	}
+	if strings.TrimSpace(surface.SuggestedOwner) == "" {
+		t.Fatalf("%s suggestedOwner is required", id)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func assertManifestTestRefExists(t *testing.T, entryID, ref string) {

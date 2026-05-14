@@ -114,15 +114,25 @@ func TestTLSModuleShape(t *testing.T) {
 	result := evalString(t, b, `
 		var threw = false;
 		try { globalThis.tls.connect({}); } catch (_) { threw = true; }
+		var netBoundary = {};
+		try { globalThis.net.createServer(); } catch (err) {
+			netBoundary = { code: err.code || "", boundaryClass: err.boundaryClass || "", api: err.api || "" };
+		}
+		var tlsBoundary = {};
+		try { globalThis.tls.createServer(); } catch (err) {
+			tlsBoundary = { code: err.code || "", boundaryClass: err.boundaryClass || "", api: err.api || "" };
+		}
 		JSON.stringify({
 			hasConnect: typeof globalThis.tls.connect === "function",
 			hasCreateServer: typeof globalThis.tls.createServer === "function",
 			hasTLSSocket: typeof globalThis.tls.TLSSocket === "function",
 			minVersion: globalThis.tls.DEFAULT_MIN_VERSION,
-			throwsWithoutSocket: threw
+			throwsWithoutSocket: threw,
+			netBoundary: netBoundary,
+			tlsBoundary: tlsBoundary
 		});
 	`)
-	expected := `{"hasConnect":true,"hasCreateServer":true,"hasTLSSocket":true,"minVersion":"TLSv1.2","throwsWithoutSocket":true}`
+	expected := `{"hasConnect":true,"hasCreateServer":true,"hasTLSSocket":true,"minVersion":"TLSv1.2","throwsWithoutSocket":true,"netBoundary":{"code":"BRAINKIT_UNSUPPORTED_BOUNDARY","boundaryClass":"server-listener","api":"net.createServer"},"tlsBoundary":{"code":"BRAINKIT_UNSUPPORTED_BOUNDARY","boundaryClass":"server-listener","api":"tls.createServer"}}`
 	if result != expected {
 		t.Errorf("got %s", result)
 	}

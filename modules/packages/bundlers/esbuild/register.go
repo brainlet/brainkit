@@ -61,7 +61,7 @@ func buildPath(path string, plugins packages.PluginChecker, secrets packages.Sec
 		return packages.BuiltPackage{}, err
 	}
 
-	code, err := Bundle(entryPath)
+	code, err := bundle(entryPath, bundleOptions{sourcePackage: manifest.Name})
 	if err != nil {
 		return packages.BuiltPackage{}, fmt.Errorf("package.deploy: bundle: %w", err)
 	}
@@ -81,7 +81,7 @@ func buildFile(path string) (packages.BuiltPackage, error) {
 	filename := filepath.Base(path)
 	name := strings.TrimSuffix(filename, filepath.Ext(filename))
 
-	code, err := Bundle(path)
+	code, err := bundle(path, bundleOptions{sourcePackage: name})
 	if err != nil {
 		return packages.BuiltPackage{}, fmt.Errorf("package.deploy: bundle %s: %w", path, err)
 	}
@@ -131,7 +131,7 @@ func buildFiles(manifestJSON json.RawMessage, files map[string]string, plugins p
 		}
 	}
 
-	code, err := BundleInMemory(files, manifest.Entry)
+	code, err := bundleInMemory(files, manifest.Entry, bundleOptions{sourcePackage: manifest.Name})
 	if err != nil {
 		return packages.BuiltPackage{}, &sdkerrors.DeployError{
 			Source: manifest.Entry,

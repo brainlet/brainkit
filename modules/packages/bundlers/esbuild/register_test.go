@@ -3,12 +3,14 @@ package esbuild
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 func TestBuilderBuildsDirectoryPackage(t *testing.T) {
@@ -70,6 +72,91 @@ func TestBuilderBuildsInlineFileGraph(t *testing.T) {
 	}
 	if strings.Contains(built.Code, `from "./lib"`) {
 		t.Fatalf("code was not bundled: %q", built.Code)
+	}
+}
+
+func TestBuilderBuildsInlineFileGraphWithJSAndJSON(t *testing.T) {
+	manifest, err := json.Marshal(map[string]string{
+		"name":  "inline",
+		"entry": "index.ts",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	built, err := (Builder{}).BuildPackage(context.Background(), packages.BuildRequest{
+		Manifest: manifest,
+		Files: map[string]string{
+			"index.ts":    `import { helper } from "./helper.js"; import config from "./config.json"; output(helper + ":" + config.label);`,
+			"helper.js":   `export const helper = "helper-ok";`,
+			"config.json": `{"label":"json-ok"}`,
+		},
+	}, denyAllPlugins{}, denyAllSecrets{})
+	if err != nil {
+		t.Fatalf("BuildPackage: %v", err)
+	}
+	if !strings.Contains(built.Code, "helper-ok") || !strings.Contains(built.Code, "json-ok") {
+		t.Fatalf("expected JS and JSON relative imports in built package:\n%s", built.Code)
+	}
+}
+
+func TestBuilderWrapsUnsupportedBareImportDiagnostic(t *testing.T) {
+	manifest, err := json.Marshal(map[string]string{
+		"name":  "inline",
+		"entry": "index.ts",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = (Builder{}).BuildPackage(context.Background(), packages.BuildRequest{
+		Manifest: manifest,
+		Files: map[string]string{
+			"index.ts": `import { v4 as uuid } from "uuid"; output(uuid());`,
+		},
+	}, denyAllPlugins{}, denyAllSecrets{})
+	if err == nil {
+		t.Fatal("expected unsupported bare import error")
+	}
+
+	var deployErr *sdkerrors.DeployError
+	if !errors.As(err, &deployErr) {
+		t.Fatalf("error = %T %[1]v, want DeployError wrapper", err)
+	}
+	var resolverErr *sdkerrors.PackageResolverError
+	if !errors.As(err, &resolverErr) {
+		t.Fatalf("error = %T %[1]v, want PackageResolverError cause", err)
+	}
+	if resolverErr.Specifier != "uuid" ||
+		resolverErr.Importer != "index.ts" ||
+		resolverErr.Source != "inline" ||
+		resolverErr.Profile != resolverProfileSourceRelative {
+		t.Fatalf("resolver error = %#v", resolverErr)
+	}
+	if !strings.Contains(err.Error(), "source-relative") ||
+		!strings.Contains(err.Error(), "allowed bare imports: kit, ai, agent, compiler") {
+		t.Fatalf("diagnostic is not actionable: %v", err)
+	}
+}
+
+func TestBuilderSingleFileUnsupportedBareImportDiagnosticIncludesSource(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "single.ts")
+	if err := os.WriteFile(path, []byte(`import { v4 as uuid } from "uuid"; output(uuid());`), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	_, err := (Builder{}).BuildPackage(context.Background(), packages.BuildRequest{Path: path}, denyAllPlugins{}, denyAllSecrets{})
+	if err == nil {
+		t.Fatal("expected unsupported bare import error")
+	}
+
+	var resolverErr *sdkerrors.PackageResolverError
+	if !errors.As(err, &resolverErr) {
+		t.Fatalf("error = %T %[1]v, want PackageResolverError", err)
+	}
+	if resolverErr.Source != "single" {
+		t.Fatalf("source = %q, want single", resolverErr.Source)
 	}
 }
 

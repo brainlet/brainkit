@@ -1,9 +1,12 @@
 package esbuild
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 func TestBundleSingleFile(t *testing.T) {
@@ -54,6 +57,29 @@ func TestBundleRelativeImports(t *testing.T) {
 	}
 }
 
+func TestBundleRelativeJSAndJSONImports(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "helper.js", `export const helper = "helper-ok";`)
+	writeFile(t, dir, "config.json", `{"label":"json-ok"}`)
+	writeFile(t, dir, "index.ts", `
+		import { helper } from "./helper.js";
+		import config from "./config.json";
+		console.log(helper, config.label);
+	`)
+
+	result, err := Bundle(filepath.Join(dir, "index.ts"))
+	if err != nil {
+		t.Fatal("bundle:", err)
+	}
+
+	if !strings.Contains(result, "helper-ok") || !strings.Contains(result, "json-ok") {
+		t.Fatalf("expected JS and JSON relative imports in output:\n%s", result)
+	}
+	if strings.Contains(result, `from "./helper.js"`) || strings.Contains(result, `from "./config.json"`) {
+		t.Fatalf("relative imports were not bundled:\n%s", result)
+	}
+}
+
 func TestBundleScopeIsolation(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "a.ts", `const helper = "a"; export const A = helper;`)
@@ -93,6 +119,47 @@ func TestBundleExternalModules(t *testing.T) {
 	}
 	if strings.Contains(result, `require("kit")`) {
 		t.Fatal("external 'kit' should not be require'd")
+	}
+}
+
+func TestBundleRejectsUnsupportedBareImportWithResolverDiagnostic(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "index.ts", `
+		import { v4 as uuid } from "uuid";
+		console.log(uuid());
+	`)
+
+	_, err := bundle(filepath.Join(dir, "index.ts"), bundleOptions{sourcePackage: "bare-fixture"})
+	if err == nil {
+		t.Fatal("expected unsupported bare import error")
+	}
+
+	var resolverErr *sdkerrors.PackageResolverError
+	if !errors.As(err, &resolverErr) {
+		t.Fatalf("error = %T %[1]v, want PackageResolverError", err)
+	}
+	if resolverErr.Specifier != "uuid" {
+		t.Fatalf("specifier = %q, want uuid", resolverErr.Specifier)
+	}
+	if !strings.Contains(resolverErr.Importer, "index.ts") {
+		t.Fatalf("importer = %q, want index.ts", resolverErr.Importer)
+	}
+	if resolverErr.Source != "bare-fixture" {
+		t.Fatalf("source = %q, want bare-fixture", resolverErr.Source)
+	}
+	if resolverErr.Profile != resolverProfileSourceRelative {
+		t.Fatalf("profile = %q, want %q", resolverErr.Profile, resolverProfileSourceRelative)
+	}
+	if strings.Join(resolverErr.AllowedBareImports, ",") != "kit,ai,agent,compiler" {
+		t.Fatalf("allowed bare imports = %#v", resolverErr.AllowedBareImports)
+	}
+	if !strings.Contains(resolverErr.SuggestedOwner, "npm ecosystem resolver profile") {
+		t.Fatalf("suggested owner = %q", resolverErr.SuggestedOwner)
+	}
+	if !strings.Contains(err.Error(), `unsupported bare import "uuid"`) ||
+		!strings.Contains(err.Error(), "source-relative") ||
+		!strings.Contains(err.Error(), "allowed bare imports: kit, ai, agent, compiler") {
+		t.Fatalf("diagnostic is not actionable: %v", err)
 	}
 }
 
@@ -141,5 +208,39 @@ func TestBundleImportError(t *testing.T) {
 	_, err := Bundle(filepath.Join(dir, "index.ts"))
 	if err == nil {
 		t.Fatal("expected error for missing import")
+	}
+}
+
+func TestBundleInMemoryRelativeJSAndJSONImports(t *testing.T) {
+	result, err := BundleInMemory(map[string]string{
+		"index.ts":    `import { helper } from "./helper.js"; import config from "./config.json"; console.log(helper, config.label);`,
+		"helper.js":   `export const helper = "helper-ok";`,
+		"config.json": `{"label":"json-ok"}`,
+	}, "index.ts")
+	if err != nil {
+		t.Fatal("bundle:", err)
+	}
+	if !strings.Contains(result, "helper-ok") || !strings.Contains(result, "json-ok") {
+		t.Fatalf("expected JS and JSON relative imports in output:\n%s", result)
+	}
+}
+
+func TestBundleInMemoryRejectsUnsupportedBareImportWithResolverDiagnostic(t *testing.T) {
+	_, err := bundleInMemory(map[string]string{
+		"index.ts": `import { v4 as uuid } from "uuid"; console.log(uuid());`,
+	}, "index.ts", bundleOptions{sourcePackage: "inline-fixture"})
+	if err == nil {
+		t.Fatal("expected unsupported bare import error")
+	}
+
+	var resolverErr *sdkerrors.PackageResolverError
+	if !errors.As(err, &resolverErr) {
+		t.Fatalf("error = %T %[1]v, want PackageResolverError", err)
+	}
+	if resolverErr.Specifier != "uuid" ||
+		resolverErr.Importer != "index.ts" ||
+		resolverErr.Source != "inline-fixture" ||
+		resolverErr.Profile != resolverProfileSourceRelative {
+		t.Fatalf("resolver error = %#v", resolverErr)
 	}
 }

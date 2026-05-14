@@ -145,7 +145,16 @@ const moduleStubs = {
     export var pipeline = S.pipeline;
     export var finished = S.finished;
     export var Stream = S.Stream;
-    export default { EventEmitter, Readable, Writable, Duplex, Transform, PassThrough, pipeline, finished, Stream };
+    Stream.EventEmitter = EventEmitter;
+    Stream.Readable = Readable;
+    Stream.Writable = Writable;
+    Stream.Duplex = Duplex;
+    Stream.Transform = Transform;
+    Stream.PassThrough = PassThrough;
+    Stream.pipeline = pipeline;
+    Stream.finished = finished;
+    Stream.Stream = Stream;
+    export default Stream;
   `,
   "stream/web": `
     export var ReadableStream = globalThis.ReadableStream;

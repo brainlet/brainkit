@@ -55,6 +55,10 @@ type PersistenceError = sdkerrors.PersistenceError
 // DeployError is returned when a .ts deployment fails.
 type DeployError = sdkerrors.DeployError
 
+// PackageResolverError is returned when package source deployment encounters
+// an import outside the active resolver profile.
+type PackageResolverError = sdkerrors.PackageResolverError
+
 // BridgeError is returned when a Go↔JS bridge function fails.
 type BridgeError = sdkerrors.BridgeError
 
@@ -63,4 +67,3 @@ type CycleDetectedError = sdkerrors.CycleDetectedError
 
 // DecodeError is returned when a message payload can't be decoded.
 type DecodeError = sdkerrors.DecodeError
-

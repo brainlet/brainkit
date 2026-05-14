@@ -1,0 +1,3 @@
+{
+  "deployErrorContains": "package resolver source-relative: unsupported bare import \"uuid\""
+}

@@ -711,7 +711,11 @@ async function _serializeBody(body, headers) {
   return { body: String(body), headers };
 }
 
-globalThis.fetch = async (input, init) => {
+globalThis.fetch = (input, init) => {
+  const __brainkitFetchContext = globalThis.__brainkit_async_context && globalThis.__brainkit_async_context.capture
+    ? globalThis.__brainkit_async_context.capture()
+    : null;
+  const __brainkitFetchPromise = (async () => {
   const url = typeof input === 'string' ? input : (input && input.url) || String(input);
   const opts = init || {};
   if (typeof input !== 'string' && input) {
@@ -750,5 +754,10 @@ globalThis.fetch = async (input, init) => {
     // Streaming response — Response object with ReadableStream body
     return new Response(raw);
   }
+  })();
+  if (globalThis.__brainkit_async_context && typeof globalThis.__brainkit_async_context.wrapPromise === 'function') {
+    return globalThis.__brainkit_async_context.wrapPromise(__brainkitFetchPromise, __brainkitFetchContext);
+  }
+  return __brainkitFetchPromise;
 };
 `

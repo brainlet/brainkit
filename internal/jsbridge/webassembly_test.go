@@ -1,10 +1,12 @@
 package jsbridge
 
 import (
+	"context"
 	"testing"
+	"time"
 )
 
-func TestWebAssemblyInstantiate(t *testing.T) {
+func TestWASMWebAssemblyInstantiate(t *testing.T) {
 	b := newTestBridge(t, WebAssembly())
 
 	// Minimal WASM: (module (func (export "add") (param i32 i32) (result i32) local.get 0 local.get 1 i32.add))
@@ -24,13 +26,26 @@ func TestWebAssemblyInstantiate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvalAsync: %v", err)
 	}
-	defer val.Free()
 
-	if val.String() != "42" {
-		t.Errorf("add(40, 2) = %s, want 42", val.String())
+	result := val.String()
+	val.Free()
+
+	if result != "42" {
+		t.Errorf("add(40, 2) = %s, want 42", result)
 	}
 	if got := resourceCount(b, "wasm.modules"); got != 1 {
 		t.Fatalf("wasm module resources = %d, want 1 snapshot=%+v", got, b.DebugSnapshot())
 	}
-	t.Logf("WebAssembly add(40, 2) = %s", val.String())
+	closeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := b.CloseContext(closeCtx); err != nil {
+		t.Fatalf("CloseContext: %v snapshot=%+v", err, b.DebugSnapshot())
+	}
+	if got := resourceCount(b, "wasm.modules"); got != 0 {
+		t.Fatalf("wasm module resources after close = %d, want 0 snapshot=%+v", got, b.DebugSnapshot())
+	}
+	if got := resourceCount(b, "wasm.runtimes"); got != 0 {
+		t.Fatalf("wasm runtime resources after close = %d, want 0 snapshot=%+v", got, b.DebugSnapshot())
+	}
+	t.Logf("WebAssembly add(40, 2) = %s", result)
 }

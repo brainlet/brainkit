@@ -124,18 +124,32 @@ globalThis.URLSearchParams = class URLSearchParams {
       const pairs = __go_url_search_params(init);
       if (pairs) this._p = pairs;
     } else if (init && typeof init === 'object') {
-      for (const [k, v] of Object.entries(init)) {
-        this._p.push([String(k), String(v)]);
+      if (typeof init[Symbol.iterator] === 'function') {
+        for (const pair of init) {
+          if (!pair || typeof pair[Symbol.iterator] !== 'function') {
+            throw new TypeError('URLSearchParams constructor pair must be iterable');
+          }
+          const values = Array.from(pair);
+          if (values.length !== 2) {
+            throw new TypeError('URLSearchParams constructor pair must contain name and value');
+          }
+          this._p.push([String(values[0]), String(values[1])]);
+        }
+      } else {
+        for (const [k, v] of Object.entries(init)) {
+          this._p.push([String(k), String(v)]);
+        }
       }
     }
   }
   _notify() { if (this._url) this._url._setSearchFromParams(this); }
-  get(n) { const e = this._p.find(([k]) => k === n); return e ? e[1] : null; }
-  getAll(n) { return this._p.filter(([k]) => k === n).map(([,v]) => v); }
-  has(n) { return this._p.some(([k]) => k === n); }
-  set(n, v) { this._p = this._p.filter(([k]) => k !== n); this._p.push([n, String(v)]); this._notify(); }
-  append(n, v) { this._p.push([n, String(v)]); this._notify(); }
-  delete(n) { this._p = this._p.filter(([k]) => k !== n); this._notify(); }
+  get(n) { n = String(n); const e = this._p.find(([k]) => k === n); return e ? e[1] : null; }
+  getAll(n) { n = String(n); return this._p.filter(([k]) => k === n).map(([,v]) => v); }
+  has(n) { n = String(n); return this._p.some(([k]) => k === n); }
+  set(n, v) { n = String(n); this._p = this._p.filter(([k]) => k !== n); this._p.push([n, String(v)]); this._notify(); }
+  append(n, v) { this._p.push([String(n), String(v)]); this._notify(); }
+  delete(n) { n = String(n); this._p = this._p.filter(([k]) => k !== n); this._notify(); }
+  sort() { this._p.sort((a, b) => a[0] < b[0] ? -1 : (a[0] > b[0] ? 1 : 0)); this._notify(); }
   toString() {
     return this._p.map(([k,v]) => encodeURIComponent(k)+'='+encodeURIComponent(v)).join('&');
   }

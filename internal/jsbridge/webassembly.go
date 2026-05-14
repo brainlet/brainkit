@@ -95,7 +95,8 @@ func (p *WebAssemblyPolyfill) Setup(ctx *quickjs.Context) error {
 			fnNames := make([]string, 0)
 			for name, def := range mod.ExportedFunctionDefinitions() {
 				fnName := name
-				_ = def
+				paramTypes := append([]api.ValueType(nil), def.ParamTypes()...)
+				resultTypes := append([]api.ValueType(nil), def.ResultTypes()...)
 
 				bridgeName := fmt.Sprintf("__go_wasm_fn_%d_%s", modID, fnName)
 				qctx.Globals().Set(bridgeName, qctx.NewFunction(
@@ -112,7 +113,24 @@ func (p *WebAssemblyPolyfill) Setup(ctx *quickjs.Context) error {
 						}
 						wasmArgs := make([]uint64, len(callArgs))
 						for i, a := range callArgs {
-							wasmArgs[i] = uint64(a.ToInt64())
+							var typ api.ValueType
+							if i < len(paramTypes) {
+								typ = paramTypes[i]
+							}
+							switch typ {
+							case api.ValueTypeI64:
+								if a.IsBigInt() {
+									wasmArgs[i] = a.ToBigInt().Uint64()
+								} else {
+									wasmArgs[i] = uint64(a.ToInt64())
+								}
+							case api.ValueTypeF32:
+								wasmArgs[i] = api.EncodeF32(float32(a.ToFloat64()))
+							case api.ValueTypeF64:
+								wasmArgs[i] = api.EncodeF64(a.ToFloat64())
+							default:
+								wasmArgs[i] = uint64(uint32(a.ToInt32()))
+							}
 						}
 						results, callErr := fn.Call(context.Background(), wasmArgs...)
 						if callErr != nil {
@@ -121,7 +139,20 @@ func (p *WebAssemblyPolyfill) Setup(ctx *quickjs.Context) error {
 						if len(results) == 0 {
 							return qctx.NewUndefined()
 						}
-						return qctx.NewInt64(int64(results[0]))
+						var resultType api.ValueType
+						if len(resultTypes) > 0 {
+							resultType = resultTypes[0]
+						}
+						switch resultType {
+						case api.ValueTypeI64:
+							return qctx.NewBigUint64(results[0])
+						case api.ValueTypeF32:
+							return qctx.NewFloat64(float64(api.DecodeF32(results[0])))
+						case api.ValueTypeF64:
+							return qctx.NewFloat64(api.DecodeF64(results[0]))
+						default:
+							return qctx.NewInt32(int32(results[0]))
+						}
 					},
 				))
 				fnNames = append(fnNames, fnName)
@@ -190,6 +221,47 @@ func (p *WebAssemblyPolyfill) Setup(ctx *quickjs.Context) error {
 						return qctx.NewInt32(int32(oldPages))
 					},
 				))
+
+				// Copy a JavaScript ArrayBuffer back into wazero memory. QuickJS
+				// cannot expose wazero memory as a shared backing store, so the
+				// JS wrapper syncs its current memory snapshot before each wasm
+				// function call and refreshes it after the call.
+				qctx.Globals().Set(memPrefix+"_write", qctx.NewFunction(
+					func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+						if len(args) < 1 {
+							return qctx.NewUndefined()
+						}
+						size := args[0].ByteLen()
+						if size <= 0 {
+							return qctx.NewUndefined()
+						}
+						data, err := args[0].ToByteArray(uint(size))
+						if err != nil {
+							return qctx.ThrowError(fmt.Errorf("wasm memory write: read bytes: %w", err))
+						}
+						polyfill.mu.Lock()
+						m := polyfill.modules[modID]
+						polyfill.mu.Unlock()
+						if m == nil {
+							return qctx.NewUndefined()
+						}
+						mem := m.ExportedMemory("mem")
+						if mem == nil {
+							mem = m.ExportedMemory("memory")
+						}
+						if mem == nil {
+							return qctx.NewUndefined()
+						}
+						memSize := int(mem.Size())
+						if len(data) > memSize {
+							data = data[:memSize]
+						}
+						if !mem.Write(0, data) {
+							return qctx.ThrowError(fmt.Errorf("wasm memory write: failed"))
+						}
+						return qctx.NewUndefined()
+					},
+				))
 			}
 
 			// Build JSON descriptor
@@ -252,29 +324,58 @@ const wasmJS = `
       var modId = desc.id;
 
       var exports = {};
+      var memoryExport = null;
+      var memBufferFn = null;
+      var memGrowFn = null;
+      var memWriteFn = null;
+
+      function syncMemoryToWasm() {
+        if (memoryExport && memoryExport._buffer && memWriteFn) {
+          memWriteFn(memoryExport._buffer);
+        }
+      }
+
+      function syncMemoryFromWasm() {
+        if (!memoryExport || !memBufferFn) return;
+        var next = memBufferFn();
+        if (!memoryExport._buffer || memoryExport._buffer.byteLength !== next.byteLength) {
+          memoryExport._buffer = next;
+          return;
+        }
+        new Uint8Array(memoryExport._buffer).set(new Uint8Array(next));
+      }
 
       // Wrap each exported function
       for (var i = 0; i < desc.fns.length; i++) {
         (function(fnName) {
           var bridgeFn = globalThis["__go_wasm_fn_" + modId + "_" + fnName];
           exports[fnName] = function() {
-            return bridgeFn.apply(null, arguments);
+            syncMemoryToWasm();
+            var result = bridgeFn.apply(null, arguments);
+            syncMemoryFromWasm();
+            return result;
           };
         })(desc.fns[i]);
       }
 
       // Wrap memory export
       if (desc.hasMem) {
-        var memBufferFn = globalThis["__go_wasm_mem_" + modId + "_buffer"];
-        var memGrowFn = globalThis["__go_wasm_mem_" + modId + "_grow"];
-        exports.mem = {
+        memBufferFn = globalThis["__go_wasm_mem_" + modId + "_buffer"];
+        memGrowFn = globalThis["__go_wasm_mem_" + modId + "_grow"];
+        memWriteFn = globalThis["__go_wasm_mem_" + modId + "_write"];
+        memoryExport = {
+          _buffer: memBufferFn(),
           get buffer() {
-            return memBufferFn();
+            return this._buffer;
           },
           grow: function(pages) {
-            return memGrowFn(pages);
+            syncMemoryToWasm();
+            var oldPages = memGrowFn(pages);
+            this._buffer = memBufferFn();
+            return oldPages;
           },
         };
+        exports.mem = memoryExport;
         // Also expose as "memory" (common convention)
         exports.memory = exports.mem;
       }

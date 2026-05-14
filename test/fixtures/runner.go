@@ -245,13 +245,26 @@ func (r *Runner) runFixture(t *testing.T, fix fixtureEntry, hasAI, hasPodman boo
 	// 4. Inject infra URLs into env
 	r.injectInfraEnv(t, k, fix)
 
+	expect := LoadExpect(t, fix.relPath)
+	expectedDeployError, wantsDeployError := expectedString(expect, "deployErrorContains")
+
 	// 5. Deploy .ts
 	name := filepath.Base(fix.relPath)
 	if err := testutil.DeployErr(k, name+".ts", tsSource); err != nil {
+		if wantsDeployError {
+			if !strings.Contains(err.Error(), expectedDeployError) {
+				t.Fatalf("deploy %s error = %v, want containing %q", fix.relPath, err, expectedDeployError)
+			}
+			t.Logf("%s expected deploy error: %v", fix.relPath, err)
+			return
+		}
 		if needs.AI && !hasAI {
 			t.Skipf("deploy needs AI key: %v", err)
 		}
 		t.Fatalf("deploy %s: %v", fix.relPath, err)
+	}
+	if wantsDeployError {
+		t.Fatalf("deploy %s succeeded, want error containing %q", fix.relPath, expectedDeployError)
 	}
 
 	// 6. Read output
@@ -272,11 +285,22 @@ func (r *Runner) runFixture(t *testing.T, fix fixtureEntry, hasAI, hasPodman boo
 	t.Logf("%s output: %s", fix.relPath, Truncate(raw, 2000))
 
 	// 8. Assert against expect.json if present
-	expect := LoadExpect(t, fix.relPath)
 	if expect == nil {
 		return
 	}
 	AssertExpect(t, fix.relPath, actual, expect)
+}
+
+func expectedString(expect map[string]any, key string) (string, bool) {
+	if expect == nil {
+		return "", false
+	}
+	value, ok := expect[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := value.(string)
+	return s, ok
 }
 
 // defaultKit creates a Kit with the appropriate configuration for the fixture's needs.

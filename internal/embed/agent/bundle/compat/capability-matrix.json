@@ -1,250 +1,903 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "rows": [
     {
       "id": "agent.generate",
       "capability": "Mastra Agent text generation",
       "status": "supported",
-      "tiers": ["live-provider"],
-      "proofs": [
-        { "kind": "fixture", "path": "agent/generate/basic", "tier": "live-provider" },
-        { "kind": "fixture", "path": "agent/generate/with-context-messages", "tier": "live-provider" },
-        { "kind": "example", "path": "ai-chat", "tier": "live-provider" },
-        { "kind": "test", "path": "internal/embed/agent/agent_test.go", "name": "TestStatelessGenerate", "tier": "live-provider" }
+      "tiers": [
+        "live-provider"
       ],
-      "notes": "Primary live OpenAI-backed Agent.generate path."
+      "proofs": [
+        {
+          "kind": "fixture",
+          "path": "agent/generate/basic",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "agent/generate/with-context-messages",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "example",
+          "path": "ai-chat",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "test",
+          "path": "internal/embed/agent/agent_test.go",
+          "name": "TestStatelessGenerate",
+          "tier": "live-provider"
+        }
+      ],
+      "notes": "Primary live OpenAI-backed Agent.generate path.",
+      "supportLevel": "live-provider",
+      "nodeAPIs": [
+        "fetch",
+        "stream/web",
+        "url"
+      ],
+      "knownGaps": [],
+      "promotionCondition": "Add offline fake-provider proof for every provider-independent Agent.generate regression."
     },
     {
       "id": "agent.structured-output",
       "capability": "Agent and AI SDK structured output",
       "status": "supported",
-      "tiers": ["offline-fake", "live-provider"],
-      "proofs": [
-        { "kind": "test", "path": "internal/embed/agent/conformance_test.go", "name": "TestAgentGenerateStructuredOutputWithFakeV3Model", "tier": "offline-fake" },
-        { "kind": "test", "path": "internal/embed/agent/conformance_test.go", "name": "TestAgentGenerateStructuredOutputWithFakeOpenAIV3Model", "tier": "offline-fake" },
-        { "kind": "test", "path": "internal/engine/deployment_typescript_test.go", "name": "TestKernelAgentStructuredOutputUsesRuntimeMastraShim", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "agent/generate/structured-output", "tier": "live-provider" },
-        { "kind": "fixture", "path": "ai/generate-object/basic", "tier": "live-provider" }
+      "tiers": [
+        "offline-fake",
+        "live-provider"
       ],
-      "notes": "Preserves the upgraded Mastra structured-output shim regression with fake and live proof."
+      "proofs": [
+        {
+          "kind": "test",
+          "path": "internal/embed/agent/conformance_test.go",
+          "name": "TestAgentGenerateStructuredOutputWithFakeV3Model",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "test",
+          "path": "internal/embed/agent/conformance_test.go",
+          "name": "TestAgentGenerateStructuredOutputWithFakeOpenAIV3Model",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "test",
+          "path": "internal/engine/deployment_typescript_test.go",
+          "name": "TestKernelAgentStructuredOutputUsesRuntimeMastraShim",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "agent/generate/structured-output",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "ai/generate-object/basic",
+          "tier": "live-provider"
+        }
+      ],
+      "notes": "Preserves the upgraded Mastra structured-output shim regression with fake and live proof.",
+      "supportLevel": "mixed",
+      "nodeAPIs": [
+        "fetch",
+        "stream/web"
+      ],
+      "knownGaps": [],
+      "promotionCondition": "Keep fake-model structured-output regressions green before promoting new live-provider-only schema paths."
     },
     {
       "id": "agent.stream",
       "capability": "Agent and AI SDK streaming",
       "status": "supported",
-      "tiers": ["live-provider"],
-      "proofs": [
-        { "kind": "fixture", "path": "agent/stream/basic", "tier": "live-provider" },
-        { "kind": "fixture", "path": "agent/stream/with-tools", "tier": "live-provider" },
-        { "kind": "fixture", "path": "ai/stream-text/basic", "tier": "live-provider" },
-        { "kind": "fixture", "path": "ai/stream-object/basic", "tier": "live-provider" },
-        { "kind": "example", "path": "agent-stream", "tier": "live-provider" },
-        { "kind": "test", "path": "internal/embed/agent/agent_test.go", "name": "TestAgentStream", "tier": "live-provider" }
+      "tiers": [
+        "live-provider"
       ],
-      "notes": "Streaming is live-provider gated because token/chunk delivery depends on provider stream behavior."
+      "proofs": [
+        {
+          "kind": "fixture",
+          "path": "agent/stream/basic",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "agent/stream/with-tools",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "ai/stream-text/basic",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "ai/stream-object/basic",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "example",
+          "path": "agent-stream",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "test",
+          "path": "internal/embed/agent/agent_test.go",
+          "name": "TestAgentStream",
+          "tier": "live-provider"
+        }
+      ],
+      "notes": "Streaming is live-provider gated because token/chunk delivery depends on provider stream behavior.",
+      "supportLevel": "live-provider",
+      "nodeAPIs": [
+        "fetch",
+        "stream/web",
+        "stream"
+      ],
+      "knownGaps": [
+        "Streaming proof is provider-backed; cheap gates need fake stream coverage before provider outages can be ignored."
+      ],
+      "promotionCondition": "Add fake stream proof for full-stream event delivery and abort semantics."
     },
     {
       "id": "agent.tools",
       "capability": "Tools and tool calls",
       "status": "supported",
-      "tiers": ["offline-fake", "live-provider"],
-      "proofs": [
-        { "kind": "fixture", "path": "tools/create-basic", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "tools/call-go-tool", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "agent/tools/with-local-tool", "tier": "live-provider" },
-        { "kind": "fixture", "path": "ai/generate-text/with-tools", "tier": "live-provider" },
-        { "kind": "example", "path": "go-tools", "tier": "offline-fake" },
-        { "kind": "example", "path": "hitl-tool-approval", "tier": "live-provider" }
+      "tiers": [
+        "offline-fake",
+        "live-provider"
       ],
-      "notes": "Covers local tools, registered Go tools, AI SDK tool calls, and HITL tool approval."
+      "proofs": [
+        {
+          "kind": "fixture",
+          "path": "tools/create-basic",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "tools/call-go-tool",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "agent/tools/with-local-tool",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "ai/generate-text/with-tools",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "example",
+          "path": "go-tools",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "example",
+          "path": "hitl-tool-approval",
+          "tier": "live-provider"
+        }
+      ],
+      "notes": "Covers local tools, registered Go tools, AI SDK tool calls, and HITL tool approval.",
+      "supportLevel": "mixed",
+      "nodeAPIs": [
+        "fetch",
+        "stream/web"
+      ],
+      "knownGaps": [],
+      "promotionCondition": "Keep one offline tool-call proof and one live HITL/tool approval proof."
     },
     {
       "id": "workflow",
       "capability": "Mastra workflow creation and execution",
       "status": "supported",
-      "tiers": ["offline-fake", "live-provider"],
-      "proofs": [
-        { "kind": "fixture", "path": "workflow/basic-then", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "workflow/parallel", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "workflow/suspend-resume/basic", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "workflow/integration/with-agent-step", "tier": "live-provider" },
-        { "kind": "fixture", "path": "agent/integration/with-workflow", "tier": "live-provider" },
-        { "kind": "example", "path": "workflows", "tier": "offline-fake" },
-        { "kind": "example", "path": "package-workflow", "tier": "offline-fake" }
+      "tiers": [
+        "offline-fake",
+        "live-provider"
       ],
-      "notes": "Separates local workflow mechanics from live Agent step integration."
+      "proofs": [
+        {
+          "kind": "fixture",
+          "path": "workflow/basic-then",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "workflow/parallel",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "workflow/suspend-resume/basic",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "workflow/integration/with-agent-step",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "agent/integration/with-workflow",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "example",
+          "path": "workflows",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "example",
+          "path": "package-workflow",
+          "tier": "offline-fake"
+        }
+      ],
+      "notes": "Separates local workflow mechanics from live Agent step integration.",
+      "supportLevel": "mixed",
+      "nodeAPIs": [
+        "async_hooks",
+        "timers",
+        "stream/web"
+      ],
+      "knownGaps": [
+        "Workflow streaming and persistence depend on async context semantics that are still partial."
+      ],
+      "promotionCondition": "Promote deeper workflow runtime claims only with suspend/resume, stream, and persistence proof."
     },
     {
       "id": "agent.internal-workflow-storage",
       "capability": "Mastra internal Agent workflow storage ownership",
       "status": "supported",
-      "tiers": ["offline-fake", "live-provider"],
-      "proofs": [
-        { "kind": "test", "path": "internal/engine/deployment_typescript_test.go", "name": "TestKernelAgentMemoryUsesConfiguredStorageWithoutWorkflowSnapshotLock", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "memory/working-memory/basic", "tier": "live-provider" },
-        { "kind": "example", "path": "working-memory", "tier": "live-provider" }
+      "tiers": [
+        "offline-fake",
+        "live-provider"
       ],
-      "notes": "Named regression for separating configured runtime storage from Mastra internal Agent workflow snapshots."
+      "proofs": [
+        {
+          "kind": "test",
+          "path": "internal/engine/deployment_typescript_test.go",
+          "name": "TestKernelAgentMemoryUsesConfiguredStorageWithoutWorkflowSnapshotLock",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "memory/working-memory/basic",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "example",
+          "path": "working-memory",
+          "tier": "live-provider"
+        }
+      ],
+      "notes": "Named regression for separating configured runtime storage from Mastra internal Agent workflow snapshots.",
+      "supportLevel": "mixed",
+      "nodeAPIs": [
+        "fs",
+        "fs/promises"
+      ],
+      "knownGaps": [],
+      "promotionCondition": "Keep storage ownership regression coverage when Mastra internal Agent workflow behavior changes."
     },
     {
       "id": "scorers-evals",
       "capability": "Scorers, LLM judges, and eval runs",
       "status": "supported",
-      "tiers": ["offline-fake", "live-provider"],
-      "proofs": [
-        { "kind": "test", "path": "internal/embed/agent/conformance_test.go", "name": "TestCreateScorerLLMJudgeWithFakeV3Model", "tier": "offline-fake" },
-        { "kind": "test", "path": "internal/embed/agent/conformance_test.go", "name": "TestCreateScorerLLMJudgeWithFakeOpenAIV3Model", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "evals/scorer/basic", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "evals/scorer/with-llm-judge", "tier": "live-provider" },
-        { "kind": "fixture", "path": "evals/batch/run-evals", "tier": "live-provider" },
-        { "kind": "example", "path": "custom-scorer", "tier": "live-provider" },
-        { "kind": "example", "path": "evals", "tier": "live-provider" }
+      "tiers": [
+        "offline-fake",
+        "live-provider"
       ],
-      "notes": "Named regression for the earlier scorer runtime shim failure."
+      "proofs": [
+        {
+          "kind": "test",
+          "path": "internal/embed/agent/conformance_test.go",
+          "name": "TestCreateScorerLLMJudgeWithFakeV3Model",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "test",
+          "path": "internal/embed/agent/conformance_test.go",
+          "name": "TestCreateScorerLLMJudgeWithFakeOpenAIV3Model",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "evals/scorer/basic",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "evals/scorer/with-llm-judge",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "evals/batch/run-evals",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "example",
+          "path": "custom-scorer",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "example",
+          "path": "evals",
+          "tier": "live-provider"
+        }
+      ],
+      "notes": "Named regression for the earlier scorer runtime shim failure.",
+      "supportLevel": "mixed",
+      "nodeAPIs": [
+        "fetch",
+        "stream/web"
+      ],
+      "knownGaps": [],
+      "promotionCondition": "Keep fake scorer proof mandatory; live scorer/eval claims require provider credentials."
     },
     {
       "id": "memory",
       "capability": "Mastra Memory threads, messages, semantic recall, and working memory",
       "status": "supported",
-      "tiers": ["offline-fake", "live-provider", "external-service"],
-      "proofs": [
-        { "kind": "fixture", "path": "memory/threads/create", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "memory/messages/save-and-recall", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "memory/semantic-recall/basic", "tier": "external-service" },
-        { "kind": "fixture", "path": "memory/storage/postgres", "tier": "external-service" },
-        { "kind": "fixture", "path": "agent/memory/postgres", "tier": "external-service" },
-        { "kind": "example", "path": "working-memory", "tier": "live-provider" }
+      "tiers": [
+        "offline-fake",
+        "live-provider",
+        "external-service"
       ],
-      "notes": "Cheap memory CRUD is separate from semantic recall and backend storage adapters."
+      "proofs": [
+        {
+          "kind": "fixture",
+          "path": "memory/threads/create",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "memory/messages/save-and-recall",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "memory/semantic-recall/basic",
+          "tier": "external-service"
+        },
+        {
+          "kind": "fixture",
+          "path": "memory/storage/postgres",
+          "tier": "external-service"
+        },
+        {
+          "kind": "fixture",
+          "path": "agent/memory/postgres",
+          "tier": "external-service"
+        },
+        {
+          "kind": "example",
+          "path": "working-memory",
+          "tier": "live-provider"
+        }
+      ],
+      "notes": "Cheap memory CRUD is separate from semantic recall and backend storage adapters.",
+      "supportLevel": "mixed",
+      "nodeAPIs": [
+        "async_hooks",
+        "crypto",
+        "fs",
+        "path"
+      ],
+      "knownGaps": [
+        "External store paths are not cheap local proof and may require sockets or provider credentials."
+      ],
+      "promotionCondition": "Promote external memory stores only with local-service or external-service proof and optional-native diagnostics."
     },
     {
       "id": "rag",
       "capability": "RAG chunking, documents, graph RAG, rerank, and vector query tools",
       "status": "supported",
-      "tiers": ["offline-fake", "live-provider", "external-service"],
-      "proofs": [
-        { "kind": "fixture", "path": "rag/chunk/markdown", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "rag/mdocument/from-pdf", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "rag/graph-rag", "tier": "live-provider" },
-        { "kind": "fixture", "path": "rag/rerank/with-provider", "tier": "live-provider" },
-        { "kind": "fixture", "path": "rag/vector-query-tool", "tier": "external-service" },
-        { "kind": "example", "path": "rag-pipeline", "tier": "external-service" }
+      "tiers": [
+        "offline-fake",
+        "live-provider",
+        "external-service"
       ],
-      "notes": "Keeps local document/chunking proof separate from embedding/vector-provider proof."
+      "proofs": [
+        {
+          "kind": "fixture",
+          "path": "rag/chunk/markdown",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "rag/mdocument/from-pdf",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "rag/graph-rag",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "rag/rerank/with-provider",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "rag/vector-query-tool",
+          "tier": "external-service"
+        },
+        {
+          "kind": "example",
+          "path": "rag-pipeline",
+          "tier": "external-service"
+        }
+      ],
+      "notes": "Keeps local document/chunking proof separate from embedding/vector-provider proof.",
+      "supportLevel": "mixed",
+      "nodeAPIs": [
+        "crypto",
+        "fs",
+        "stream",
+        "zlib"
+      ],
+      "knownGaps": [
+        "Embedding/vector-provider behavior is separate from local document and chunking proof."
+      ],
+      "promotionCondition": "Promote parser/vector-provider rows only with parser canaries and live/external embedding proof."
     },
     {
       "id": "vector-stores",
       "capability": "Vector store adapters",
       "status": "supported",
-      "tiers": ["import-only", "external-service"],
-      "proofs": [
-        { "kind": "fixture", "path": "vector/chroma/construct", "tier": "import-only" },
-        { "kind": "fixture", "path": "vector/pinecone/construct", "tier": "import-only" },
-        { "kind": "fixture", "path": "vector/qdrant/construct", "tier": "import-only" },
-        { "kind": "fixture", "path": "vector/create-upsert-query/pgvector", "tier": "external-service" },
-        { "kind": "fixture", "path": "vector/create-upsert-query/mongodb", "tier": "external-service" },
-        { "kind": "fixture", "path": "vector/create-upsert-query/libsql", "tier": "external-service" },
-        { "kind": "example", "path": "storage-vectors", "tier": "external-service" }
+      "tiers": [
+        "import-only",
+        "external-service"
       ],
-      "notes": "Cloud vector constructors are import-only unless credentials are present; local adapters are external-service gated."
+      "proofs": [
+        {
+          "kind": "fixture",
+          "path": "vector/chroma/construct",
+          "tier": "import-only"
+        },
+        {
+          "kind": "fixture",
+          "path": "vector/pinecone/construct",
+          "tier": "import-only"
+        },
+        {
+          "kind": "fixture",
+          "path": "vector/qdrant/construct",
+          "tier": "import-only"
+        },
+        {
+          "kind": "fixture",
+          "path": "vector/create-upsert-query/pgvector",
+          "tier": "external-service"
+        },
+        {
+          "kind": "fixture",
+          "path": "vector/create-upsert-query/mongodb",
+          "tier": "external-service"
+        },
+        {
+          "kind": "fixture",
+          "path": "vector/create-upsert-query/libsql",
+          "tier": "external-service"
+        },
+        {
+          "kind": "example",
+          "path": "storage-vectors",
+          "tier": "external-service"
+        }
+      ],
+      "notes": "Cloud vector constructors are import-only unless credentials are present; local adapters are external-service gated.",
+      "supportLevel": "mixed",
+      "nodeAPIs": [
+        "fetch",
+        "net",
+        "tls",
+        "dns"
+      ],
+      "knownGaps": [
+        "Cloud vector constructors are import-only without credentials; Chroma default embedding has an optional native boundary."
+      ],
+      "promotionCondition": "Promote a vector adapter from import-only only after credentialed external-service proof and optional native/default embedding diagnostics."
     },
     {
       "id": "storage-adapters",
       "capability": "Storage adapters",
       "status": "supported",
-      "tiers": ["offline-fake", "external-service"],
-      "proofs": [
-        { "kind": "fixture", "path": "storage/in-memory/basic", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "memory/storage/libsql", "tier": "external-service" },
-        { "kind": "fixture", "path": "memory/storage/mongodb", "tier": "external-service" },
-        { "kind": "fixture", "path": "memory/storage/postgres", "tier": "external-service" },
-        { "kind": "fixture", "path": "memory/storage/upstash", "tier": "external-service" }
+      "tiers": [
+        "offline-fake",
+        "external-service"
       ],
-      "notes": "Backend-specific storage behavior stays in fixture/campaign tiers rather than cheap local gates."
+      "proofs": [
+        {
+          "kind": "fixture",
+          "path": "storage/in-memory/basic",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "memory/storage/libsql",
+          "tier": "external-service"
+        },
+        {
+          "kind": "fixture",
+          "path": "memory/storage/mongodb",
+          "tier": "external-service"
+        },
+        {
+          "kind": "fixture",
+          "path": "memory/storage/postgres",
+          "tier": "external-service"
+        },
+        {
+          "kind": "fixture",
+          "path": "memory/storage/upstash",
+          "tier": "external-service"
+        }
+      ],
+      "notes": "Backend-specific storage behavior stays in fixture/campaign tiers rather than cheap local gates.",
+      "supportLevel": "mixed",
+      "nodeAPIs": [
+        "net",
+        "tls",
+        "dns",
+        "crypto",
+        "fs"
+      ],
+      "knownGaps": [
+        "Database-backed stores may reach optional native peers or external network services."
+      ],
+      "promotionCondition": "Promote a backend only after local-service or external-service proof plus native-peer boundary coverage."
     },
     {
       "id": "observability",
       "capability": "Mastra observability hooks and exporters",
       "status": "supported",
-      "tiers": ["offline-fake"],
-      "proofs": [
-        { "kind": "fixture", "path": "observability/spans/basic", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "observability/end-to-end", "tier": "offline-fake" },
-        { "kind": "example", "path": "observability", "tier": "offline-fake" },
-        { "kind": "test", "path": "test/suite/observability/span_lifecycle.go", "name": "testSpanLifecycle", "tier": "offline-fake" }
+      "tiers": [
+        "offline-fake"
       ],
-      "notes": "Full diagnostics_channel integration is not implied; the current row proves Mastra observability APIs and Brainkit tracing fixtures."
+      "proofs": [
+        {
+          "kind": "fixture",
+          "path": "observability/spans/basic",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "observability/end-to-end",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "example",
+          "path": "observability",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "test",
+          "path": "test/suite/observability/span_lifecycle.go",
+          "name": "testSpanLifecycle",
+          "tier": "offline-fake"
+        }
+      ],
+      "notes": "diagnostics_channel publish/subscriber semantics are provided by jsbridge; this row proves Mastra observability APIs and Brainkit tracing fixtures, not real OTel active span propagation.",
+      "supportLevel": "runtime-supported",
+      "nodeAPIs": [
+        "diagnostics_channel",
+        "@opentelemetry/api",
+        "perf_hooks"
+      ],
+      "knownGaps": [
+        "This row proves Mastra observability APIs and Brainkit tracing fixtures, not real OTel active span propagation."
+      ],
+      "promotionCondition": "Promote tracing propagation only after a tracing owner wires OTel active span propagation and direct integration tests prove it."
+    },
+    {
+      "id": "observability.otel-diagnostics",
+      "capability": "OTel and diagnostics_channel propagation semantics",
+      "status": "partial",
+      "supportLevel": "runtime-supported",
+      "tiers": [
+        "import-only",
+        "offline-fake"
+      ],
+      "nodeAPIs": [
+        "diagnostics_channel",
+        "@opentelemetry/api",
+        "async_hooks",
+        "perf_hooks"
+      ],
+      "knownGaps": [
+        "diagnostics_channel has runtime subscribe/unsubscribe/publish/hasSubscribers semantics, but is not wired into a real OTel active span owner.",
+        "@opentelemetry/api is a no-op dynamic require stub; active span/context propagation is not real.",
+        "AsyncLocalStorage propagates across tested Brainkit-owned callback boundaries, not arbitrary Promise/await chains."
+      ],
+      "promotionCondition": "Promote beyond partial only after a tracing owner wires OTel active span/context propagation and tests prove diagnostics-to-OTel flow.",
+      "proofs": [
+        {
+          "kind": "test",
+          "path": "internal/jsbridge/nodecompat_test.go",
+          "name": "TestAsyncHooksAndDiagnosticsChannelContracts",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "test",
+          "path": "internal/embed/agent/conformance_test.go",
+          "name": "TestRuntimeGlobalsDynamicRequireConformance",
+          "tier": "import-only"
+        }
+      ],
+      "notes": "This row makes explicit that Mastra observability support includes jsbridge diagnostics_channel runtime semantics, but does not imply real OTel active span propagation yet."
     },
     {
       "id": "voice",
       "capability": "Voice packages and realtime voice surfaces",
       "status": "supported",
-      "tiers": ["import-only", "live-provider", "local-service"],
-      "proofs": [
-        { "kind": "fixture", "path": "voice/basic", "tier": "import-only" },
-        { "kind": "fixture", "path": "voice/azure/construct", "tier": "import-only" },
-        { "kind": "fixture", "path": "voice/openai/speak", "tier": "live-provider" },
-        { "kind": "fixture", "path": "voice/openai-realtime/connect", "tier": "live-provider" },
-        { "kind": "example", "path": "voice-agent", "tier": "live-provider" },
-        { "kind": "example", "path": "voice-realtime", "tier": "local-service" }
+      "tiers": [
+        "import-only",
+        "live-provider",
+        "local-service"
       ],
-      "notes": "Constructor-only voice providers are import proof; OpenAI voice paths are live-provider gated."
+      "proofs": [
+        {
+          "kind": "fixture",
+          "path": "voice/basic",
+          "tier": "import-only"
+        },
+        {
+          "kind": "fixture",
+          "path": "voice/azure/construct",
+          "tier": "import-only"
+        },
+        {
+          "kind": "fixture",
+          "path": "voice/openai/speak",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "voice/openai-realtime/connect",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "example",
+          "path": "voice-agent",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "example",
+          "path": "voice-realtime",
+          "tier": "local-service"
+        }
+      ],
+      "notes": "Constructor-only voice providers are import proof; OpenAI voice paths are live-provider gated.",
+      "supportLevel": "mixed",
+      "nodeAPIs": [
+        "websocket",
+        "stream",
+        "events",
+        "fetch"
+      ],
+      "knownGaps": [
+        "Constructor-only providers are import proof; Gemini Live remains disabled pending focused investigation."
+      ],
+      "promotionCondition": "Promote a voice provider only with provider credentials or local-service proof plus close/lifecycle coverage."
+    },
+    {
+      "id": "voice.gemini-live",
+      "capability": "Gemini Live voice package path",
+      "status": "import-only",
+      "supportLevel": "import-only",
+      "tiers": [
+        "import-only"
+      ],
+      "nodeAPIs": [
+        "websocket",
+        "stream",
+        "fetch"
+      ],
+      "knownGaps": [
+        "Gemini Live is disabled by package patch pending focused investigation.",
+        "The path may need Google auth/session handling, WebSocket behavior, and Node-readable audio stream semantics."
+      ],
+      "promotionCondition": "Promote only after a focused Gemini Live investigation proves auth, session, audio stream, live-provider behavior, and lifecycle cleanup.",
+      "proofs": [
+        {
+          "kind": "test",
+          "path": "internal/embed/agent/compat_manifest_test.go",
+          "name": "TestCompatManifestIsWellFormed",
+          "tier": "import-only"
+        }
+      ],
+      "notes": "Dedicated import-only row for the disabled Gemini Live path so general voice support is not overstated."
     },
     {
       "id": "openai-provider",
       "capability": "OpenAI provider integration",
       "status": "supported",
-      "tiers": ["offline-fake", "live-provider"],
-      "proofs": [
-        { "kind": "test", "path": "internal/embed/agent/conformance_test.go", "name": "TestAgentGenerateStructuredOutputWithFakeOpenAIV3Model", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "agent/multi-provider", "tier": "live-provider" },
-        { "kind": "fixture", "path": "ai/generate-text/basic", "tier": "live-provider" },
-        { "kind": "example", "path": "ai-chat", "tier": "live-provider" },
-        { "kind": "example", "path": "workspace-agent", "tier": "live-provider" }
+      "tiers": [
+        "offline-fake",
+        "live-provider"
       ],
-      "notes": "Root .env provides OPENAI_API_KEY for live smoke tiers."
+      "proofs": [
+        {
+          "kind": "test",
+          "path": "internal/embed/agent/conformance_test.go",
+          "name": "TestAgentGenerateStructuredOutputWithFakeOpenAIV3Model",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "agent/multi-provider",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "ai/generate-text/basic",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "example",
+          "path": "ai-chat",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "example",
+          "path": "workspace-agent",
+          "tier": "live-provider"
+        }
+      ],
+      "notes": "Root .env provides OPENAI_API_KEY for live smoke tiers.",
+      "supportLevel": "live-provider",
+      "nodeAPIs": [
+        "fetch",
+        "stream/web",
+        "websocket"
+      ],
+      "knownGaps": [],
+      "promotionCondition": "Live-provider claims require OPENAI_API_KEY-backed fixtures or examples with credential redaction."
     },
     {
       "id": "provider-imports",
       "capability": "Non-OpenAI provider package imports",
       "status": "import-only",
-      "tiers": ["import-only", "live-provider"],
-      "proofs": [
-        { "kind": "test", "path": "internal/embed/agent/agent_test.go", "name": "TestBundleExports", "tier": "import-only" },
-        { "kind": "fixture", "path": "agent/multi-provider", "tier": "live-provider" },
-        { "kind": "fixture", "path": "voice/azure/construct", "tier": "import-only" },
-        { "kind": "fixture", "path": "voice/elevenlabs/construct", "tier": "import-only" },
-        { "kind": "fixture", "path": "voice/deepgram/construct", "tier": "import-only" }
+      "tiers": [
+        "import-only",
+        "live-provider"
       ],
-      "notes": "Anthropic/Groq/Google/etc. constructors are bundled; live calls are only exercised when the corresponding key exists."
+      "proofs": [
+        {
+          "kind": "test",
+          "path": "internal/embed/agent/agent_test.go",
+          "name": "TestBundleExports",
+          "tier": "import-only"
+        },
+        {
+          "kind": "fixture",
+          "path": "agent/multi-provider",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "voice/azure/construct",
+          "tier": "import-only"
+        },
+        {
+          "kind": "fixture",
+          "path": "voice/elevenlabs/construct",
+          "tier": "import-only"
+        },
+        {
+          "kind": "fixture",
+          "path": "voice/deepgram/construct",
+          "tier": "import-only"
+        }
+      ],
+      "notes": "Anthropic/Groq/Google/etc. constructors are bundled; live calls are only exercised when the corresponding key exists.",
+      "supportLevel": "mixed",
+      "nodeAPIs": [
+        "fetch",
+        "stream/web"
+      ],
+      "knownGaps": [
+        "Non-OpenAI providers are mostly constructor/import proof unless matching credentials exist."
+      ],
+      "promotionCondition": "Promote a provider from import-only only after adding a key-backed live fixture and provider error redaction proof."
     },
     {
       "id": "processors",
       "capability": "Mastra input/output processors",
       "status": "supported",
-      "tiers": ["offline-fake", "live-provider"],
-      "proofs": [
-        { "kind": "fixture", "path": "processors/unicode-normalizer/basic", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "processors/structured-output/basic", "tier": "live-provider" },
-        { "kind": "fixture", "path": "processors/moderation/basic", "tier": "live-provider" },
-        { "kind": "fixture", "path": "agent/primitives/trip-wire", "tier": "live-provider" }
+      "tiers": [
+        "offline-fake",
+        "live-provider"
       ],
-      "notes": "Processor rows are included because they are part of the agent embed bundle surface used by Mastra Agent paths."
+      "proofs": [
+        {
+          "kind": "fixture",
+          "path": "processors/unicode-normalizer/basic",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "processors/structured-output/basic",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "processors/moderation/basic",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "agent/primitives/trip-wire",
+          "tier": "live-provider"
+        }
+      ],
+      "notes": "Processor rows are included because they are part of the agent embed bundle surface used by Mastra Agent paths.",
+      "supportLevel": "mixed",
+      "nodeAPIs": [
+        "stream/web",
+        "fetch"
+      ],
+      "knownGaps": [
+        "Streaming processor semantics may need new proof if AI SDK stream event shapes change."
+      ],
+      "promotionCondition": "Promote processor stream claims only with stream-event proof across fake and live provider paths."
     },
     {
       "id": "ai-sdk-core",
       "capability": "AI SDK text, object, embed, stream, tools, and utilities",
       "status": "supported",
-      "tiers": ["offline-fake", "live-provider"],
-      "proofs": [
-        { "kind": "fixture", "path": "ai/generate-text/basic", "tier": "live-provider" },
-        { "kind": "fixture", "path": "ai/generate-object/basic", "tier": "live-provider" },
-        { "kind": "fixture", "path": "ai/embed/single", "tier": "live-provider" },
-        { "kind": "fixture", "path": "ai/stream-text/full-stream", "tier": "live-provider" },
-        { "kind": "fixture", "path": "ai/utilities/cosine-similarity", "tier": "offline-fake" },
-        { "kind": "fixture", "path": "ai/tool-authoring/schema-factories", "tier": "offline-fake" }
+      "tiers": [
+        "offline-fake",
+        "live-provider"
       ],
-      "notes": "Separates provider-backed model calls from provider-independent AI SDK utilities."
+      "proofs": [
+        {
+          "kind": "fixture",
+          "path": "ai/generate-text/basic",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "ai/generate-object/basic",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "ai/embed/single",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "ai/stream-text/full-stream",
+          "tier": "live-provider"
+        },
+        {
+          "kind": "fixture",
+          "path": "ai/utilities/cosine-similarity",
+          "tier": "offline-fake"
+        },
+        {
+          "kind": "fixture",
+          "path": "ai/tool-authoring/schema-factories",
+          "tier": "offline-fake"
+        }
+      ],
+      "notes": "Separates provider-backed model calls from provider-independent AI SDK utilities.",
+      "supportLevel": "mixed",
+      "nodeAPIs": [
+        "fetch",
+        "stream/web",
+        "crypto"
+      ],
+      "knownGaps": [
+        "Provider-backed calls are live-provider gated; provider-independent utilities are offline-fake proof."
+      ],
+      "promotionCondition": "Promote new AI SDK features only with fake/provider-independent proof or live-provider fixtures as appropriate."
     }
   ]
 }

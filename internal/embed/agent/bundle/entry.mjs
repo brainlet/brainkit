@@ -205,6 +205,7 @@ MDocument.fromDocx = async function fromDocx(source, metadata) {
 import './dom-stubs.mjs';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import * as pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
+import { ecosystemCanaries } from './ecosystem-canaries.mjs';
 // pdfjs picks the main-thread fake-worker path when
 // globalThis.pdfjsWorker.WorkerMessageHandler is available — skipping
 // the dynamic import of a worker script that our single-threaded
@@ -579,6 +580,9 @@ globalThis.__agent_embed = {
   submitPlanTool,
   taskWriteTool,
   taskCheckTool,
+
+  // Ecosystem compatibility canaries
+  ecosystemCanaries,
 
   // AI SDK providers
   createOpenAI,

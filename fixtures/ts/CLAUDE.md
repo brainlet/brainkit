@@ -35,7 +35,8 @@ Runner reads `globalThis.__module_result` after deploy and compares to expect.js
   "exact_number": 42,        // ±0.01 delta
   "exact_string": "hello",   // exact match
   "just_exists": "*",        // wildcard — key must exist
-  "partial": "~hello"        // prefix ~ — assert.Contains
+  "partial": "~hello",       // prefix ~ — assert.Contains
+  "deployErrorContains": "Could not resolve" // expected deploy-time failure
 }
 ```
 

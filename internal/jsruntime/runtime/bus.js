@@ -96,6 +96,22 @@
     return "stream:" + Date.now() + ":" + Math.random().toString(36).slice(2);
   }
 
+  function bindAsyncContext(fn) {
+    var asyncContext = globalThis.__brainkit_async_context;
+    if (asyncContext && typeof asyncContext.bind === "function" && typeof fn === "function") {
+      return asyncContext.bind(fn);
+    }
+    return fn;
+  }
+
+  function wrapAsyncContextPromise(promise) {
+    var asyncContext = globalThis.__brainkit_async_context;
+    if (asyncContext && typeof asyncContext.wrapPromise === "function") {
+      return asyncContext.wrapPromise(promise);
+    }
+    return promise;
+  }
+
   function callStream(topic, data, targetNamespace, opts, apiName) {
     opts = opts || {};
     apiName = apiName || "bus.callStream";
@@ -114,8 +130,8 @@
       return Promise.reject(new BrainkitError(apiName + ": invalid bufferPolicy", "VALIDATION_ERROR", { field: "bufferPolicy" }));
     }
     var id = streamHandlerId();
-    globalThis.__kit_bus_stream_handlers[id] = { onChunk: opts.onChunk };
-    return __go_brainkit_bus_call_stream(
+    globalThis.__kit_bus_stream_handlers[id] = { onChunk: bindAsyncContext(opts.onChunk) };
+    return wrapAsyncContextPromise(__go_brainkit_bus_call_stream(
       topic,
       JSON.stringify(data === undefined ? null : data),
       targetNamespace || "",
@@ -129,7 +145,7 @@
     }, function(err) {
       delete globalThis.__kit_bus_stream_handlers[id];
       throw err;
-    });
+    }));
   }
 
   // ─── Message Wrapper ──────────────────────────────────────────
@@ -224,6 +240,7 @@
     },
     subscribe: function(topic, handler) {
       var subId = __go_brainkit_subscribe(topic);
+      var boundHandler = bindAsyncContext(handler);
       globalThis.__bus_subs[subId] = function(rawMsg) {
         // Wrap user handler so BrainkitError throws (sync OR async) leak
         // their .code/.details into globalThis.__pending_handler_err so the
@@ -236,7 +253,7 @@
           }
         }
         try {
-          var r = handler(wrapMsg(rawMsg));
+          var r = boundHandler(wrapMsg(rawMsg));
           if (r && typeof r.then === "function") {
             return r.catch(function(e) { _capture(e); throw e; });
           }

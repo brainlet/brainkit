@@ -22,6 +22,9 @@ if (typeof queueMicrotask === "undefined") {
 }
 if (typeof setImmediate === "undefined") {
   globalThis.setImmediate = function(fn) {
+    if (globalThis.__brainkit_async_context && typeof globalThis.__brainkit_async_context.bind === "function" && typeof fn === "function") {
+      fn = globalThis.__brainkit_async_context.bind(fn);
+    }
     var args = [];
     for (var i = 1; i < arguments.length; i++) args.push(arguments[i]);
     Promise.resolve().then(function() { fn.apply(null, args); });
@@ -35,6 +38,9 @@ if (typeof setInterval === "undefined") {
   var __intervals = {};
   var __intervalId = 0;
   globalThis.setInterval = function(fn, delay) {
+    if (globalThis.__brainkit_async_context && typeof globalThis.__brainkit_async_context.bind === "function" && typeof fn === "function") {
+      fn = globalThis.__brainkit_async_context.bind(fn);
+    }
     var args = [];
     for (var i = 2; i < arguments.length; i++) args.push(arguments[i]);
     __intervalId++;
@@ -42,6 +48,7 @@ if (typeof setInterval === "undefined") {
     function tick() {
       if (!__intervals[id]) return;
       fn.apply(null, args);
+      if (!__intervals[id]) return;
       __intervals[id] = setTimeout(tick, delay || 0);
     }
     __intervals[id] = setTimeout(tick, delay || 0);
@@ -56,9 +63,13 @@ if (typeof setInterval === "undefined") {
 }
 globalThis.timersPromises = {
   setTimeout: function(ms, value) {
-    return new Promise(function(resolve) {
+    var p = new Promise(function(resolve) {
       globalThis.setTimeout(function() { resolve(value); }, ms || 0);
     });
+    if (globalThis.__brainkit_async_context && typeof globalThis.__brainkit_async_context.wrapPromise === "function") {
+      return globalThis.__brainkit_async_context.wrapPromise(p);
+    }
+    return p;
   },
   setInterval: function(ms, value) {
     return {
@@ -67,12 +78,16 @@ globalThis.timersPromises = {
         return {
           next: function() {
             if (closed) return Promise.resolve({ value: undefined, done: true });
-            return new Promise(function(resolve) {
+            var p = new Promise(function(resolve) {
               globalThis.setTimeout(function() {
                 if (closed) resolve({ value: undefined, done: true });
                 else resolve({ value: value, done: false });
               }, ms || 0);
             });
+            if (globalThis.__brainkit_async_context && typeof globalThis.__brainkit_async_context.wrapPromise === "function") {
+              return globalThis.__brainkit_async_context.wrapPromise(p);
+            }
+            return p;
           },
           return: function() {
             closed = true;

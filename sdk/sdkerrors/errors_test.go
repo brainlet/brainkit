@@ -21,6 +21,14 @@ func TestBrainkitError_Interface(t *testing.T) {
 		&sdkerrors.TransportError{Operation: "publish", Cause: fmt.Errorf("connection refused")},
 		&sdkerrors.PersistenceError{Operation: "SaveDeployment", Source: "agent.ts", Cause: fmt.Errorf("disk full")},
 		&sdkerrors.DeployError{Source: "agent.ts", Phase: "transpile", Cause: fmt.Errorf("syntax error")},
+		&sdkerrors.PackageResolverError{
+			Specifier:          "uuid",
+			Importer:           "index.ts",
+			Source:             "fixture",
+			Profile:            "source-relative",
+			AllowedBareImports: []string{"kit", "ai", "agent", "compiler"},
+			SuggestedOwner:     "future opt-in npm ecosystem resolver profile",
+		},
 		&sdkerrors.BridgeError{Function: "__go_brainkit_request", Cause: fmt.Errorf("eval busy")},
 		&sdkerrors.CompilerError{Cause: fmt.Errorf("out of memory")},
 		&sdkerrors.CycleDetectedError{Depth: 16},
@@ -67,6 +75,27 @@ func TestDeployError_Details(t *testing.T) {
 	assert.Equal(t, "bot.ts", err.Details()["source"])
 	assert.Equal(t, "transpile", err.Details()["phase"])
 	assert.True(t, errors.Is(err, cause))
+}
+
+func TestPackageResolverError_Details(t *testing.T) {
+	err := &sdkerrors.PackageResolverError{
+		Specifier:          "uuid",
+		Importer:           "index.ts",
+		Source:             "fixture",
+		Profile:            "source-relative",
+		AllowedBareImports: []string{"kit", "ai", "agent", "compiler"},
+		SuggestedOwner:     "future opt-in npm ecosystem resolver profile",
+	}
+
+	assert.Equal(t, "PACKAGE_RESOLVER_UNSUPPORTED_IMPORT", err.Code())
+	assert.Equal(t, "uuid", err.Details()["specifier"])
+	assert.Equal(t, "index.ts", err.Details()["importer"])
+	assert.Equal(t, "fixture", err.Details()["source"])
+	assert.Equal(t, "source-relative", err.Details()["profile"])
+	assert.Equal(t, []string{"kit", "ai", "agent", "compiler"}, err.Details()["allowedBareImports"])
+	assert.Equal(t, "future opt-in npm ecosystem resolver profile", err.Details()["suggestedFutureOwner"])
+	assert.Contains(t, err.Error(), `unsupported bare import "uuid"`)
+	assert.Contains(t, err.Error(), "allowed bare imports: kit, ai, agent, compiler")
 }
 
 func TestPersistenceError_Details(t *testing.T) {

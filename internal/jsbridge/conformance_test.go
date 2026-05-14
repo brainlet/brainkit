@@ -199,20 +199,29 @@ func TestJSBridgeConformancePacks(t *testing.T) {
 			code: `
 				const failures = [];
 				for (const fn of [
-					() => http.request("http://example.test"),
-					() => https.get("https://example.test"),
+					() => http.createServer(),
+					() => https.createServer(),
+					() => net.createServer(),
+					() => tls.createServer(),
 					() => new worker_threads.Worker("worker.js"),
 					() => crypto.createCipheriv("aes-128-cbc", "bad", "bad"),
 					() => zlib.brotliCompressSync(Buffer.from("x")),
 				]) {
-					try { fn(); } catch (err) { failures.push(String(err && err.message || err)); }
+					try { fn(); } catch (err) { failures.push({
+						code: err && err.code || "",
+						boundaryClass: err && err.boundaryClass || "",
+						message: String(err && err.message || err)
+					}); }
 				}
 				return JSON.stringify({
 					count: failures.length,
-					typed: failures.every((msg) => msg.includes("not available") || msg.includes("requires"))
+					boundaryCount: failures.filter((err) => err.code === "BRAINKIT_UNSUPPORTED_BOUNDARY").length,
+					serverBoundaryCount: failures.filter((err) => err.boundaryClass === "server-listener").length,
+					workerBoundaryCount: failures.filter((err) => err.boundaryClass === "worker").length,
+					typed: failures.every((err) => err.code === "BRAINKIT_UNSUPPORTED_BOUNDARY" || err.message.includes("not available") || err.message.includes("requires") || err.message.includes("unsupported"))
 				});
 			`,
-			want: `{"count":5,"typed":true}`,
+			want: `{"count":7,"boundaryCount":5,"serverBoundaryCount":4,"workerBoundaryCount":1,"typed":true}`,
 		},
 	} {
 		t.Run(filepath.Join(tc.group, tc.name), func(t *testing.T) {

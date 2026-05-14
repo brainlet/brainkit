@@ -1,0 +1,418 @@
+{
+  "schemaVersion": 1,
+  "sourceArtifacts": [
+    "compat/manifest.json",
+    "compat/inventory.json",
+    "compat/capability-matrix.json",
+    "internal/jsbridge/*_test.go",
+    "internal/embed/agent/*_test.go"
+  ],
+  "families": [
+    {
+      "id": "module-system",
+      "apiFamily": "Module system, createRequire, dynamic require, and package subpaths",
+      "semanticStatus": "compat-partial",
+      "owner": "internal/embed/agent.runtimeGlobalsJS and internal/embed/agent/bundle/build.mjs",
+      "surfaces": [
+        "module",
+        "@opentelemetry/api",
+        "zod",
+        "zod/v4",
+        "vscode-jsonrpc",
+        "vscode-jsonrpc/node",
+        "vscode-languageserver-protocol",
+        "execa"
+      ],
+      "packagesUsing": [
+        "@mastra/core",
+        "@mastra/observability",
+        "ai",
+        "vscode-jsonrpc"
+      ],
+      "conformanceTests": [
+        "internal/embed/agent/conformance_test.go",
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "acceptedSemantics": "The agent embed bundle has a manifest-owned dynamic require allowlist and createRequire returns that bundle-local require shim. Unknown dynamic require throws a typed BrainkitUnsupportedDynamicRequireError.",
+      "knownGaps": [
+        "No filesystem-aware Node module resolver exists inside QuickJS.",
+        "User package deployment does not inherit agent embed package patches or arbitrary npm resolution.",
+        "Dynamic import remains bundle/profile-specific rather than a full Node loader."
+      ],
+      "lifecycleImpact": [],
+      "nextProof": "Gate 8 must make source package bare npm imports fail with a resolver-profile diagnostic instead of a generic esbuild error."
+    },
+    {
+      "id": "process-runtime",
+      "apiFamily": "process metadata, env, cwd, argv, versions, nextTick, and stdio shape",
+      "semanticStatus": "compat-partial",
+      "owner": "internal/jsbridge.Process",
+      "surfaces": ["process"],
+      "packagesUsing": [
+        "@mastra/core",
+        "chromadb",
+        "fetch-blob",
+        "google-logging-utils",
+        "readable-stream"
+      ],
+      "conformanceTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/polyfill_extras_test.go"
+      ],
+      "acceptedSemantics": "Process metadata and env are provided for package feature detection and runtime configuration. nextTick is supported for package scheduling.",
+      "knownGaps": [
+        "Process exit and process mutation APIs are not runtime control surfaces.",
+        "Node reports, inspector, and low-level process handles are not supported."
+      ],
+      "lifecycleImpact": [],
+      "nextProof": "Keep unavailable process mutators documented and covered by typed unsupported tests when packages reach them."
+    },
+    {
+      "id": "async-context",
+      "apiFamily": "timers, promises, microtasks, async_hooks, and AsyncLocalStorage",
+      "semanticStatus": "compat-partial",
+      "owner": "internal/jsbridge.NodeCompat, internal/jsbridge.Timers, and internal/jsbridge.Scheduling",
+      "surfaces": ["async_hooks", "timers", "timers/promises"],
+      "packagesUsing": [
+        "@mastra/core",
+        "@mastra/memory",
+        "@redis/client",
+        "lru-cache"
+      ],
+      "conformanceTests": [
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsruntime/bus_async_context_test.go",
+        "internal/jsbridge/bridge_test.go"
+      ],
+      "acceptedSemantics": "Timers and timer promises are usable. AsyncLocalStorage supports synchronous run/enterWith/disable nesting, AsyncResource snapshot capture/runInAsyncScope, and store propagation across Brainkit-owned callback boundaries: setTimeout, setInterval, setImmediate, queueMicrotask, timersPromises callback chains, fetch promise callbacks returned by jsbridge fetch, EventEmitter-based stream/http callbacks, JS runtime bus.subscribe handlers, and bus.callStream onChunk/final promise callbacks.",
+      "knownGaps": [
+        "AsyncLocalStorage does not provide general Promise-hook propagation or preserve context across arbitrary await chains.",
+        "createHook does not provide global async resource instrumentation.",
+        "executionAsyncId and triggerAsyncId are shape values."
+      ],
+      "lifecycleImpact": ["timers.timeouts"],
+      "nextProof": "Keep arbitrary Promise propagation explicitly unsupported until real async-hook semantics exist; add integration proof if future bus surfaces introduce new Go-scheduled callback paths."
+    },
+    {
+      "id": "streams",
+      "apiFamily": "Node streams, Web Streams, EventEmitter, pipeline, finished, and async iteration",
+      "semanticStatus": "compat-partial",
+      "owner": "internal/jsbridge.NodeStreams, internal/jsbridge.Streams, and internal/jsbridge.Events",
+      "surfaces": ["events", "stream", "stream/web", "stream/promises", "string_decoder"],
+      "packagesUsing": [
+        "@mastra/core",
+        "@mastra/observability",
+        "node-fetch",
+        "needle",
+        "probe-image-size",
+        "readable-stream"
+      ],
+      "conformanceTests": [
+        "internal/jsbridge/nodestreams_test.go",
+        "internal/jsbridge/async_iterator_test.go",
+        "internal/jsbridge/bridge_test.go"
+      ],
+      "acceptedSemantics": "Web Streams are the preferred streaming primitive. Node stream compatibility covers package interop, event delivery, pipe-like data flow, and async iteration used by current dependencies.",
+      "knownGaps": [
+        "Full Node backpressure and internal readable/writable state are not promised.",
+        "stream/promises remains shape/minimal until direct canaries require pipeline or finished semantics."
+      ],
+      "lifecycleImpact": ["fetch.responseBodies", "fs.fileHandles", "net.sockets", "tls.sockets"],
+      "nextProof": "Gate 7 should add a readable-stream canary and promote stream/promises only after focused pipeline/finished tests exist."
+    },
+    {
+      "id": "buffer-encoding",
+      "apiFamily": "Buffer, text encoding, base64, binary crossings, and string decoding",
+      "semanticStatus": "exact-used",
+      "owner": "internal/jsbridge.Buffer and internal/jsbridge.Encoding",
+      "surfaces": ["buffer", "string_decoder"],
+      "packagesUsing": [
+        "node-fetch",
+        "fetch-blob",
+        "readable-stream",
+        "safer-buffer",
+        "split2"
+      ],
+      "conformanceTests": [
+        "internal/jsbridge/buffer_test.go",
+        "internal/jsbridge/nodecompat_test.go"
+      ],
+      "acceptedSemantics": "The Buffer and encoding APIs needed by current bundle dependencies are supported directly by jsbridge.",
+      "knownGaps": [
+        "Future binary packages may need additional Buffer edge cases or codec aliases."
+      ],
+      "lifecycleImpact": [],
+      "nextProof": "Add canary coverage when a dependency upgrade introduces a new binary codec or Buffer edge case."
+    },
+    {
+      "id": "crypto",
+      "apiFamily": "WebCrypto, Node crypto hashes, HMAC, PBKDF, random bytes, and timing-safe compare",
+      "semanticStatus": "exact-used",
+      "owner": "internal/jsbridge.Crypto",
+      "surfaces": ["crypto"],
+      "packagesUsing": [
+        "@mastra/core",
+        "@mastra/memory",
+        "@mastra/rag",
+        "mongodb",
+        "pg",
+        "gaxios"
+      ],
+      "conformanceTests": [
+        "internal/jsbridge/crypto_test.go",
+        "internal/jsbridge/bridge_test.go"
+      ],
+      "acceptedSemantics": "Current used crypto algorithms and WebCrypto paths are implemented in jsbridge. Unsupported algorithms should fail clearly instead of returning weak substitutes.",
+      "knownGaps": [
+        "The inventory records crypto module use, not algorithm-level coverage.",
+        "Future provider or database packages may require additional ciphers or key formats."
+      ],
+      "lifecycleImpact": [],
+      "nextProof": "A future inventory revision should record algorithm coverage when new packages require crypto behavior beyond current tests."
+    },
+    {
+      "id": "filesystem",
+      "apiFamily": "fs, fs/promises, file streams, path, and sandboxed file access",
+      "semanticStatus": "compat-partial",
+      "owner": "internal/jsbridge.FS and internal/jsbridge.Path",
+      "surfaces": ["fs", "fs/promises", "path", "path/posix"],
+      "packagesUsing": [
+        "@mastra/core",
+        "@mastra/observability",
+        "fetch-blob",
+        "gray-matter",
+        "mongodb",
+        "pgpass"
+      ],
+      "conformanceTests": [
+        "internal/jsbridge/bridge_test.go"
+      ],
+      "acceptedSemantics": "Filesystem behavior is sandbox-scoped and supports the file access patterns used by package tooling, parsers, storage adapters, and bundle dependencies.",
+      "knownGaps": [
+        "Filesystem watchers and broad OS-level file descriptor semantics are not part of the current target.",
+        "Future parser canaries must use explicit fixture files rather than ambient host paths."
+      ],
+      "lifecycleImpact": ["fs.fileHandles"],
+      "nextProof": "Gate 7 parser canaries should prove in-memory and explicit fixture-file paths without expanding ambient filesystem authority."
+    },
+    {
+      "id": "network-fetch-http",
+      "apiFamily": "fetch, URL, Headers, Request/Response, http, https, net, tls, dns, and WebSocket clients",
+      "semanticStatus": "compat-partial",
+      "owner": "internal/jsbridge.Fetch, internal/jsbridge.NodeCompat, internal/jsbridge.Net, internal/jsbridge.DNS, internal/jsbridge.URL, and internal/jsbridge.WebSocketPoly",
+      "surfaces": ["fetch", "http", "http.createServer", "https", "https.createServer", "url", "dns", "dns/promises", "net", "net.createServer", "tls", "tls.createServer", "websocket"],
+      "packagesUsing": [
+        "@ai-sdk/openai",
+        "@redis/client",
+        "agent-base",
+        "gaxios",
+        "mongodb",
+        "needle",
+        "node-fetch",
+        "pg"
+      ],
+      "conformanceTests": [
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsbridge/conformance_test.go",
+        "internal/jsbridge/net_test.go",
+        "internal/jsbridge/dns_test.go",
+        "internal/jsbridge/websocket_test.go"
+      ],
+      "acceptedSemantics": "fetch and WebSocket are primary network APIs. http.request/get and https.request/get are client-only compatibility subsets over fetch. net/tls/dns provide client behavior for database and provider SDKs. http.createServer, https.createServer, net.createServer, and tls.createServer are typed server-listener boundaries with suggested module/runtime owners.",
+      "knownGaps": [
+        "http.createServer, https.createServer, net.createServer, tls.createServer, CONNECT, upgrade, raw sockets, and Node Agent pooling are unsupported boundaries.",
+        "HTTP client semantics are narrower than Node ClientRequest and IncomingMessage."
+      ],
+      "lifecycleImpact": ["fetch.requests", "fetch.responseBodies", "net.sockets", "tls.sockets", "websocket.connections"],
+      "nextProof": "Gate 7 should add local-service HTTP canaries for gaxios and node-fetch, including headers, bodies, abort, and compressed responses if practical. Server-listener support must remain outside this family until a module/runtime profile owns listener lifecycle and teardown."
+    },
+    {
+      "id": "compression",
+      "apiFamily": "zlib, gzip, deflate, inflate, and compression streams",
+      "semanticStatus": "compat-partial",
+      "owner": "internal/jsbridge.Zlib",
+      "surfaces": ["zlib"],
+      "packagesUsing": [
+        "mongodb",
+        "needle",
+        "node-fetch"
+      ],
+      "conformanceTests": [
+        "internal/jsbridge/zlib_test.go"
+      ],
+      "acceptedSemantics": "Compression helpers used by current database, document, and network packages are implemented in jsbridge.",
+      "knownGaps": [
+        "Full Node compression stream parity and brotli policy are not fully expressed by the current inventory.",
+        "Optional native compression packages remain unsupported boundaries."
+      ],
+      "lifecycleImpact": [],
+      "nextProof": "Add compressed HTTP response coverage in the ecosystem canary suite if node-fetch or gaxios exercises it."
+    },
+    {
+      "id": "child-process",
+      "apiFamily": "child_process, execa dynamic import, subprocess lifecycle, stdio, signals, and exit events",
+      "semanticStatus": "compat-partial",
+      "owner": "internal/jsbridge.Exec and internal/embed/agent.runtimeGlobalsJS",
+      "surfaces": ["child_process", "execa", "execa-dynamic-import"],
+      "packagesUsing": [
+        "@mastra/core",
+        "execa",
+        "mongodb"
+      ],
+      "conformanceTests": [
+        "internal/jsbridge/exec_test.go",
+        "internal/jsbridge/bridge_test.go",
+        "internal/embed/agent/conformance_test.go"
+      ],
+      "acceptedSemantics": "Subprocess behavior is scoped through jsbridge Exec with resource accounting. execa is redirected to an explicit hook rather than arbitrary dynamic import behavior.",
+      "knownGaps": [
+        "This is not an unmanaged Node process model.",
+        "Unsupported spawn options, inherited stdio, and platform-specific process controls must fail clearly."
+      ],
+      "lifecycleImpact": ["exec.commands"],
+      "nextProof": "Keep subprocess resources in lifecycle checks and add typed diagnostics when packages request unsupported process options."
+    },
+    {
+      "id": "wasm",
+      "apiFamily": "WebAssembly instantiate, modules, exports, memory, and validation",
+      "semanticStatus": "compat-partial",
+      "owner": "internal/jsbridge.WebAssembly",
+      "surfaces": [],
+      "packagesUsing": [
+        "@mastra/core",
+        "@mastra/memory",
+        "xxhash-wasm"
+      ],
+      "conformanceTests": [
+        "internal/jsbridge/webassembly_test.go"
+      ],
+      "acceptedSemantics": "WebAssembly.instantiate is backed by wazero for packages that ship deterministic WASM modules without WASI, threads, or native escape hatches.",
+      "knownGaps": [
+        "WASI, WASM threads, host filesystem escape, and broad memory policy are not currently supported.",
+        "WASM package support is not yet proved by a non-Mastra ecosystem canary."
+      ],
+      "lifecycleImpact": ["wasm.modules"],
+      "nextProof": "Gate 7 should add an xxhash-wasm canary and assert module resources drain on close."
+    },
+    {
+      "id": "diagnostics-observability",
+      "apiFamily": "diagnostics_channel, perf_hooks, @opentelemetry/api, console, and tracing adjacency",
+      "semanticStatus": "compat-partial",
+      "owner": "internal/jsbridge.NodeCompat, internal/jsbridge.Performance, and internal/embed/agent.runtimeGlobalsJS",
+      "surfaces": ["diagnostics_channel", "perf_hooks", "@opentelemetry/api"],
+      "packagesUsing": [
+        "@mastra/observability",
+        "@redis/client",
+        "ai",
+        "lru-cache"
+      ],
+      "conformanceTests": [
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/embed/agent/conformance_test.go"
+      ],
+      "acceptedSemantics": "Mastra observability APIs and Brainkit tracing fixtures are covered separately. diagnostics_channel now provides real channel objects with subscribe/unsubscribe, synchronous publish, hasSubscribers, module-level subscribe/unsubscribe/hasSubscribers, and tracingChannel children backed by real channels. OTel remains import/shape compatibility only.",
+      "knownGaps": [
+        "OTel active context/span propagation is not real.",
+        "perf_hooks exposes performance.now and minimal shape only."
+      ],
+      "lifecycleImpact": [],
+      "nextProof": "Promote further only when a tracing module owns OTel active span propagation and direct integration tests prove diagnostics-to-OTel context flow."
+    },
+    {
+      "id": "worker-boundary",
+      "apiFamily": "worker_threads, MessageChannel shape, transfer, shared memory, and parallel JS heaps",
+      "semanticStatus": "unsupported-boundary",
+      "owner": "internal/jsbridge.NodeCompat",
+      "surfaces": ["worker_threads"],
+      "packagesUsing": [
+        "node-domexception"
+      ],
+      "conformanceTests": [
+        "internal/jsbridge/nodecompat_test.go",
+        "internal/jsbridge/conformance_test.go"
+      ],
+      "acceptedSemantics": "Feature detection shape exists, but Worker construction is unsupported in QuickJS and throws a typed worker boundary diagnostic naming the future worker/sidecar owner.",
+      "knownGaps": [
+        "No separate JS heap, message port, transfer, shared-memory, cancellation, or teardown model exists yet."
+      ],
+      "lifecycleImpact": [],
+      "nextProof": "A future worker profile must define separate JS heap ownership, message lifecycle, cancellation, transfer, and teardown proof before this can move beyond unsupported-boundary."
+    },
+    {
+      "id": "native-optional-boundaries",
+      "apiFamily": "native addons, Node-API, optional native peers, platform bindings, and server-only external packages",
+      "semanticStatus": "unsupported-boundary",
+      "owner": "agent embed manifest externals and future resolver policy",
+      "surfaces": [
+        "@ast-grep/napi",
+        "@aws-sdk/credential-providers",
+        "@chroma-core/default-embed",
+        "@mongodb-js/zstd",
+        "better-sqlite3",
+        "fastembed",
+        "gcp-metadata",
+        "hono",
+        "kerberos",
+        "mongodb-client-encryption",
+        "pg-native",
+        "snappy",
+        "socks"
+      ],
+      "packagesUsing": [
+        "chromadb",
+        "mongodb",
+        "pg"
+      ],
+      "conformanceTests": [
+        "internal/embed/agent/compat_manifest_test.go"
+      ],
+      "acceptedSemantics": "Optional native and external-only paths are not bundled into the QuickJS agent embed. Manifest and inventory rows carry boundaryClass and suggestedOwner metadata; runtime-reached dynamic requires throw typed boundary diagnostics when they cross these known unsupported imports. Pure JS, deterministic WASM, external-service, or sidecar paths must be chosen deliberately.",
+      "knownGaps": [
+        "Current proof is mostly import/boundary classification, not runnable native behavior.",
+        "Sidecars are not designed for these paths yet."
+      ],
+      "lifecycleImpact": [],
+      "nextProof": "Gate 7 should add ecosystem canaries for optional native packages that prove the fallback path is pure JS, deterministic WASM, external service, or an explicit typed boundary."
+    },
+    {
+      "id": "package-patches",
+      "apiFamily": "version-scoped package compatibility patches and bundle rewrites",
+      "semanticStatus": "package-patched",
+      "owner": "internal/embed/agent/bundle/build.mjs and internal/embed/agent/bundle/entry.mjs",
+      "surfaces": [
+        "ws-alias",
+        "lru-cache-cjs",
+        "big-js-shim",
+        "zod-unify",
+        "vscode-jsonrpc-node",
+        "libsql-undefined-null",
+        "execa-dynamic-import",
+        "mastra-rag-zod-function",
+        "mastra-schema-null-transform-prototype",
+        "tiktoken-fallback",
+        "gemini-live-voice-disabled"
+      ],
+      "packagesUsing": [
+        "@mastra/core",
+        "@mastra/rag",
+        "@mastra/voice-openai-realtime",
+        "@mastra/voice-google-gemini-live",
+        "@libsql/client",
+        "lru-cache",
+        "vscode-jsonrpc",
+        "zod"
+      ],
+      "conformanceTests": [
+        "internal/embed/agent/compat_manifest_test.go",
+        "internal/embed/agent/conformance_test.go"
+      ],
+      "acceptedSemantics": "Package patches are allowed only when version-scoped, manifest-declared, proof-backed, and paired with removal conditions.",
+      "knownGaps": [
+        "Package patches should not become the default way to provide generic Node semantics.",
+        "Gemini Live remains disabled pending focused investigation."
+      ],
+      "lifecycleImpact": [],
+      "nextProof": "Gate 9 dependency upgrades must refresh package patch versions, expected markers, inventory, and capability rows."
+    }
+  ]
+}

@@ -141,6 +141,37 @@ func (e *DeployError) Details() map[string]any {
 	return map[string]any{"source": e.Source, "phase": e.Phase}
 }
 
+// PackageResolverError is returned when package source deployment encounters
+// an import that is outside the active resolver profile.
+type PackageResolverError struct {
+	Specifier          string
+	Importer           string
+	Source             string
+	Profile            string
+	AllowedBareImports []string
+	SuggestedOwner     string
+}
+
+func (e *PackageResolverError) Error() string {
+	source := ""
+	if e.Source != "" {
+		source = fmt.Sprintf(" in source package %q", e.Source)
+	}
+	return fmt.Sprintf("package resolver %s: unsupported bare import %q from %q%s; allowed bare imports: %s; suggested future owner: %s",
+		e.Profile, e.Specifier, e.Importer, source, joinStrings(e.AllowedBareImports), e.SuggestedOwner)
+}
+func (e *PackageResolverError) Code() string { return "PACKAGE_RESOLVER_UNSUPPORTED_IMPORT" }
+func (e *PackageResolverError) Details() map[string]any {
+	return map[string]any{
+		"specifier":            e.Specifier,
+		"importer":             e.Importer,
+		"source":               e.Source,
+		"profile":              e.Profile,
+		"allowedBareImports":   append([]string(nil), e.AllowedBareImports...),
+		"suggestedFutureOwner": e.SuggestedOwner,
+	}
+}
+
 // BridgeError is returned when a Go↔JS bridge function fails.
 type BridgeError struct {
 	Function string // bridge function name, e.g. "secret_get", "__go_brainkit_request"
@@ -198,3 +229,14 @@ type BusError struct {
 func (e *BusError) Error() string           { return fmt.Sprintf("%s: %s", e.Code_, e.Message) }
 func (e *BusError) Code() string            { return e.Code_ }
 func (e *BusError) Details() map[string]any { return e.Details_ }
+
+func joinStrings(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	out := values[0]
+	for _, value := range values[1:] {
+		out += ", " + value
+	}
+	return out
+}

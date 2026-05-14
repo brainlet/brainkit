@@ -112,6 +112,15 @@ func FromEnvelope(e Envelope) error {
 		return &sdkerrors.PersistenceError{Operation: str(d, "operation"), Source: str(d, "source"), Cause: errors.New(msg)}
 	case "DEPLOY_ERROR":
 		return &sdkerrors.DeployError{Source: str(d, "source"), Phase: str(d, "phase"), Cause: errors.New(msg)}
+	case "PACKAGE_RESOLVER_UNSUPPORTED_IMPORT":
+		return &sdkerrors.PackageResolverError{
+			Specifier:          str(d, "specifier"),
+			Importer:           str(d, "importer"),
+			Source:             str(d, "source"),
+			Profile:            str(d, "profile"),
+			AllowedBareImports: strSlice(d, "allowedBareImports"),
+			SuggestedOwner:     str(d, "suggestedFutureOwner"),
+		}
 	case "BRIDGE_ERROR":
 		return &sdkerrors.BridgeError{Function: str(d, "function"), Cause: errors.New(msg)}
 	case "COMPILER_ERROR":
@@ -151,4 +160,24 @@ func str(m map[string]any, k string) string {
 		return v
 	}
 	return ""
+}
+
+func strSlice(m map[string]any, k string) []string {
+	if m == nil {
+		return nil
+	}
+	switch values := m[k].(type) {
+	case []string:
+		return append([]string(nil), values...)
+	case []any:
+		out := make([]string, 0, len(values))
+		for _, value := range values {
+			if s, ok := value.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }

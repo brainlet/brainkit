@@ -166,6 +166,9 @@ var __timer_next_id = 0;
 globalThis.setTimeout = function(fn, delay) {
   __timer_next_id++;
   var id = __timer_next_id;
+  if (globalThis.__brainkit_async_context && typeof globalThis.__brainkit_async_context.bind === "function" && typeof fn === "function") {
+    fn = globalThis.__brainkit_async_context.bind(fn);
+  }
   var args = [];
   for (var i = 2; i < arguments.length; i++) args.push(arguments[i]);
   var wrapped = function() { fn.apply(null, args); };

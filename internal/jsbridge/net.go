@@ -622,14 +622,41 @@ globalThis.GoSocket = GoSocket;
     return s;
   };
 
-  var notAvailable = function(name) { return function() { throw new Error(name + ": not available in QuickJS"); }; };
+  function unsupportedBoundary(opts) {
+    opts = opts || {};
+    if (typeof globalThis.__brainkit_unsupported_boundary === "function") {
+      return globalThis.__brainkit_unsupported_boundary(opts);
+    }
+    var api = opts.api || opts.importPath || "unsupported";
+    var boundaryClass = opts.boundaryClass || "unsupported-node-api";
+    var err = new Error(api + ": unsupported Brainkit boundary (" + boundaryClass + "). Owner: " + (opts.suggestedOwner || opts.owner || "jsbridge") + ".");
+    err.name = "BrainkitUnsupportedBoundaryError";
+    err.code = "BRAINKIT_UNSUPPORTED_BOUNDARY";
+    err.importPath = opts.importPath || "";
+    err.api = api;
+    err.boundaryClass = boundaryClass;
+    err.suggestedOwner = opts.suggestedOwner || opts.owner || "jsbridge";
+    err.owner = opts.owner || "internal/jsbridge.Net";
+    return err;
+  }
+  var notAvailable = function(name, importPath) {
+    return function() {
+      throw unsupportedBoundary({
+        api: name,
+        importPath: importPath || "",
+        boundaryClass: "server-listener",
+        suggestedOwner: "modules/gateway or future server-listener runtime profile",
+        owner: "internal/jsbridge.Net",
+      });
+    };
+  };
   var isIP = function(input) { try { return input.includes(":") ? 6 : input.match(/^\d+\.\d+\.\d+\.\d+$/) ? 4 : 0; } catch(e) { return 0; } };
 
 	  globalThis.net = {
 	    Socket: Socket,
 	    createConnection: createConnection,
 	    connect: createConnection,
-    createServer: notAvailable("net.createServer"),
+    createServer: notAvailable("net.createServer", "net"),
     Server: class Server {},
     isIP: isIP,
 	    isIPv4: function(input) { return isIP(input) === 4; },
@@ -655,7 +682,7 @@ globalThis.GoSocket = GoSocket;
 	    throw new Error("tls.connect: requires options.socket (TLS upgrade of existing connection)");
 	  }
 	  globalThis.tls = {
-	    createServer: notAvailable("tls.createServer"),
+	    createServer: notAvailable("tls.createServer", "tls"),
 	    connect: tlsConnect,
 	    TLSSocket: TLSSocket,
 	    DEFAULT_ECDH_CURVE: "auto",

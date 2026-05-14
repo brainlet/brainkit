@@ -17,17 +17,19 @@ type compatManifest struct {
 }
 
 type compatEntry struct {
-	ID           string   `json:"id"`
-	Kind         string   `json:"kind"`
-	Status       string   `json:"status"`
-	Owner        string   `json:"owner"`
-	Aliases      []string `json:"aliases,omitempty"`
-	Globals      []string `json:"globals,omitempty"`
-	Exports      []string `json:"exports,omitempty"`
-	Dependencies []string `json:"dependencies,omitempty"`
-	Resources    []string `json:"resources,omitempty"`
-	Tests        []string `json:"tests,omitempty"`
-	Reason       string   `json:"reason,omitempty"`
+	ID             string   `json:"id"`
+	Kind           string   `json:"kind"`
+	Status         string   `json:"status"`
+	Owner          string   `json:"owner"`
+	Aliases        []string `json:"aliases,omitempty"`
+	Globals        []string `json:"globals,omitempty"`
+	Exports        []string `json:"exports,omitempty"`
+	Dependencies   []string `json:"dependencies,omitempty"`
+	Resources      []string `json:"resources,omitempty"`
+	Tests          []string `json:"tests,omitempty"`
+	Reason         string   `json:"reason,omitempty"`
+	BoundaryClass  string   `json:"boundaryClass,omitempty"`
+	SuggestedOwner string   `json:"suggestedOwner,omitempty"`
 
 	Package          string `json:"package,omitempty"`
 	VersionRange     string `json:"versionRange,omitempty"`
@@ -81,7 +83,10 @@ type inventoryPackage struct {
 	Name               string   `json:"name"`
 	Version            string   `json:"version,omitempty"`
 	DependencyClass    string   `json:"dependencyClass"`
+	Category           string   `json:"category"`
 	ExternalService    bool     `json:"externalService,omitempty"`
+	RuntimeRisks       []string `json:"runtimeRisks"`
+	ProofTiers         []string `json:"proofTiers"`
 	Inputs             int      `json:"inputs,omitempty"`
 	DisabledInputs     int      `json:"disabledInputs,omitempty"`
 	Bytes              int64    `json:"bytes,omitempty"`
@@ -96,6 +101,9 @@ type inventorySurface struct {
 	ID                 string   `json:"id"`
 	Kind               string   `json:"kind"`
 	Classification     string   `json:"classification"`
+	RiskClass          string   `json:"riskClass"`
+	RuntimeRisks       []string `json:"runtimeRisks"`
+	ProofTiers         []string `json:"proofTiers"`
 	Status             string   `json:"status"`
 	Owner              string   `json:"owner"`
 	Used               bool     `json:"used"`
@@ -105,6 +113,8 @@ type inventorySurface struct {
 	Exports            []string `json:"exports,omitempty"`
 	Dependencies       []string `json:"dependencies,omitempty"`
 	Resources          []string `json:"resources,omitempty"`
+	BoundaryClass      string   `json:"boundaryClass,omitempty"`
+	SuggestedOwner     string   `json:"suggestedOwner,omitempty"`
 	Package            string   `json:"package,omitempty"`
 	VersionRange       string   `json:"versionRange,omitempty"`
 	PatchType          string   `json:"patchType,omitempty"`
@@ -253,7 +263,10 @@ func buildInventory(manifestPath, metaPath, packagePath string) (compatInventory
 			Name:               acc.name,
 			Version:            acc.version,
 			DependencyClass:    acc.dependencyClass,
+			Category:           packageCategory(acc.name),
 			ExternalService:    acc.externalService,
+			RuntimeRisks:       packageRuntimeRisks(acc),
+			ProofTiers:         packageProofTiers(acc),
 			Inputs:             acc.inputs,
 			DisabledInputs:     acc.disabledInputs,
 			Bytes:              acc.bytes,
@@ -278,6 +291,9 @@ func buildInventory(manifestPath, metaPath, packagePath string) (compatInventory
 			ID:                 entry.ID,
 			Kind:               entry.Kind,
 			Classification:     classifySurface(entry),
+			RiskClass:          surfaceRiskClass(entry),
+			RuntimeRisks:       surfaceRuntimeRisks(entry),
+			ProofTiers:         surfaceProofTiers(entry),
 			Status:             entry.Status,
 			Owner:              entry.Owner,
 			Used:               usedSurfaces[entry.ID],
@@ -287,6 +303,8 @@ func buildInventory(manifestPath, metaPath, packagePath string) (compatInventory
 			Exports:            sortedStrings(entry.Exports),
 			Dependencies:       sortedStrings(entry.Dependencies),
 			Resources:          sortedStrings(entry.Resources),
+			BoundaryClass:      entry.BoundaryClass,
+			SuggestedOwner:     entry.SuggestedOwner,
 			Package:            entry.Package,
 			VersionRange:       entry.VersionRange,
 			PatchType:          entry.PatchType,
@@ -522,9 +540,102 @@ func classifyPackage(name, rootClass string) string {
 		return prefix + "-mastra-vector"
 	case name == "pg" || name == "mongodb" || strings.HasPrefix(name, "@libsql/") || strings.HasPrefix(name, "@redis/"):
 		return prefix + "-storage-client"
+	case name == "chromadb":
+		return prefix + "-vector-client"
+	case name == "gaxios" || name == "node-fetch":
+		return prefix + "-transport"
+	case name == "readable-stream":
+		return prefix + "-stream"
+	case name == "ajv":
+		return prefix + "-schema"
+	case name == "yaml" || name == "gray-matter":
+		return prefix + "-parser"
+	case name == "xxhash-wasm":
+		return prefix + "-wasm"
 	default:
 		return prefix
 	}
+}
+
+func packageCategory(name string) string {
+	switch {
+	case strings.HasPrefix(name, "@ai-sdk/"):
+		return "provider"
+	case name == "ai" || strings.HasPrefix(name, "@ai-sdk/provider"):
+		return "ai-sdk"
+	case name == "@mastra/core":
+		return "mastra-core"
+	case name == "@mastra/evals":
+		return "eval"
+	case name == "@mastra/rag":
+		return "rag"
+	case name == "@mastra/memory":
+		return "memory"
+	case strings.HasPrefix(name, "@mastra/voice"):
+		return "voice"
+	case name == "@mastra/observability" || strings.Contains(name, "opentelemetry"):
+		return "observability"
+	case name == "@mastra/pg" || name == "@mastra/mongodb" || name == "@mastra/libsql" || name == "@mastra/upstash" || name == "@mastra/redis":
+		return "store"
+	case name == "@mastra/chroma" || name == "@mastra/pinecone" || name == "@mastra/qdrant":
+		return "vector"
+	case name == "pg" || name == "mongodb" || strings.HasPrefix(name, "@libsql/") || strings.HasPrefix(name, "@redis/"):
+		return "store-client"
+	case name == "chromadb":
+		return "vector-client"
+	case name == "readable-stream":
+		return "stream"
+	case name == "xxhash-wasm":
+		return "wasm"
+	case strings.Contains(name, "fetch") || strings.Contains(name, "http") || strings.Contains(name, "agent") || name == "ws":
+		return "transport"
+	case strings.Contains(name, "yaml") || strings.Contains(name, "xml") || strings.Contains(name, "html") || strings.Contains(name, "markdown") || strings.Contains(name, "pdf") || name == "mammoth":
+		return "parser"
+	case strings.Contains(name, "zod") || strings.Contains(name, "schema") || strings.Contains(name, "ajv"):
+		return "schema"
+	default:
+		return "utility"
+	}
+}
+
+func packageRuntimeRisks(acc *packageAccumulator) []string {
+	risks := map[string]bool{"pure-js": true}
+	addAPIRisks(risks, acc.nodeAPIs)
+	if len(acc.dynamicRequires) > 0 {
+		risks["dynamic-require"] = true
+	}
+	if len(acc.externalImports) > 0 {
+		risks["optional-external"] = true
+	}
+	if len(acc.packagePatches) > 0 {
+		risks["package-patch"] = true
+	}
+	if acc.disabledInputs > 0 {
+		risks["disabled-input"] = true
+	}
+	if acc.externalService {
+		risks["external-service"] = true
+		risks["network"] = true
+	}
+	addPackageNameRisks(risks, acc.name)
+	return sortedKeys(risks)
+}
+
+func packageProofTiers(acc *packageAccumulator) []string {
+	tiers := map[string]bool{"offline-fake": true}
+	if acc.externalService {
+		tiers["external-service"] = true
+	}
+	if strings.Contains(acc.dependencyClass, "provider") {
+		tiers["live-provider"] = true
+	}
+	if hasAny(acc.nodeAPIs, "net", "tls", "dns", "dns/promises", "http", "https") {
+		tiers["local-service"] = true
+	}
+	if len(acc.externalImports) > 0 || hasAny(acc.nodeAPIs, "worker_threads") {
+		tiers["import-only"] = true
+	}
+	return sortedKeys(tiers)
 }
 
 func isExternalServicePackage(name string) bool {
@@ -566,6 +677,141 @@ func classifySurface(entry compatEntry) string {
 	default:
 		return entry.Status
 	}
+}
+
+func surfaceRiskClass(entry compatEntry) string {
+	switch {
+	case entry.Status == "unsupported":
+		return "unsupported-boundary"
+	case entry.Kind == "external":
+		return "external-boundary"
+	case entry.Kind == "package-patch":
+		if entry.Required != nil && *entry.Required {
+			return "required-package-patch"
+		}
+		return "optional-package-patch"
+	case len(surfaceRuntimeRisks(entry)) > 1:
+		return "runtime-risk"
+	default:
+		return "low"
+	}
+}
+
+func surfaceRuntimeRisks(entry compatEntry) []string {
+	risks := map[string]bool{"pure-js": true}
+	if entry.Kind == "dynamic-require" {
+		risks["dynamic-require"] = true
+	}
+	if entry.Kind == "package-patch" {
+		risks["package-patch"] = true
+	}
+	if entry.Kind == "external" {
+		risks["optional-external"] = true
+	}
+	if entry.Status == "unsupported" {
+		risks["unsupported"] = true
+	}
+	if entry.BoundaryClass != "" {
+		risks[entry.BoundaryClass] = true
+	}
+	apis := map[string]bool{}
+	if entry.Kind == "node-module" || entry.Kind == "node-subpath" {
+		apis[entry.ID] = true
+	}
+	for _, dep := range entry.Dependencies {
+		apis[dep] = true
+	}
+	addAPIRisks(risks, apis)
+	addPackageNameRisks(risks, entry.ID)
+	addPackageNameRisks(risks, entry.Package)
+	return sortedKeys(risks)
+}
+
+func surfaceProofTiers(entry compatEntry) []string {
+	tiers := map[string]bool{"offline-fake": true}
+	if entry.Kind == "external" || entry.Status == "unsupported" {
+		tiers["import-only"] = true
+	}
+	if entry.Kind == "web-global" || entry.Kind == "node-module" || entry.Kind == "node-subpath" {
+		if hasString(entry.ID, "net", "tls", "dns", "dns/promises", "http", "https", "fetch", "WebSocket") {
+			tiers["local-service"] = true
+		}
+	}
+	if strings.HasPrefix(entry.ID, "@ai-sdk/") || strings.HasPrefix(entry.Package, "@ai-sdk/") {
+		tiers["live-provider"] = true
+	}
+	if isExternalServicePackage(entry.Package) {
+		tiers["external-service"] = true
+	}
+	return sortedKeys(tiers)
+}
+
+func addAPIRisks(risks map[string]bool, apis map[string]bool) {
+	if len(apis) > 0 {
+		risks["node-core"] = true
+	}
+	if hasAny(apis, "http", "https", "net", "tls", "dns", "dns/promises") {
+		risks["network"] = true
+	}
+	if hasAny(apis, "fs", "fs/promises") {
+		risks["filesystem"] = true
+	}
+	if hasAny(apis, "crypto") {
+		risks["crypto"] = true
+	}
+	if hasAny(apis, "stream", "stream/web", "stream/promises") {
+		risks["stream"] = true
+	}
+	if hasAny(apis, "async_hooks", "diagnostics_channel") {
+		risks["async-context"] = true
+	}
+	if hasAny(apis, "worker_threads") {
+		risks["worker"] = true
+	}
+	if hasAny(apis, "child_process") {
+		risks["subprocess"] = true
+	}
+	if hasAny(apis, "zlib") {
+		risks["compression"] = true
+	}
+}
+
+func addPackageNameRisks(risks map[string]bool, name string) {
+	switch name {
+	case "":
+		return
+	case "mongodb", "pg", "chromadb":
+		risks["optional-native"] = true
+	case "pg-native", "better-sqlite3", "fastembed", "@ast-grep/napi", "@chroma-core/default-embed",
+		"kerberos", "snappy", "@mongodb-js/zstd", "mongodb-client-encryption":
+		risks["native-addon"] = true
+	case "xxhash-wasm":
+		risks["wasm"] = true
+	}
+	if strings.Contains(name, "wasm") {
+		risks["wasm"] = true
+	}
+	if strings.Contains(name, "worker") {
+		risks["worker"] = true
+	}
+}
+
+func hasAny(values map[string]bool, candidates ...string) bool {
+	for _, candidate := range candidates {
+		if values[candidate] {
+			return true
+		}
+	}
+	return false
+}
+
+func hasString(value string, candidates ...string) bool {
+	for _, candidate := range candidates {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func markSurfaceUser(users map[string]map[string]bool, surface, pkg string) {

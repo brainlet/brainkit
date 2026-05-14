@@ -35,6 +35,35 @@ package builder. The standard builder is registered by
 through the JS runtime artifact-deployer capability and are marked as
 normalized JS artifacts before runtime handoff.
 
+## Resolver policy
+
+The standard esbuild builder uses the `source-relative` resolver profile. It is
+for package source deployment, not arbitrary npm application bundling.
+
+Allowed imports are:
+
+- relative `.ts`, `.js`, `.mjs`, and `.json` files in the deployed package;
+- package index files such as `./lib/index.ts`, `./lib/index.js`, and
+  `./lib/index.json`;
+- Brainkit-provided compartment endowments: `kit`, `ai`, `agent`, and
+  `compiler`.
+
+Any other bare import, for example `uuid`, is rejected with
+`PACKAGE_RESOLVER_UNSUPPORTED_IMPORT`. The diagnostic records the requested
+specifier, importer, source package, current profile (`source-relative`), the
+allowed bare imports, and the future owner: an opt-in npm ecosystem resolver
+profile. Do not treat esbuild's package resolver as that future profile.
+
+Triage package deploy failures this way:
+
+- missing resolver profile: unsupported bare npm import from source deployment;
+- unsupported Node runtime API: dependency imported or executed a Node API that
+  jsbridge does not own yet;
+- unsupported native/worker boundary: dependency needs native addons, workers,
+  server listeners, or another explicit runtime boundary;
+- package patch required: a specific dependency version needs a declared,
+  tested source/bundle patch.
+
 ## Hot unmount
 
 Unmounting unregisters `package.*` commands and drops deployer capability

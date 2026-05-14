@@ -216,8 +216,59 @@ if (typeof require === "undefined") {
       throw new Error("toJSONSchema not yet available");
     },
   };
-	  globalThis.require = function(mod) {
-	    if (mod === "@opentelemetry/api") return _otelStub;
+  var _unsupportedBoundaryPolicy = {
+    "pg-native": { boundaryClass: "optional-native", packageName: "pg-native", suggestedOwner: "package patch or future sidecar" },
+    "kerberos": { boundaryClass: "optional-native", packageName: "kerberos", suggestedOwner: "package patch or future sidecar" },
+    "@mongodb-js/zstd": { boundaryClass: "optional-native", packageName: "@mongodb-js/zstd", suggestedOwner: "package patch or future sidecar" },
+    "snappy": { boundaryClass: "optional-native", packageName: "snappy", suggestedOwner: "package patch or future sidecar" },
+    "mongodb-client-encryption": { boundaryClass: "optional-native", packageName: "mongodb-client-encryption", suggestedOwner: "package patch or future sidecar" },
+    "@chroma-core/default-embed": { boundaryClass: "optional-native", packageName: "@chroma-core/default-embed", suggestedOwner: "configured embedding provider or future sidecar" },
+    "better-sqlite3": { boundaryClass: "optional-native", packageName: "better-sqlite3", suggestedOwner: "package patch or future sidecar" },
+    "@ast-grep/napi": { boundaryClass: "native-addon", packageName: "@ast-grep/napi", suggestedOwner: "package patch or future sidecar" },
+    "fastembed": { boundaryClass: "native-addon", packageName: "fastembed", suggestedOwner: "configured embedding provider or future sidecar" },
+    "@aws-sdk/credential-providers": { boundaryClass: "external-service", packageName: "@aws-sdk/credential-providers", suggestedOwner: "future resolver profile" },
+    "gcp-metadata": { boundaryClass: "external-service", packageName: "gcp-metadata", suggestedOwner: "future resolver profile" },
+    "socks": { boundaryClass: "external-service", packageName: "socks", suggestedOwner: "future resolver profile" },
+    "hono": { boundaryClass: "server-listener", packageName: "hono", suggestedOwner: "modules/gateway or future server-listener runtime profile" },
+    "@mastra/voice-google-gemini-live": { boundaryClass: "external-service", packageName: "@mastra/voice-google-gemini-live", packageVersion: "0.11.4", suggestedOwner: "voice module focused live proof" },
+  };
+  function _unsupportedBoundaryError(opts) {
+    opts = opts || {};
+    var api = opts.api || opts.importPath || "dynamic require";
+    var boundaryClass = opts.boundaryClass || "unsupported-node-api";
+    var err = new Error(
+      'Unsupported dynamic require "' + (opts.importPath || api) + '" ' +
+      "crosses Brainkit boundary " + boundaryClass + ". " +
+      "Suggested owner: " + (opts.suggestedOwner || "future resolver profile") + "."
+    );
+    err.name = "BrainkitUnsupportedDynamicRequireError";
+    err.code = "BRAINKIT_UNSUPPORTED_DYNAMIC_REQUIRE";
+    err.boundaryCode = "BRAINKIT_UNSUPPORTED_BOUNDARY";
+    err.specifier = opts.importPath || "";
+    err.module = opts.importPath || "";
+    err.importPath = opts.importPath || "";
+    err.api = api;
+    err.boundaryClass = boundaryClass;
+    err.suggestedOwner = opts.suggestedOwner || "future resolver profile";
+    err.owner = "internal/embed/agent.runtimeGlobalsJS";
+    err.packageName = opts.packageName || "";
+    err.packageVersion = opts.packageVersion || "";
+    return err;
+  }
+  function _unsupportedDynamicRequire(mod) {
+    var specifier = String(mod);
+    var policy = _unsupportedBoundaryPolicy[specifier] || {};
+    return _unsupportedBoundaryError({
+      importPath: specifier,
+      api: "require",
+      boundaryClass: policy.boundaryClass || "unsupported-node-api",
+      suggestedOwner: policy.suggestedOwner || "future resolver profile",
+      packageName: policy.packageName || "",
+      packageVersion: policy.packageVersion || "",
+    });
+  }
+  globalThis.require = function(mod) {
+    if (mod === "@opentelemetry/api") return _otelStub;
     if (mod === "zod/v4" || mod === "zod") {
       return globalThis.__zod_v4_module || _zodV4Wrapper;
     }
@@ -229,17 +280,17 @@ if (typeof require === "undefined") {
     }
     if (mod === "execa") {
       return { execa: globalThis.__execa_polyfill || function() { throw new Error("execa not available"); } };
-	    }
-	    return {};
-	  };
-	}
-	globalThis.node_module = {
-	  createRequire: function() {
-	    return globalThis.require;
-	  },
-	};
+    }
+    throw _unsupportedDynamicRequire(mod);
+  };
+}
+globalThis.node_module = {
+  createRequire: function() {
+    return globalThis.require;
+  },
+};
 
-	// All other polyfills (Error.captureStackTrace, process extensions, Buffer,
+// All other polyfills (Error.captureStackTrace, process extensions, Buffer,
 // navigator, performance, Intl, EventTarget, scheduling, Headers, etc.)
 // are now loaded by jsbridge polyfills in sandbox.go BEFORE this code runs.
 

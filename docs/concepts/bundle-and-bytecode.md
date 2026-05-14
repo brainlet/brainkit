@@ -47,9 +47,11 @@ Bundle production lives in `internal/embed/agent/bundle/`:
 ```
 bundle/
 ├── compat/
-│   ├── manifest.json ← declared Node/Web/package compatibility surface
-│   ├── report.json   ← checked report generated from manifest + meta.json
-│   └── inventory.json ← package/version to platform-surface inventory
+│   ├── manifest.json          ← declared Node/Web/package compatibility surface
+│   ├── report.json            ← checked report generated from manifest + meta.json
+│   ├── inventory.json         ← package/version to platform-surface inventory
+│   ├── node-api-target.json   ← Node/Web semantic target and known gaps
+│   └── capability-matrix.json ← Mastra feature proof/support matrix
 ├── build.mjs      ← esbuild driver
 ├── entry.mjs      ← re-exports every public symbol
 ├── meta.json      ← esbuild metadata for size reports
@@ -83,8 +85,8 @@ surface; `make jsbridge-compat-inventory-save` updates the checked
 Use the maintenance gates by scope:
 
 - `make jsbridge-compat-check` checks compatibility metadata, the package
-  patch registry, bundle stubs, inventory, and the Mastra capability matrix
-  without rebuilding artifacts.
+  patch registry, bundle stubs, inventory, the Node API semantic target, and
+  the Mastra capability matrix without rebuilding artifacts.
 - `make jsbridge-lifecycle-check` checks runtime lifecycle and scale behavior:
   bridge resource cancellation, active async handler unmount, shared
   `bus.call` / `bus.callStream` concurrency, and gateway stream shutdown.
@@ -101,6 +103,41 @@ runtime and package profiles still prepare `.ts` source through the package
 source pipeline and `vendor_typescript`; artifact-only runtime profiles reject
 raw TypeScript and accept normalized JavaScript artifacts. Do not use the agent
 bundle or bytecode path as a reason to remove raw `.ts` support.
+
+## Resolver Products
+
+Brainkit has three different resolver products. Keep them separate when
+debugging package failures.
+
+1. **Agent embed curated bundle.** `internal/embed/agent/bundle` builds the
+   checked Mastra/AI SDK bundle from its own lockfile. It owns npm dependency
+   resolution for that curated runtime artifact and is guarded by the
+   compatibility manifest, inventory, package-patch registry, bytecode rebuild,
+   and jsbridge checks.
+2. **Default source-relative package deployment.**
+   `modules/packages/bundlers/esbuild` prepares user package source. Its active
+   resolver profile is `source-relative`: relative `.ts`, `.js`, `.mjs`, and
+   `.json` imports inside the package are supported, and only the Brainkit
+   endowment imports `kit`, `ai`, `agent`, and `compiler` are accepted as bare
+   imports. Arbitrary bare npm imports are rejected with
+   `PACKAGE_RESOLVER_UNSUPPORTED_IMPORT`.
+3. **Future opt-in npm ecosystem resolver profile.** Broad npm package
+   resolution for deployed user packages is a future named profile. It must own
+   package install/source policy, Node API boundary diagnostics, native and
+   worker rejection, package patches, cache/lifecycle behavior, and tests. Do
+   not hide that product behind accidental esbuild resolution.
+
+Failure triage:
+
+- `PACKAGE_RESOLVER_UNSUPPORTED_IMPORT` means the current source package needs
+  the future npm resolver profile or should be rewritten to use relative files
+  and Brainkit endowments.
+- A jsbridge typed unsupported error means a dependency reached a Node/Web API
+  that the runtime platform does not support yet.
+- A native, worker, or server-listener boundary error means the package needs a
+  new explicit owner/profile, not a shape-only stub.
+- A package-specific build/source quirk belongs in the package-patch registry
+  with tests and a removal condition.
 
 esbuild settings (`format: "iife"`, `platform: "browser"`, `minify:
 true`, `treeShaking: true`) produce a single IIFE that attaches its
@@ -143,6 +180,12 @@ The bundle has a checked compatibility inventory under
   bundle `package.json`. It links package names/versions to Node APIs,
   external imports, package patches, dependency class, resources/tests,
   and external-service flags.
+- `node-api-target.json` is the reviewed semantic target for Node/Web API
+  families. It records accepted Brainkit semantics, known gaps, lifecycle
+  impact, proof refs, and the next proof needed.
+- `capability-matrix.json` is the Mastra support matrix. Schema v2 records
+  support level, proof tiers, Node APIs, known gaps, and promotion
+  conditions so import-only rows are not confused with real runtime support.
 
 Unknown Node builtins and subpaths fail the bundle build. Known
 unsupported APIs are owned by jsbridge polyfills that throw typed
@@ -220,9 +263,14 @@ A handful of bundle dependencies (`@opentelemetry/api`, `zod/v4`,
 `vscode-jsonrpc/node`, `vscode-languageserver-protocol`, `execa`)
 perform dynamic `require()` calls that esbuild cannot resolve at
 build time. The runtimeGlobalsJS installs a `globalThis.require`
-function that serves no-op stubs for those cases — OTel becomes a
-tracer/span pair of shapes that record nothing; missing LSP deps
-become empty objects.
+function that serves only manifest-owned cases: OTel becomes a
+tracer/span pair of shapes that record nothing, Zod resolves to the
+bundled v4 singleton, optional LSP deps resolve to shape-only objects,
+and execa resolves to the explicit hook. Any other dynamic require
+throws `BrainkitUnsupportedDynamicRequireError` with
+`code=BRAINKIT_UNSUPPORTED_DYNAMIC_REQUIRE`, the requested specifier,
+and the runtimeGlobalsJS owner. Unknown dynamic require must never
+fall back to `{}`.
 
 ## Bytecode Caching
 

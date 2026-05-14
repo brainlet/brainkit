@@ -228,16 +228,54 @@ imports, package patches, dependency class, resource/tests, and
 external-service flags. Use it to answer "which dependency needs this
 polyfill or patch?" before adding new platform behavior.
 
+`internal/embed/agent/bundle/compat/node-api-target.json` is the semantic
+target for the compatibility platform. It groups module loading, process,
+async context, streams, encoding, crypto, filesystem, networking,
+compression, child processes, WASM, diagnostics/observability, workers,
+native/optional dependencies, and package patches into explicit support
+statuses:
+
+- `standard`
+- `exact-used`
+- `compat-partial`
+- `shape-only`
+- `unsupported-boundary`
+- `external-service`
+- `package-patched`
+
+Each row records owner, surfaces, packages using the surface, tests, accepted
+semantics, known gaps, lifecycle impact, and the next proof required. The file
+is checked by `make agent-embed-node-api-target-check` and included in
+`make jsbridge-compat-check`.
+
+Unsupported rows are required to be actionable, not only absent. Manifest and
+inventory entries for unsupported runtime boundaries carry a `boundaryClass`
+and `suggestedOwner`. The current boundary classes are:
+
+- `native-addon`
+- `worker`
+- `server-listener`
+- `external-service`
+- `optional-native`
+- `unsupported-node-api`
+
 `internal/embed/agent/bundle/compat/capability-matrix.json` is the
 capability-level view. It maps Agent, AI SDK, workflow, tools, memory, RAG,
 vector/storage, observability, voice, provider, scorer, and eval surfaces to
-proof tiers:
+support levels and proof tiers:
 
 - `import-only` for constructor/import shape without external credentials;
 - `offline-fake` for fake model or provider-independent runtime proof;
 - `local-service` for local HTTP/WebSocket/service probes;
 - `live-provider` for OpenAI or other provider-backed runs;
 - `external-service` for Podman-backed storage/vector/service dependencies.
+
+Schema v2 also records Node APIs, known gaps, and promotion conditions. For
+example, jsbridge now provides real `diagnostics_channel` publish/subscriber
+semantics, but Mastra observability support still does not imply real OTel
+active span propagation. General voice support also does not imply Gemini Live
+is runnable. Those paths have explicit rows until they are promoted by focused
+proof.
 
 The matrix is checked by `make agent-embed-capability-matrix-check` and is
 included in `make jsbridge-compat-check`. Use it before claiming a Mastra
@@ -253,13 +291,24 @@ reviewed.
 Some manifest rows are deliberately partial because the current dependency
 closure needs import/runtime shape, not full Node behavior:
 
-- `async_hooks` is shape-only except for synchronous
-  `AsyncLocalStorage.run`, `enterWith`, `disable`, and
-  `AsyncResource.runInAsyncScope`. It does not propagate context through
-  arbitrary async work, and `executionAsyncId` / `triggerAsyncId` return `0`.
-- `diagnostics_channel` is a no-op surface. `channel().subscribe()` and
-  `publish()` are accepted, but subscribers are not retained or invoked and
-  `hasSubscribers` stays `false` until a tracing owner provides real behavior.
+- `async_hooks` is partial. `AsyncLocalStorage` supports synchronous
+  `run`, `enterWith`, `disable`, independent nested instances, and
+  `AsyncResource.runInAsyncScope` with captured stores. It also propagates
+  stores across Brainkit-owned callback boundaries: timers, timer promise
+  callback chains, fetch `.then()` callbacks returned by jsbridge `fetch`, and
+  `EventEmitter` listeners, including stream/http callbacks registered through
+  that emitter. The JS runtime also binds `bus.subscribe` handlers and
+  `bus.callStream` `onChunk` / final promise callbacks. It does not provide
+  general Promise-hook propagation across
+  arbitrary `await` chains, and `executionAsyncId` / `triggerAsyncId` return
+  `0`.
+- `diagnostics_channel` is partial runtime compatibility. Channels retain
+  subscribers, `publish()` invokes them synchronously in subscription order,
+  subscriber errors propagate to the publisher, `hasSubscribers` tracks
+  subscribe/unsubscribe transitions, module-level
+  `subscribe`/`unsubscribe`/`hasSubscribers` delegate to named channels, and
+  `tracingChannel()` exposes real child channels. OTel active span/context
+  propagation is still not real until a tracing module owns it.
 - `module.createRequire` is bundle-local. It returns the same dynamic
   `require()` shim used by the agent embed, not a filesystem-aware Node
   module resolver.
@@ -269,6 +318,21 @@ closure needs import/runtime shape, not full Node behavior:
   shape-only objects. Dynamic `require("execa")` returns the explicit execa
   hook and otherwise throws from that hook when process execution is not
   available.
+- Unknown dynamic require requests throw
+  `BrainkitUnsupportedDynamicRequireError` with
+  `code=BRAINKIT_UNSUPPORTED_DYNAMIC_REQUIRE`; the error records the requested
+  specifier, `boundaryCode=BRAINKIT_UNSUPPORTED_BOUNDARY`, `boundaryClass`,
+  `suggestedOwner`, package metadata when known, and
+  `internal/embed/agent.runtimeGlobalsJS` as owner. Adding a new dynamic
+  require path requires a manifest row plus an explicit shim, package patch, or
+  unsupported boundary.
+- Worker construction and Node server listeners throw
+  `BrainkitUnsupportedBoundaryError` with
+  `code=BRAINKIT_UNSUPPORTED_BOUNDARY`. Current server listener boundaries are
+  `http.createServer`, `https.createServer`, `net.createServer`, and
+  `tls.createServer`; listener lifecycle belongs to `modules/gateway` or a
+  future server-listener runtime profile, not to the generic client-side
+  jsbridge polyfills.
 
 These are not hidden fallbacks. They are manifest rows with focused tests and
 must stay documented until a real owner upgrades the behavior.
@@ -398,9 +462,10 @@ real QuickJS bridge. The packs cover:
   classes, FormData, Blob/File, Web Streams, and Audio shape.
 - Node core: process, Buffer, crypto, os, path, EventEmitter, streams,
   timers/promises, fs, child_process, assert, querystring, StringDecoder,
-  util.types, zlib, and dns.
-- Unsupported typed failures: http, https, worker_threads, unsupported
-  crypto cipher creation, and zlib brotli.
+  util.types, zlib, dns, and client-side `http`/`https` request/get over
+  fetch.
+- Unsupported typed failures: http/https server creation, worker_threads,
+  unsupported crypto cipher creation, and zlib brotli.
 
 `internal/embed/agent/conformance_test.go` covers the SES and bundle load
 contract: bundle exports survive lockdown, Compartment/harden/lockdown
@@ -412,24 +477,29 @@ Compartment endowments evaluate correctly.
 When a Mastra, AI SDK, provider, or storage dependency fails in QuickJS:
 
 1. Reproduce with `make agent-embed-rebuild-check` or a focused fixture.
-2. Read the `brainkit js error (...)` context first. Confirm the owner,
+2. If the error is `PACKAGE_RESOLVER_UNSUPPORTED_IMPORT`, it happened before
+   jsbridge runtime execution. The default package deploy profile is
+   `source-relative`; only relative package files and the bare endowments
+   `kit`, `ai`, `agent`, and `compiler` are accepted. Broad npm dependency
+   resolution belongs to a future opt-in npm ecosystem resolver profile.
+3. Read the `brainkit js error (...)` context first. Confirm the owner,
    phase, source, provider/model identifiers when present, bridge
    snapshot, JavaScript cause, and JavaScript stack.
-3. Inspect `make jsbridge-compat-report` for new builtins, subpaths,
+4. Inspect `make jsbridge-compat-report` for new builtins, subpaths,
    dynamic requires, externals, or package patch drift.
-4. Add or update the manifest row with owner, status, reason, tests, and
+5. Add or update the manifest row with owner, status, reason, tests, and
    resources.
-5. Implement runtime behavior in `internal/jsbridge` when the gap is a
+6. Implement runtime behavior in `internal/jsbridge` when the gap is a
    Node/Web API. Keep `build.mjs` as a mechanical re-export.
-6. Use a package-patch row only for dependency-specific build or source
+7. Use a package-patch row only for dependency-specific build or source
    quirks. Mark misses required unless the package version legitimately
    may not contain the pattern.
-7. Add direct conformance/unit coverage and, where needed, a fixture under
+8. Add direct conformance/unit coverage and, where needed, a fixture under
    `test/fixtures`.
-8. If the failure involves cancellation, streams, goroutines, timers, sockets,
+9. If the failure involves cancellation, streams, goroutines, timers, sockets,
    subprocesses, or mount/unmount behavior, add a lifecycle regression and run
    `make jsbridge-lifecycle-check`.
-9. Rebuild bytecode and rerun `make agent-embed-rebuild-check`.
+10. Rebuild bytecode and rerun `make agent-embed-rebuild-check`.
 
 ## Key Polyfill Internals
 
@@ -544,8 +614,9 @@ with conformance packs for cross-surface behavior. Representative coverage:
 - `nodestreams_test.go` — `for await` iteration, `pipe`, `return()`
   data transfer.
 - `nodecompat_test.go` — assert, querystring, StringDecoder, util,
-  perf_hooks, unsupported http/https, worker_threads, async_hooks, and
-  diagnostics_channel shapes.
+  perf_hooks, client-side http/https, unsupported http/https server APIs,
+  worker_threads, partial async_hooks, and diagnostics_channel runtime
+  semantics.
 - `net_test.go` — TCP connect/write/close, TLS upgrade.
 - `dns_test.go` — `dns.lookup` (sync + promises).
 - `zlib_test.go` — inflate/deflate/gzip round trips.
@@ -567,8 +638,8 @@ or the full `make agent-embed-rebuild-check` upgrade gate.
 
 Use this gate split during development:
 
-- `make jsbridge-compat-check` for manifest, inventory, capability-matrix,
-  package-patch, and bundle-stub drift.
+- `make jsbridge-compat-check` for manifest, inventory, Node API target,
+  capability-matrix, package-patch, and bundle-stub drift.
 - `make jsbridge-lifecycle-check` for cancellation, streaming, runtime
   unmount, resource-drain, and shared-caller scale proof.
 - `make agent-embed-check` for current artifacts plus the focused fixture set.
