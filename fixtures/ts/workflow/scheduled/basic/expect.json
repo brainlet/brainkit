@@ -1,0 +1,20 @@
+{
+  "engineType": "evented",
+  "scheduleRegistered": true,
+  "scheduleCron": "* * * * *",
+  "scheduleTimezone": "",
+  "scheduleMetadata": "scheduled-basic",
+  "workerSubscriptionStarted": true,
+  "schedulerRunningBeforeShutdown": true,
+  "executionCount": 1,
+  "executionUserId": "system",
+  "executionSource": "schedule-fixture",
+  "triggerOutcome": "published",
+  "triggerRunIdMatches": true,
+  "lastRunIdMatches": true,
+  "nextFireAdvanced": true,
+  "workflowEventHandled": true,
+  "workflowEventFailures": 0,
+  "finalActiveWorkflowSubscriptions": 0,
+  "finalActiveSchedulerCount": 0
+}

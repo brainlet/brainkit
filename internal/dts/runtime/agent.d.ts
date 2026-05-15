@@ -225,6 +225,251 @@ declare module "agent" {
     execute?: (args: any) => any | Promise<any>;
   }
 
+  // ── Browser ───────────────────────────────────────────────────
+
+  export type BrowserStatus = "pending" | "launching" | "ready" | "error" | "closing" | "closed";
+  export type BrowserScope = "shared" | "thread";
+
+  export interface BrowserConfigBase {
+    headless?: boolean;
+    viewport?: { width: number; height: number };
+    timeout?: number;
+    cdpUrl?: string | (() => string | Promise<string>);
+    scope?: BrowserScope;
+    onLaunch?: (args: { browser: MastraBrowser }) => void | Promise<void>;
+    onClose?: (args: { browser: MastraBrowser }) => void | Promise<void>;
+    screencast?: {
+      enabled?: boolean;
+      format?: "jpeg" | "png";
+      quality?: number;
+      maxWidth?: number;
+      maxHeight?: number;
+      everyNthFrame?: number;
+    };
+    profile?: string;
+    executablePath?: string;
+  }
+
+  export type BrowserConfig =
+    | (BrowserConfigBase & { cdpUrl?: undefined; scope?: BrowserScope })
+    | (BrowserConfigBase & { cdpUrl: string | (() => string | Promise<string>); scope?: "shared" });
+
+  export interface BrowserTabState {
+    url: string | null;
+    title?: string;
+    id?: string;
+    active?: boolean;
+    [key: string]: unknown;
+  }
+
+  export interface BrowserState {
+    currentUrl?: string | null;
+    tabs?: BrowserTabState[];
+    activeTabIndex?: number;
+    [key: string]: unknown;
+  }
+
+  export interface ScreencastStream {
+    stop(): Promise<void>;
+    isActive(): boolean;
+    reconnect(): Promise<void>;
+    on(event: "frame", handler: (frame: { data: string; viewport: { width: number; height: number } }) => void): this;
+    on(event: "stop", handler: (reason: string) => void): this;
+    on(event: "error", handler: (error: Error) => void): this;
+    on(event: "url", handler: (url: string) => void): this;
+    emitUrl(url: string): void;
+  }
+
+  export interface MouseEventParams {
+    type: "mousePressed" | "mouseReleased" | "mouseMoved" | "mouseWheel";
+    x: number;
+    y: number;
+    button?: "left" | "right" | "middle" | "none";
+    clickCount?: number;
+    deltaX?: number;
+    deltaY?: number;
+    modifiers?: number;
+  }
+
+  export interface KeyboardEventParams {
+    type: "keyDown" | "keyUp" | "char";
+    key?: string;
+    code?: string;
+    text?: string;
+    modifiers?: number;
+    windowsVirtualKeyCode?: number;
+  }
+
+  export interface BrowserContext {
+    provider: string;
+    providerType?: "sdk" | "cli";
+    sessionId?: string;
+    headless?: boolean;
+    currentUrl?: string;
+    pageTitle?: string;
+    cdpUrl?: string;
+  }
+
+  export class BrowserContextProcessor {
+    readonly id: "browser-context";
+    processInput(args: any): any;
+    processInputStep(args: any): Promise<any>;
+  }
+
+  export abstract class MastraBrowser {
+    abstract readonly id: string;
+    abstract readonly name: string;
+    abstract readonly provider: string;
+    readonly providerType: "sdk" | "cli";
+    status: BrowserStatus;
+    error?: string;
+    constructor(config?: BrowserConfig);
+    get headless(): boolean;
+    launch(threadId?: string): Promise<void>;
+    close(): Promise<void>;
+    connectToExternalCdp(cdpUrl: string, threadId?: string): Promise<void>;
+    ensureReady(): Promise<void>;
+    isBrowserRunning(threadId?: string): boolean;
+    getCdpUrl(threadId?: string): string | null;
+    getCurrentUrl(threadId?: string): Promise<string | null>;
+    getBrowserState(threadId?: string): Promise<BrowserState | null>;
+    getLastBrowserState(threadId?: string): BrowserState | undefined;
+    getTabState(threadId?: string): Promise<BrowserTabState[]>;
+    getActiveTabIndex(threadId?: string): Promise<number>;
+    navigateTo(url: string): Promise<void>;
+    setCurrentThread(threadId?: string): void;
+    getCurrentThread(): string;
+    getScope(): BrowserScope;
+    startScreencast(options?: BrowserConfigBase["screencast"]): Promise<ScreencastStream>;
+    hasThreadSession(threadId: string): boolean;
+    closeThreadSession(threadId: string): Promise<void>;
+    getSessionId(threadId?: string): string;
+    startScreencastIfBrowserActive(options?: BrowserConfigBase["screencast"]): Promise<ScreencastStream | null>;
+    injectMouseEvent(event: MouseEventParams, threadId?: string): Promise<void>;
+    injectKeyboardEvent(event: KeyboardEventParams, threadId?: string): Promise<void>;
+    getInputProcessors(configuredProcessors?: any[]): any[];
+    protected abstract doLaunch(): Promise<void>;
+    protected abstract doClose(): Promise<void>;
+    protected abstract getActivePage(threadId?: string): Promise<{ url(): string } | null>;
+    protected abstract getBrowserStateForThread(threadId?: string): BrowserState | null;
+    abstract getTools(): Record<string, Tool>;
+  }
+
+  // ── Channels ───────────────────────────────────────────────────
+
+  export interface ChannelMessage {
+    id?: string;
+    text?: string;
+    userId?: string;
+    userName?: string;
+    [key: string]: any;
+  }
+
+  export interface ChannelThread {
+    id: string;
+    post(message: string | Record<string, unknown>): Promise<unknown>;
+    [key: string]: any;
+  }
+
+  export interface ChannelAdapter {
+    name: string;
+    postMessage?(...args: any[]): Promise<any>;
+    editMessage?(...args: any[]): Promise<any>;
+    deleteMessage?(...args: any[]): Promise<any>;
+    addReaction?(...args: any[]): Promise<any>;
+    removeReaction?(...args: any[]): Promise<any>;
+    handleWebhook?(request: Request): Promise<Response>;
+    initialize?(...args: any[]): Promise<void>;
+    fetchMessages?(...args: any[]): Promise<ChannelMessage[]>;
+    encodeThreadId?(...parts: string[]): string;
+    decodeThreadId?(id: string): string[];
+    channelIdFromThreadId?(id: string): string;
+    renderFormatted?(message: string | Record<string, unknown>): unknown;
+    fetchThread?(...args: any[]): Promise<ChannelThread | null>;
+    startTyping?(...args: any[]): Promise<void>;
+    parseMessage?(raw: unknown): unknown;
+    userName?: string;
+    [key: string]: any;
+  }
+
+  export interface ChannelAdapterConfig {
+    adapter: ChannelAdapter;
+    gateway?: boolean;
+    cards?: boolean;
+    formatToolCall?: (info: { toolName: string; args: Record<string, unknown>; result: unknown; isError?: boolean }) => string | Record<string, unknown> | null;
+    formatError?: (error: Error) => string | Record<string, unknown>;
+  }
+
+  export type ChannelHandler = (
+    thread: ChannelThread,
+    message: ChannelMessage,
+    defaultHandler: (thread: ChannelThread, message: ChannelMessage) => Promise<void>,
+  ) => Promise<void>;
+  export type ChannelHandlerConfig = ChannelHandler | false | undefined;
+  export interface ChannelHandlers {
+    onDirectMessage?: ChannelHandlerConfig;
+    onMention?: ChannelHandlerConfig;
+    onSubscribedMessage?: ChannelHandlerConfig;
+  }
+
+  export interface ChannelConfig {
+    adapters: Record<string, ChannelAdapter | ChannelAdapterConfig>;
+    handlers?: ChannelHandlers;
+    inlineMedia?: string[] | ((mimeType: string) => boolean);
+    inlineLinks?: Array<string | { match: string; mimeType: string }>;
+    state?: any;
+    userName?: string;
+    threadContext?: { maxMessages?: number };
+    tools?: boolean;
+    chatOptions?: Record<string, unknown>;
+  }
+
+  export interface ChannelContext {
+    platform: string;
+    isDM?: boolean;
+    userId?: string;
+    userName?: string;
+    botUserName?: string;
+    botMention?: string;
+    externalThreadId?: string;
+    externalChannelId?: string;
+    [key: string]: any;
+  }
+
+  export interface ApiRoute {
+    path: string;
+    method?: string;
+    requiresAuth?: boolean;
+    createHandler?: (...args: any[]) => Promise<any> | any;
+    [key: string]: any;
+  }
+
+  export class AgentChannels {
+    constructor(config: ChannelConfig);
+    readonly adapters: Record<string, ChannelAdapter>;
+    readonly sdk: any | null;
+    __setAgent(agent: Agent): void;
+    hasAdapter(platform: string): boolean;
+    initialize(mastra: Mastra): Promise<void>;
+    getTools(): Record<string, Tool>;
+    getWebhookRoutes(): ApiRoute[];
+    handleWebhookEvent(platform: string, event: unknown): Promise<unknown>;
+  }
+
+  export class ChatChannelProcessor {
+    readonly id: "chat-channel-context";
+    processInputStep(args: { requestContext?: RequestContext; systemMessages: any[]; [key: string]: any }): { systemMessages: any[] } | undefined;
+  }
+
+  export class MastraStateAdapter {
+    constructor(memoryStore: any);
+    connect(): Promise<void>;
+    disconnect(): Promise<void>;
+    subscribe(threadId: string): Promise<void>;
+    unsubscribe(threadId: string): Promise<void>;
+    isSubscribed(threadId: string): Promise<boolean>;
+  }
+
   // ── Agent ─────────────────────────────────────────────────────
 
   /**
@@ -262,6 +507,21 @@ declare module "agent" {
 
     /** Legacy stream path — kept for pre-v0.20 callers. */
     streamLegacy(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentStreamResult>;
+
+    /**
+     * Stream an agent run and keep the stream open until dispatched
+     * background tasks complete and their continuation turns finish.
+     */
+    streamUntilIdle(promptOrMessages: string | Message[], options?: AgentCallOptions & { maxIdleMs?: number }): Promise<AgentStreamResult>;
+
+    /**
+     * Resume a suspended run, then keep the stream open across any
+     * background-task continuations.
+     */
+    resumeStreamUntilIdle(
+      resumeData: unknown,
+      options?: AgentCallOptions & { runId: string; toolCallId?: string; maxIdleMs?: number },
+    ): Promise<AgentStreamResult>;
 
     /** Supervisor mode — delegates to sub-agents. Requires `memory` on AgentConfig. */
     network(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentResult>;
@@ -308,6 +568,12 @@ declare module "agent" {
     getWorkspace(opts?: { requestContext?: RequestContext }): Promise<Workspace | undefined>;
     /** Returns true if a workspace is configured on this agent. */
     hasOwnWorkspace(): boolean;
+    /** Attached browser provider, if configured. */
+    readonly browser: MastraBrowser | undefined;
+    /** Updates the browser provider used for browser tools. */
+    setBrowser(browser: MastraBrowser | undefined): void;
+    /** Returns true when this agent owns an explicit browser binding. */
+    hasOwnBrowser(): boolean;
     /** Returns the agent's instructions (resolved if dynamic). */
     getInstructions(opts?: { requestContext?: RequestContext }): Promise<string | string[]>;
     /** Returns the agent description (empty string if unset). */
@@ -320,6 +586,8 @@ declare module "agent" {
     listScorers(opts?: { requestContext?: RequestContext }): Promise<Record<string, { scorer: Scorer; sampling?: any }>>;
     /** Returns sub-agents for network/delegation patterns. */
     listAgents(opts?: { requestContext?: RequestContext }): Promise<Record<string, Agent>>;
+    /** Returns chat channel orchestration for this agent, if configured. */
+    getChannels(): AgentChannels | null;
     /** Returns input processors (including memory-derived). */
     listInputProcessors(requestContext?: RequestContext): Promise<any[]>;
     /** Returns output processors (including memory-derived). */
@@ -351,12 +619,18 @@ declare module "agent" {
     scorers?: Record<string, { scorer: Scorer; sampling?: any }>;
     /** Memory module for conversation persistence. */
     memory?: Memory | (() => Memory);
+    /** Background-task policy for this agent. */
+    backgroundTasks?: AgentBackgroundConfig;
     /** Format for skill injection. @default 'xml' */
     skillsFormat?: "xml" | "json";
     /** Voice provider — OpenAIVoice / CompositeVoice / OpenAIRealtimeVoice. */
     voice?: MastraVoice;
     /** Workspace for file storage and code execution. */
     workspace?: Workspace | (() => Workspace | undefined);
+    /** Browser provider — SDK browser tools are added at execution time. */
+    browser?: MastraBrowser;
+    /** Channel adapters for chat-platform delivery and webhook routes. */
+    channels?: ChannelConfig | AgentChannels;
     /** Input processors — middleware before the LLM. */
     inputProcessors?: any[];
     /** Output processors — middleware after the LLM. */
@@ -683,6 +957,410 @@ declare module "agent" {
     [key: string]: unknown;
   }
 
+  // ── Background Tasks ─────────────────────────────────────────
+
+  export type BackgroundTaskStatus =
+    | "pending"
+    | "running"
+    | "suspended"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "timed_out";
+
+  export interface BackgroundTask {
+    id: string;
+    status: BackgroundTaskStatus;
+    toolName: string;
+    toolCallId: string;
+    args: Record<string, unknown>;
+    agentId: string;
+    threadId?: string;
+    resourceId?: string;
+    runId: string;
+    result?: unknown;
+    error?: { message: string; stack?: string };
+    createdAt: Date;
+    startedAt?: Date;
+    suspendedAt?: Date;
+    completedAt?: Date;
+    retryCount: number;
+    maxRetries: number;
+    timeoutMs: number;
+    suspendPayload?: unknown;
+  }
+
+  export interface TaskFilter {
+    toolCallId?: string;
+    status?: BackgroundTaskStatus | BackgroundTaskStatus[];
+    agentId?: string;
+    threadId?: string;
+    resourceId?: string;
+    toolName?: string;
+    runId?: string;
+    fromDate?: Date;
+    toDate?: Date;
+    dateFilterBy?: "createdAt" | "startedAt" | "suspendedAt" | "completedAt";
+    orderBy?: "createdAt" | "startedAt" | "suspendedAt" | "completedAt";
+    orderDirection?: "asc" | "desc";
+    page?: number;
+    perPage?: number;
+  }
+
+  export interface TaskListResult {
+    tasks: BackgroundTask[];
+    total: number;
+  }
+
+  export interface BackgroundTaskStreamFilter {
+    agentId?: string;
+    runId?: string;
+    threadId?: string;
+    resourceId?: string;
+    taskId?: string;
+    abortSignal?: AbortSignal;
+  }
+
+  export interface RetryConfig {
+    maxRetries?: number;
+    retryDelayMs?: number;
+    backoffMultiplier?: number;
+    maxRetryDelayMs?: number;
+    retryableErrors?: (error: Error) => boolean;
+  }
+
+  export interface CleanupConfig {
+    completedTtlMs?: number;
+    failedTtlMs?: number;
+    cleanupIntervalMs?: number;
+  }
+
+  export interface BackgroundTaskManagerConfig {
+    enabled: boolean;
+    globalConcurrency?: number;
+    perAgentConcurrency?: number;
+    backpressure?: "queue" | "reject" | "fallback-sync";
+    defaultTimeoutMs?: number;
+    defaultRetries?: RetryConfig;
+    cleanup?: CleanupConfig;
+    progressThrottleMs?: number;
+    waitTimeoutMs?: number;
+    onTaskComplete?: (task: BackgroundTask) => void | Promise<void>;
+    onTaskFailed?: (task: BackgroundTask) => void | Promise<void>;
+  }
+
+  export interface ToolBackgroundConfig {
+    enabled?: boolean;
+    timeoutMs?: number;
+    maxRetries?: number;
+    waitTimeoutMs?: number;
+    onComplete?: (task: BackgroundTask) => void | Promise<void>;
+    onFailed?: (task: BackgroundTask) => void | Promise<void>;
+  }
+
+  export type AgentBackgroundToolConfig = boolean | { enabled: boolean; timeoutMs?: number };
+
+  export interface AgentBackgroundConfig {
+    disabled?: boolean;
+    tools?: Record<string, AgentBackgroundToolConfig> | "all";
+    concurrency?: number;
+    waitTimeoutMs?: number;
+    onTaskComplete?: (task: BackgroundTask) => void | Promise<void>;
+    onTaskFailed?: (task: BackgroundTask) => void | Promise<void>;
+  }
+
+  export interface LLMBackgroundOverride {
+    enabled?: boolean;
+    timeoutMs?: number;
+    maxRetries?: number;
+  }
+
+  export type BackgroundTaskStreamChunk =
+    | { type: "background-task-started"; payload: any }
+    | { type: "background-task-running"; payload: any }
+    | { type: "background-task-progress"; payload: any }
+    | { type: "background-task-output"; payload: any }
+    | { type: "background-task-completed"; payload: any }
+    | { type: "background-task-failed"; payload: any }
+    | { type: "background-task-cancelled"; payload: any }
+    | { type: "background-task-suspended"; payload: any }
+    | { type: "background-task-resumed"; payload: any };
+
+  export class BackgroundTaskManager {
+    constructor(config?: BackgroundTaskManagerConfig);
+    readonly config: BackgroundTaskManagerConfig;
+    getTask(taskId: string): Promise<BackgroundTask | null>;
+    listTasks(filter?: TaskFilter): Promise<TaskListResult>;
+    stream(filter?: BackgroundTaskStreamFilter): ReadableStream<BackgroundTaskStreamChunk>;
+    resume(taskId: string, resumeData?: unknown): Promise<BackgroundTask>;
+    cancel(taskId: string): Promise<void>;
+    shutdown(): Promise<void>;
+  }
+
+  export function createBackgroundTask(manager: BackgroundTaskManager, options: any): any;
+  export function generateBackgroundTaskSystemPrompt(config: AgentBackgroundConfig, tools: Record<string, any>): string;
+  export function __brainkitMastraBackgroundTaskDebug(): {
+    openedStreams: number;
+    closedStreams: number;
+    activeStreams: number;
+    activeTrackedStreams: number;
+    activeTaskContexts: number;
+    activeAbortControllers: number;
+    shuttingDownManagers: number;
+    shutdownCalls: number;
+    workerStartCalls: number;
+    workerStopCalls: number;
+    activeWorkerCount: number;
+    activeWorkerNames: string[];
+    activeWorkflowEventSubscriptions: number;
+    workflowEventsReceived: number;
+    workflowEventsOk: number;
+    workflowEventsRetry: number;
+    workflowEventsFailed: number;
+    activeSchedulerCount: number;
+  };
+
+  // ── Harness ─────────────────────────────────────────────────
+
+  export type HarnessPermissionPolicy = "allow" | "ask" | "deny";
+  export type HarnessToolCategory = "read" | "edit" | "execute" | "mcp" | "other";
+
+  export interface HarnessMode<TState = Record<string, unknown>> {
+    id: string;
+    name?: string;
+    default?: boolean;
+    defaultModelId?: string;
+    color?: string;
+    agent: Agent | ((state: TState) => Agent);
+  }
+
+  export interface HarnessThread {
+    id: string;
+    resourceId: string;
+    title?: string;
+    createdAt: Date;
+    updatedAt: Date;
+    tokenUsage?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  }
+
+  export interface HarnessTaskItemInput {
+    id?: string;
+    content: string;
+    status: "pending" | "completed" | "in_progress";
+    activeForm: string;
+  }
+
+  export type HarnessMessageContent =
+    | { type: "text"; text: string }
+    | { type: "thinking"; thinking: string }
+    | { type: "image"; data: string; mimeType: string }
+    | { type: "file"; data: string; mediaType: string; filename?: string }
+    | { type: "tool_call"; id: string; name: string; args: unknown }
+    | { type: "tool_result"; id: string; name: string; result: unknown; isError?: boolean; providerMetadata?: Record<string, unknown> }
+    | { type: "system_reminder"; message: string; reminderType?: string; path?: string; precedesMessageId?: string; gapText?: string; gapMs?: number; timestamp?: string }
+    | Record<string, unknown>;
+
+  export interface HarnessMessage {
+    id: string;
+    role: "user" | "assistant" | "system" | string;
+    content: HarnessMessageContent[];
+    createdAt: Date;
+  }
+
+  export interface HarnessSession {
+    currentThreadId: string | null;
+    currentModeId: string;
+    threads: HarnessThread[];
+  }
+
+  export type OMStatus = "idle" | "observing" | "reflecting";
+  export type OMBufferedStatus = "idle" | "running" | "complete";
+
+  export interface OMProgressState {
+    status: OMStatus;
+    pendingTokens: number;
+    threshold: number;
+    thresholdPercent: number;
+    observationTokens: number;
+    reflectionThreshold: number;
+    reflectionThresholdPercent: number;
+    buffered: {
+      observations: {
+        status: OMBufferedStatus;
+        chunks: number;
+        messageTokens: number;
+        projectedMessageRemoval: number;
+        observationTokens: number;
+      };
+      reflection: {
+        status: OMBufferedStatus;
+        inputObservationTokens: number;
+        observationTokens: number;
+      };
+    };
+    generationCount: number;
+    stepNumber: number;
+    cycleId?: string;
+    startTime?: number;
+    preReflectionTokens: number;
+  }
+
+  export interface HarnessOMConfig {
+    defaultObserverModelId?: string;
+    defaultReflectorModelId?: string;
+    defaultObservationThreshold?: number;
+    defaultReflectionThreshold?: number;
+  }
+
+  export interface ObservationalMemoryRecord {
+    id: string;
+    threadId: string | null;
+    resourceId: string;
+    scope?: "thread" | "resource" | string;
+    activeObservations?: string;
+    pendingMessageTokens?: number;
+    observationTokenCount?: number;
+    generationCount?: number;
+    config?: Record<string, unknown>;
+    createdAt?: Date | string;
+    updatedAt?: Date | string;
+    [key: string]: unknown;
+  }
+
+  export interface HarnessDisplayState {
+    isRunning: boolean;
+    currentMessage: HarnessMessage | null;
+    tokenUsage: Record<string, unknown>;
+    activeTools: Map<string, unknown>;
+    pendingApproval: unknown;
+    pendingSuspension: unknown;
+    pendingQuestion: unknown;
+    pendingPlanApproval: unknown;
+    tasks: unknown[];
+    previousTasks: unknown[];
+    omProgress: OMProgressState;
+    bufferingMessages: boolean;
+    bufferingObservations: boolean;
+    activeSubagents: Map<string, unknown>;
+    [key: string]: unknown;
+  }
+
+  export type HarnessEvent =
+    | { type: "agent_start" }
+    | { type: "agent_end"; reason?: "complete" | "error" | "suspended" | "aborted" | string }
+    | { type: "message_start" | "message_update" | "message_end"; message: HarnessMessage }
+    | { type: "tool_start"; toolCallId: string; toolName: string; args?: unknown }
+    | { type: "tool_end"; toolCallId: string; toolName?: string; result?: unknown; isError?: boolean }
+    | { type: "tool_approval_required"; toolCallId: string; toolName: string; args?: unknown }
+    | { type: "tool_suspended"; toolCallId: string; toolName: string; args?: unknown; suspendPayload?: unknown; resumeSchema?: unknown }
+    | { type: "thread_created"; thread: HarnessThread }
+    | { type: "thread_changed"; threadId: string; previousThreadId?: string | null }
+    | { type: "state_changed"; state: unknown; changedKeys: string[] }
+    | { type: "mode_changed"; modeId: string; previousModeId: string }
+    | { type: "model_changed"; modelId: string; scope?: string; modeId?: string }
+    | { type: "workspace_status_changed"; status: string; error?: Error }
+    | { type: "workspace_ready"; workspaceId: string; workspaceName?: string }
+    | { type: "error"; error: Error }
+    | { type: string; [key: string]: any };
+
+  export type HarnessEventListener = (event: HarnessEvent) => void | Promise<void>;
+
+  export interface HarnessConfig<TState = Record<string, unknown>> {
+    id: string;
+    resourceId?: string;
+    storage?: StorageInstance;
+    stateSchema?: PublicSchema<TState>;
+    initialState?: Partial<TState>;
+    memory?: Memory | (() => Memory | Promise<Memory>);
+    modes: HarnessMode<TState>[];
+    tools?: Record<string, Tool> | ((ctx: { requestContext?: RequestContext }) => Record<string, Tool> | Promise<Record<string, Tool>>);
+    workspace?: Workspace | (() => Workspace | undefined | Promise<Workspace | undefined>) | Record<string, unknown>;
+    browser?: MastraBrowser | ((ctx: { requestContext: RequestContext }) => MastraBrowser | undefined | Promise<MastraBrowser | undefined>);
+    omConfig?: HarnessOMConfig;
+    heartbeatHandlers?: Array<{
+      id: string;
+      intervalMs: number;
+      handler: () => void | Promise<void>;
+      immediate?: boolean;
+      shutdown?: () => void | Promise<void>;
+    }>;
+    resolveModel?: (modelId: string) => any;
+    disableBuiltinTools?: Array<"ask_user" | "submit_plan" | "task_write" | "task_update" | "task_complete" | "task_check" | "subagent">;
+    toolCategoryResolver?: (toolName: string) => HarnessToolCategory | null;
+    threadLock?: {
+      acquire: (threadId: string) => void | Promise<void>;
+      release: (threadId: string) => void | Promise<void>;
+    };
+    [key: string]: any;
+  }
+
+  export class Harness<TState = Record<string, unknown>> {
+    constructor(config: HarnessConfig<TState>);
+    readonly id: string;
+    init(): Promise<void>;
+    destroy(): Promise<void>;
+    subscribe(listener: HarnessEventListener): () => void;
+    getState(): Readonly<TState>;
+    setState(updates: Partial<TState>): Promise<void>;
+    getDisplayState(): HarnessDisplayState;
+    listModes(): HarnessMode<TState>[];
+    getCurrentModeId(): string;
+    getCurrentMode(): HarnessMode<TState>;
+    switchMode(opts: { modeId: string }): Promise<void>;
+    getCurrentModelId(): string;
+    switchModel(opts: { modelId: string; scope?: "thread" | "session" | string; modeId?: string }): Promise<void>;
+    getCurrentThreadId(): string | null;
+    getResourceId(): string;
+    getResolvedMemory(): Promise<Memory | null>;
+    createThread(opts?: { title?: string }): Promise<HarnessThread>;
+    switchThread(opts: { threadId: string }): Promise<void>;
+    setThreadSetting(opts: { key: string; value: unknown }): Promise<void>;
+    listThreads(opts?: { allResources?: boolean; includeForkedSubagents?: boolean }): Promise<HarnessThread[]>;
+    selectOrCreateThread(): Promise<HarnessThread>;
+    loadOMProgress(): Promise<void>;
+    getObservationalMemoryRecord(): Promise<ObservationalMemoryRecord | null>;
+    getObserverModelId(): string | undefined;
+    getReflectorModelId(): string | undefined;
+    getObservationThreshold(): number | undefined;
+    getReflectionThreshold(): number | undefined;
+    getResolvedObserverModel(): any;
+    getResolvedReflectorModel(): any;
+    switchObserverModel(opts: { modelId: string }): Promise<void>;
+    switchReflectorModel(opts: { modelId: string }): Promise<void>;
+    getWorkspace(): Workspace | undefined;
+    resolveWorkspace(opts?: { requestContext?: RequestContext }): Promise<Workspace | undefined>;
+    hasWorkspace(): boolean;
+    isWorkspaceReady(): boolean;
+    destroyWorkspace(): Promise<void>;
+    sendMessage(opts: { content: string; files?: Array<{ data: string; mediaType: string; filename?: string }>; requestContext?: RequestContext; tracingContext?: any; tracingOptions?: any }): Promise<void>;
+    listMessages(opts?: { limit?: number }): Promise<HarnessMessage[]>;
+    listMessagesForThread(opts: { threadId: string; limit?: number }): Promise<HarnessMessage[]>;
+    getSession(): Promise<HarnessSession>;
+    getTokenUsage(): Record<string, unknown>;
+    abort(): void;
+    respondToToolApproval(opts: { decision: "approve" | "decline" | "always_allow_category"; requestContext?: RequestContext }): void;
+    respondToToolSuspension(opts: { resumeData: unknown; requestContext?: RequestContext }): Promise<void>;
+    respondToQuestion(opts: { questionId: string; answer: unknown }): void;
+    respondToPlanApproval(opts: { planId: string; response: unknown }): void;
+  }
+
+  export function defaultDisplayState(): HarnessDisplayState;
+  export function defaultOMProgressState(): OMProgressState;
+  export function assignTaskIds(tasks: HarnessTaskItemInput[], previousTasks?: Array<HarnessTaskItemInput & { id: string }>): Array<HarnessTaskItemInput & { id: string }>;
+  export function parseSubagentMeta(text: string): {
+    text: string;
+    modelId?: string;
+    durationMs?: number;
+    toolCalls?: Array<{ name: string; isError: boolean }>;
+  };
+  export const askUserTool: Tool;
+  export const submitPlanTool: Tool;
+  export const taskWriteTool: Tool;
+  export const taskUpdateTool: Tool;
+  export const taskCompleteTool: Tool;
+  export const taskCheckTool: Tool;
+
   /**
    * Agent-specific execution-context slice passed into a tool when
    * Mastra invokes it from an Agent run. Matches canonical
@@ -810,6 +1488,8 @@ declare module "agent" {
     mastra?: Mastra;
     /** HITL gate — suspend for approval before execution. */
     requireApproval?: boolean;
+    /** Background task configuration for this tool. */
+    background?: ToolBackgroundConfig;
     /** Provider-specific tool options (Anthropic, OpenAI, ...). */
     providerOptions?: Record<string, Record<string, unknown>>;
     /** Metadata identifying this tool as originating from an MCP server. */
@@ -862,6 +1542,7 @@ declare module "agent" {
     execute?: ToolAction<TSchemaIn, TSchemaOut, TSuspendSchema, TResumeSchema, TContext, TId, TRequestContext>['execute'];
     mastra?: Mastra;
     requireApproval?: boolean;
+    background?: ToolBackgroundConfig;
     providerOptions?: Record<string, Record<string, unknown>>;
     /** Normalize the tool output before the model reads it. */
     toModelOutput?: (output: TSchemaOut) => unknown;
@@ -1060,6 +1741,17 @@ declare module "agent" {
     inputSchema?: import("ai").ZodType;
     outputSchema?: import("ai").ZodType;
     stateSchema?: import("ai").ZodType;
+    schedule?: WorkflowScheduleConfig | WorkflowScheduleConfig[];
+  }
+
+  export interface WorkflowScheduleConfig {
+    id?: string;
+    cron: string;
+    timezone?: string;
+    inputData?: unknown;
+    initialState?: unknown;
+    requestContext?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
   }
 
   export interface StepConfig {
@@ -1077,6 +1769,14 @@ declare module "agent" {
     execute?: (context: StepExecutionContext) => Promise<unknown>;
   }
 
+  /** Writer injected into workflow steps when a run is streamed. */
+  export interface WorkflowStreamWriter {
+    write<T extends { type: string }>(data: T): Promise<void>;
+    custom?<T extends { type: string }>(data: T): Promise<void>;
+    close?(): Promise<void> | void;
+    releaseLock?(): void;
+  }
+
   export interface StepExecutionContext {
     inputData: Record<string, any>;
     mapiData?: Record<string, unknown>;
@@ -1090,6 +1790,8 @@ declare module "agent" {
     suspend(data?: unknown): void;
     /** Data passed when resuming a suspended workflow. */
     resumeData?: Record<string, any>;
+    /** Stream writer injected when the surrounding workflow run is streamed. */
+    writer?: WorkflowStreamWriter;
   }
 
   /**
@@ -1406,9 +2108,9 @@ declare module "agent" {
       messageTokens?: number;
       modelSettings?: any;
       maxTokensPerBatch?: number;
-      bufferTokens?: number;
+      bufferTokens?: number | false;
       instruction?: string;
-      threadTitle?: string;
+      threadTitle?: boolean;
     };
     reflection?: {
       model?: any;
@@ -1643,6 +2345,15 @@ declare module "agent" {
   }
 
   /**
+   * Alias for the same per-call context container. Current Mastra docs use
+   * `RuntimeContext`; the embedded Mastra package still exports the class as
+   * `RequestContext`, so Brainkit accepts both names at the TS/runtime module
+   * boundary.
+   */
+  export const RuntimeContext: typeof RequestContext;
+  export type RuntimeContext<Values extends Record<string, any> = any> = RequestContext<Values>;
+
+  /**
    * Reserved keys Mastra interprets specifically when they
    * appear on a RequestContext. Using the constants keeps code
    * robust against Mastra renaming the underlying string.
@@ -1660,6 +2371,30 @@ declare module "agent" {
     memory?: Memory;
     logger?: any;
     observability?: any;
+    backgroundTasks?: BackgroundTaskManagerConfig;
+    scheduler?: WorkflowSchedulerConfig;
+    workers?: readonly MastraWorkerLike[] | false;
+    channels?: Record<string, any>;
+    server?: { apiRoutes?: ApiRoute[]; [key: string]: any };
+  }
+
+  export interface WorkflowSchedulerConfig {
+    enabled?: boolean;
+    tickIntervalMs?: number;
+    batchSize?: number;
+    onError?: (error: unknown, context: { scheduleId: string }) => void;
+  }
+
+  export interface WorkflowScheduler {
+    readonly isRunning: boolean;
+    start(): Promise<void>;
+    stop(): Promise<void>;
+    tick(): Promise<void>;
+  }
+
+  export interface MastraWorkerLike {
+    readonly name: string;
+    readonly isRunning?: boolean;
   }
 
   /**
@@ -1683,6 +2418,9 @@ declare module "agent" {
     constructor(config: MastraConfig);
     readonly agents: Record<string, Agent>;
     readonly workflows: Record<string, Workflow>;
+    readonly backgroundTaskManager: BackgroundTaskManager | undefined;
+    readonly scheduler: WorkflowScheduler | undefined;
+    readonly workers: readonly MastraWorkerLike[];
     getAgent(name: string): Agent | undefined;
     listAgents(): Record<string, Agent>;
     getWorkflow(name: string): Workflow | undefined;
@@ -1691,9 +2429,49 @@ declare module "agent" {
     getStorage(): any;
     getMemory(): Memory | undefined;
     getLogger(): any;
+    getChannels(): Record<string, AgentChannels>;
+    getServer(): { apiRoutes?: ApiRoute[]; [key: string]: any } | undefined;
+    startWorkers(name?: string): Promise<void>;
+    stopWorkers(): Promise<void>;
+    shutdown(): Promise<void>;
+    addTopicListener(topic: string, listener: (event: any, ack?: () => Promise<void>) => void | Promise<void>): Promise<void>;
+    removeTopicListener(topic: string, listener: (event: any, ack?: () => Promise<void>) => void | Promise<void>): Promise<void>;
+    handleWorkflowEvent(event: any): Promise<{ ok: true } | { ok: false; retry: boolean }>;
   }
 
   // ── Workspace ─────────────────────────────────────────────────
+
+  export const WORKSPACE_TOOLS_PREFIX: "mastra_workspace";
+  export const WORKSPACE_TOOLS: {
+    readonly FILESYSTEM: {
+      readonly READ_FILE: "mastra_workspace_read_file";
+      readonly WRITE_FILE: "mastra_workspace_write_file";
+      readonly EDIT_FILE: "mastra_workspace_edit_file";
+      readonly LIST_FILES: "mastra_workspace_list_files";
+      readonly DELETE: "mastra_workspace_delete";
+      readonly FILE_STAT: "mastra_workspace_file_stat";
+      readonly MKDIR: "mastra_workspace_mkdir";
+      readonly GREP: "mastra_workspace_grep";
+      readonly AST_EDIT: "mastra_workspace_ast_edit";
+    };
+    readonly SANDBOX: {
+      readonly EXECUTE_COMMAND: "mastra_workspace_execute_command";
+      readonly GET_PROCESS_OUTPUT: "mastra_workspace_get_process_output";
+      readonly KILL_PROCESS: "mastra_workspace_kill_process";
+    };
+    readonly SEARCH: {
+      readonly SEARCH: "mastra_workspace_search";
+      readonly INDEX: "mastra_workspace_index";
+    };
+    readonly LSP: {
+      readonly LSP_INSPECT: "mastra_workspace_lsp_inspect";
+    };
+  };
+  export type WorkspaceToolName =
+    | (typeof WORKSPACE_TOOLS.FILESYSTEM)[keyof typeof WORKSPACE_TOOLS.FILESYSTEM]
+    | (typeof WORKSPACE_TOOLS.SANDBOX)[keyof typeof WORKSPACE_TOOLS.SANDBOX]
+    | (typeof WORKSPACE_TOOLS.SEARCH)[keyof typeof WORKSPACE_TOOLS.SEARCH]
+    | (typeof WORKSPACE_TOOLS.LSP)[keyof typeof WORKSPACE_TOOLS.LSP];
 
   export class Workspace {
     constructor(config?: WorkspaceConfig);
@@ -2454,6 +3232,78 @@ declare module "agent" {
   export interface ProcessOutputResultArgs { result: AgentResult; requestContext: RequestContext; abort(reason?: string, metadata?: Record<string, unknown>): never; [key: string]: any }
   export interface ProcessOutputStepArgs extends ProcessOutputResultArgs { step: AgentStepResult }
 
+  /** Server-side cache base used by Mastra response caching and task state. */
+  export abstract class MastraServerCache {
+    constructor(config: { name: string });
+    abstract get(key: string): Promise<unknown>;
+    abstract listLength(key: string): Promise<number>;
+    abstract set(key: string, value: unknown, ttlMs?: number): Promise<void>;
+    abstract listPush(key: string, value: unknown): Promise<void>;
+    abstract listFromTo(key: string, from: number, to?: number): Promise<unknown[]>;
+    abstract delete(key: string): Promise<void>;
+    abstract clear(): Promise<void>;
+    abstract increment(key: string): Promise<number>;
+  }
+
+  export interface InMemoryServerCacheOptions {
+    maxSize?: number;
+    ttlMs?: number;
+  }
+
+  /** In-process cache backend for local/dev response caching. */
+  export class InMemoryServerCache extends MastraServerCache {
+    constructor(options?: InMemoryServerCacheOptions);
+    get(key: string): Promise<unknown>;
+    set(key: string, value: unknown, ttlMs?: number): Promise<void>;
+    listLength(key: string): Promise<number>;
+    listPush(key: string, value: unknown): Promise<void>;
+    listFromTo(key: string, from: number, to?: number): Promise<unknown[]>;
+    delete(key: string): Promise<void>;
+    clear(): Promise<void>;
+    increment(key: string): Promise<number>;
+  }
+
+  export const RESPONSE_CACHE_CONTEXT_KEY: "mastra__response_cache_context";
+  export const DEFAULT_RESPONSE_CACHE_TTL_SECONDS: 300;
+
+  export interface ResponseCacheKeyInputs {
+    agentId: string;
+    scope?: string | null;
+    model: { provider?: string; modelId?: string; specVersion?: string };
+    prompt: any;
+    stepNumber: number;
+  }
+
+  export type ResponseCacheKeyFn = (inputs: ResponseCacheKeyInputs) => string | Promise<string>;
+
+  export interface ResponseCacheOptions {
+    cache: MastraServerCache;
+    key?: string | ResponseCacheKeyFn;
+    ttl?: number;
+    scope?: string | null;
+    bust?: boolean;
+    agentId?: string;
+  }
+
+  export interface ResponseCacheContextOptions {
+    key?: string | ResponseCacheKeyFn;
+    scope?: string | null;
+    bust?: boolean;
+  }
+
+  /** Input processor that reads/writes LLM step responses through a server cache. */
+  export class ResponseCache implements Processor<"mastra/response-cache"> {
+    readonly id: "mastra/response-cache";
+    readonly name: "@mastra/response-cache";
+    constructor(options: ResponseCacheOptions);
+    static context(options: ResponseCacheContextOptions): RequestContext;
+    static applyContext(requestContext: RequestContext, options: ResponseCacheContextOptions): RequestContext;
+    processLLMRequest(args: any): Promise<any>;
+    processLLMResponse(args: any): Promise<void>;
+  }
+
+  export function buildResponseCacheKey(inputs: ResponseCacheKeyInputs): string;
+
   /** Tripwire shape raised when a processor aborts. */
   export interface TripwireResult<TMetadata = Record<string, unknown>> {
     reason: string;
@@ -2826,22 +3676,25 @@ declare module "agent" {
     readonly stderr: AsyncIterable<Uint8Array>;
   }
 
-  /** Workspace tool factories — reach for these instead of hand-rolling. */
-  export function createWorkspaceTools(config?: {
-    filesystem?: MastraFilesystem;
-    sandbox?: MastraSandbox;
-    readOnly?: boolean;
-  }): Record<string, Tool>;
-  export function readFileTool(opts?: any): Tool;
-  export function writeFileTool(opts?: any): Tool;
-  export function editFileTool(opts?: any): Tool;
-  export function listFilesTool(opts?: any): Tool;
-  export function deleteFileTool(opts?: any): Tool;
-  export function fileStatTool(opts?: any): Tool;
-  export function mkdirTool(opts?: any): Tool;
-  export function searchTool(opts?: any): Tool;
-  export function indexContentTool(opts?: any): Tool;
-  export function executeCommandTool(opts?: any): Tool;
+  /** Workspace tool factory — creates the workspace toolset bound to a Workspace. */
+  export function createWorkspaceTools(
+    workspace: Workspace,
+    configContext?: { requestContext?: unknown; workspace?: Workspace; [key: string]: unknown },
+  ): Promise<Record<string, Tool>>;
+  export function resolveToolConfig(toolsConfig: any, name: WorkspaceToolName, context?: any): Promise<any>;
+  export const readFileTool: Tool;
+  export const writeFileTool: Tool;
+  export const editFileTool: Tool;
+  export const listFilesTool: Tool;
+  export const deleteFileTool: Tool;
+  export const fileStatTool: Tool;
+  export const mkdirTool: Tool;
+  export const searchTool: Tool;
+  export const indexContentTool: Tool;
+  export const executeCommandTool: Tool;
+  export function requireWorkspace(context: any): { workspace: Workspace };
+  export function requireFilesystem(context: any): { workspace: Workspace; filesystem: any };
+  export function requireSandbox(context: any): { workspace: Workspace; sandbox: any };
 
   // ── AI-SDK voice bridge ────────────────────────────────────────
 
@@ -3167,56 +4020,6 @@ declare module "agent" {
   export class ZeroEntropyRelevanceScorer {
     constructor(options: { apiKey: string; model?: string });
   }
-
-  // ── Workspace (gap 12) ──────────────────────────────────────────
-
-  /**
-   * Composes multiple `MastraFilesystem` instances behind one
-   * interface — e.g. a read-only project skeleton layered under a
-   * writable temp directory. Calls route to the first filesystem
-   * that serves the path.
-   */
-  export class CompositeFilesystem {
-    constructor(config: { filesystems: any[]; [key: string]: any });
-  }
-
-  /**
-   * Builds the ten built-in workspace tools off a `Workspace`
-   * instance and returns them keyed by tool id. Pass the result
-   * directly to an `Agent({ tools })` config.
-   *
-   * @example
-   *   const workspace = new Workspace({
-   *     filesystem: new LocalFilesystem({ root: "/tmp/sandbox" }),
-   *   });
-   *   const agent = new Agent({
-   *     name: "coder",
-   *     model: model("openai", "gpt-4o-mini"),
-   *     tools: createWorkspaceTools(workspace),
-   *   });
-   */
-  export function createWorkspaceTools(workspace: Workspace): Record<string, any>;
-
-  /** Reads a file from the workspace. Pre-built Tool instance. */
-  export const readFileTool: any;
-  /** Writes or overwrites a file. Pre-built Tool instance. */
-  export const writeFileTool: any;
-  /** Applies a structured edit (search + replace) to a file. */
-  export const editFileTool: any;
-  /** Lists a directory's contents. */
-  export const listFilesTool: any;
-  /** Deletes a file or directory. */
-  export const deleteFileTool: any;
-  /** Returns stat metadata (size, mtime, etc.) for a path. */
-  export const fileStatTool: any;
-  /** Creates a directory, recursive by default. */
-  export const mkdirTool: any;
-  /** Fuzzy / substring search across files. */
-  export const searchTool: any;
-  /** Indexes file content for later search / retrieval. */
-  export const indexContentTool: any;
-  /** Executes a shell command inside the workspace's sandbox. */
-  export const executeCommandTool: any;
 
   // ── Observability exporters (gap 12) ────────────────────────────
 

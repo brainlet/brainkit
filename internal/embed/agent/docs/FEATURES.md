@@ -15,6 +15,8 @@
 | `new Agent(config)` | Stable | Y | Y | Core agent constructor |
 | `agent.generate(messages, opts)` | Stable | Y | Y | Non-streaming generation |
 | `agent.stream(messages, opts)` | Stable | Y | Y | Streaming generation |
+| `agent.streamUntilIdle(messages, opts)` | Stable | Y | Y | Background-task streaming with continuation turns; Brainkit validates this with a live fixture |
+| `agent.resumeStreamUntilIdle(resumeData, opts)` | Stable | Y | Y | Resume-flavored background-task idle stream; still needs a dedicated fixture |
 | `agent.network(messages, opts)` | Stable | Y | Y | Supervisor/delegation mode |
 | `agent.generateLegacy()` | Deprecated | Y | — | Old API, don't expose |
 | `agent.streamLegacy()` | Deprecated | Y | — | Old API, don't expose |
@@ -47,6 +49,7 @@
 | `workflows` | Agent workflows | Y |
 | `workspace` | Workspace instance | Y |
 | `voice` | Voice configuration | Y |
+| `backgroundTasks` | Agent-level background task tool config | Y |
 | `maxSteps` | Max tool-call rounds | Y |
 | `defaultOptions` | Default call options | Y |
 | `inputProcessors` | Input middleware chain | Y |
@@ -116,6 +119,7 @@
 | `requireApproval` | Boolean or function for approval flow |
 | `requestContextSchema` | Schema for per-tool request context |
 | `lifecycle` | Lifecycle hooks (onStart, onComplete, etc.) |
+| `background` | Background task execution config |
 
 ### Tool Execution Context
 
@@ -126,6 +130,37 @@
 | `context.suspend(data)` | Suspend execution (HITL) |
 | `context.resume` | Resume data (after suspend) |
 | `context.stream` | Stream writer for tool output streaming |
+
+### Background Tasks
+
+| Feature | Description | In Bundle | Fixture Coverage |
+|---------|-------------|:---------:|------------------|
+| `new BackgroundTaskManager(config)` | Background task lifecycle manager | Y | `agent/background-tasks/stream-until-idle`, `progress-output`, `suspend-resume`, `timeout-failure`, `cancel-running`, `retry-success`, `concurrency-queue`, `lifecycle-callbacks`, `manager-stream-filter-abort`, `start-workers-all`, `stream-worker-teardown` |
+| `createBackgroundTask(manager, options)` | Enqueue and track a background task | Y | covered through agent tool background execution |
+| `globalConcurrency` / `perAgentConcurrency` queueing | Queue pending tasks until a global/per-agent slot frees | Y | real Mastra manager fixture |
+| `onTaskComplete` / `onTaskFailed` and per-task hooks | Manager and per-task lifecycle callbacks | Y | real Mastra manager fixture |
+| `BackgroundTaskManager.stream({ agentId, taskId, abortSignal })` | Filtered background-task event streams, caller-driven stream close, and shutdown-owned stream abort cleanup | Y | real Mastra manager fixture |
+| `mastra.startWorkers()` safe worker mapping | Starts Brainkit's supported background-task worker path and a Brainkit-owned workflow-event listener without enabling pull orchestration/scheduler workers in QuickJS; `stopWorkers()` clears tracked worker/listener state | Y | real Mastra manager fixture; scheduled workflow fixture |
+| `generateBackgroundTaskSystemPrompt()` | Prompt helper for background tools | Y | type/surface covered |
+| `background-task-running` | Running lifecycle chunk | Y | live OpenAI-backed fixture |
+| `background-task-output` | Progress/output lifecycle chunk | Y | live OpenAI-backed fixture |
+| `background-task-completed` | Completed lifecycle chunk and result injection | Y | live OpenAI-backed fixture |
+| `maxRetries` / task retry count | Transient failure retry then completion | Y | live OpenAI-backed fixture |
+| `background-task-failed` / `timed_out` | Failure lifecycle chunk and timeout persistence | Y | live OpenAI-backed fixture |
+| `background-task-cancelled` / `cancelled` | Cancel lifecycle chunk, storage state, and tool abort propagation | Y | live OpenAI-backed fixture |
+| `background-task-suspended/resumed` | Suspend/resume lifecycle | Y | live OpenAI-backed fixture |
+
+Brainkit embeds a same-process inline background-task executor for per-task
+executor closures. This keeps the Mastra lifecycle events and result injection
+real inside QuickJS without routing stream-returning agent workflows through
+Mastra's generic orchestration worker. Plain `mastra.startWorkers()` is mapped
+to Brainkit's safe background-task worker path and an in-process workflow-event
+push listener in this runtime. Generic pull orchestration and scheduler worker
+process loops still need explicit Brainkit module owners before they are
+claimed as supported.
+The embedded bridge tracks background-task streams, abort controllers, active
+task contexts, and worker instances so fixtures can assert teardown rather than
+only checking that APIs returned.
 
 ---
 
@@ -143,6 +178,8 @@
 | `workflow.forEach(config)` | Loop over items | Y |
 | `workflow.commit()` | Finalize workflow definition | Y |
 | `workflow.createRun(opts)` | Create a run instance | Y |
+| `createWorkflow({ schedule })` | Declarative Mastra workflow schedule; auto-promotes to evented workflow | Y |
+| `WorkflowScheduler.tick()` | Scheduler tick publishes due workflow events through Brainkit's in-process workflow-event listener | Y |
 | `run.start({inputData})` | Start execution | Y |
 | `run.resume({resumeData, step})` | Resume after suspend | Y |
 | `run.cancel()` | Cancel execution | Y |
@@ -157,6 +194,30 @@
 | `id` | Workflow identifier |
 | `inputSchema` | Zod schema for input |
 | `outputSchema` | Zod schema for output |
+| `schedule` | Single or array Mastra schedule config (`cron`, `timezone`, `inputData`, `initialState`, `requestContext`, `metadata`) |
+
+### Scheduled Workflows
+
+Brainkit supports the embedded Mastra scheduled workflow happy path through:
+
+- `fixtures/ts/workflow/scheduled/basic`: a workflow declared with `schedule`
+  auto-promotes to the evented engine, registers a durable Mastra schedule row,
+  fires a due tick, runs through the Brainkit-owned workflow-event listener,
+  records trigger history, and tears down listener plus scheduler state.
+- `fixtures/ts/workflow/scheduled/timezone`: a daily `09:00`
+  `America/New_York` schedule proves Croner timezone conversion works in
+  QuickJS via Brainkit's `Intl.DateTimeFormat(...).formatToParts()` bridge.
+- `fixtures/ts/workflow/scheduled/multi`: an array-form scheduled workflow
+  proves one persisted row per stable schedule id, per-entry input/context/
+  metadata preservation, trigger history for both due rows, and listener/
+  scheduler teardown.
+- `fixtures/ts/workflow/scheduled/pause-resume`: paused due rows are skipped
+  without trigger history or `nextFireAt` advancement, then fire once resumed
+  to `active`.
+- `fixtures/ts/workflow/scheduled/redeploy-diff`: declarative redeploy
+  registration preserves paused status while applying cron/target/metadata
+  changes, migrates single-form rows to array-form rows, deletes stale `wf_`
+  rows, and preserves user-created schedules.
 
 ### Step Config
 
@@ -329,6 +390,14 @@
 | `StructuredOutputProcessor` | Stream | Enforce structured output | Y |
 | `ToolCallFilter` | Tool | Filter tool calls | Y |
 | `ToolSearchProcessor` | Tool | Search-based tool selection | Y |
+| `AgentsMDInjector` | Instructions | Inject AGENTS.md reminders | Y |
+| `SkillsProcessor` | Instructions | Inject skill metadata | Y |
+| `SkillSearchProcessor` | Tool | Search and load skills on demand | Y |
+| `WorkspaceInstructionsProcessor` | Workspace | Inject workspace instructions | Y |
+| `ResponseCache` | Cache | Cache LLM step responses via a server cache | Y |
+| `buildResponseCacheKey` | Cache | Deterministic response-cache key helper | Y |
+| `InMemoryServerCache` | Cache | Local/dev server cache backend | Y |
+| `MastraServerCache` | Cache | Abstract server cache base | Y |
 
 ---
 
@@ -381,7 +450,21 @@
 |----------|-------------|:---------:|
 | `LocalFilesystem` | Local file access via Go bridges | Y |
 | `LocalSandbox` | Local command execution via Go bridges | Y |
-| `CompositeFilesystem` | Multi-root filesystem | — |
+| `CompositeFilesystem` | Multi-root filesystem | Y |
+
+### Workspace Tools
+
+| Feature | Description | In Bundle | Fixture Coverage |
+|---------|-------------|:---------:|------------------|
+| `WORKSPACE_TOOLS` / `WORKSPACE_TOOLS_PREFIX` | Stable tool-id constants for workspace tool allowlists | Y | `fixtures/ts/harness/workspace/basic`, `fixtures/ts/polyfill/agent-surface` |
+| `createWorkspaceTools(workspace)` | Build Mastra workspace tools bound to a Workspace | Y | `fixtures/ts/harness/workspace/basic` |
+| `readFileTool`, `writeFileTool`, `editFileTool`, `listFilesTool`, `deleteFileTool`, `fileStatTool`, `mkdirTool`, `searchTool`, `indexContentTool`, `executeCommandTool` | Built-in workspace tool instances | Y | surface covered by `fixtures/ts/polyfill/agent-surface`; read-file execution covered through `fixtures/ts/harness/workspace/basic` |
+| `requireWorkspace`, `requireFilesystem`, `requireSandbox`, `resolveToolConfig` | Workspace tool helper utilities | Y | surface covered by `fixtures/ts/polyfill/agent-surface` |
+
+Brainkit precomputes workspace tool schemas before SES lockdown, matching the
+Harness built-in tool treatment. `fixtures/ts/harness/workspace/basic` proved
+that without this, Mastra workspace tool preparation can fail during late
+schema traversal under QuickJS/SES.
 
 ### Workspace Config
 
@@ -412,13 +495,17 @@
 
 ## 12. Harness
 
-| Feature | Description | In Bundle |
-|---------|-------------|:---------:|
-| `Harness` | Orchestration layer | Y |
-| `askUserTool` | Built-in tool for user questions | Y |
-| `submitPlanTool` | Built-in tool for plan submission | Y |
-| `taskWriteTool` | Built-in tool for task management | Y |
-| `taskCheckTool` | Built-in tool for task checking | Y |
+| Feature | Description | In Bundle | Fixture Coverage |
+|---------|-------------|:---------:|------------------|
+| `Harness` | Orchestration layer | Y | `fixtures/ts/harness/send-message/basic`, `fixtures/ts/harness/subagents/basic`, `fixtures/ts/harness/subagents/forked`, `fixtures/ts/harness/tool-approval/basic`, `fixtures/ts/harness/tool-suspension/basic`, `fixtures/ts/harness/workspace/basic`, `fixtures/ts/harness/browser/basic`, `fixtures/ts/harness/observational-memory/basic` |
+| `defaultDisplayState` / `defaultOMProgressState` | Harness display-state defaults | Y | `fixtures/ts/harness/observational-memory/basic` |
+| `assignTaskIds` / `parseSubagentMeta` | Harness helper exports | Y | `fixtures/ts/harness/observational-memory/basic` |
+| `askUserTool` | Built-in tool for user questions | Y | `fixtures/ts/harness/interactive-tools/basic` |
+| `submitPlanTool` | Built-in tool for plan submission | Y | `fixtures/ts/harness/interactive-tools/basic` |
+| `taskWriteTool` | Built-in tool for task management | Y | `fixtures/ts/harness/task-tools/basic` |
+| `taskUpdateTool` | Built-in tool for task updates | Y | `fixtures/ts/harness/task-tools/basic` |
+| `taskCompleteTool` | Built-in tool for task completion | Y | `fixtures/ts/harness/task-tools/basic` |
+| `taskCheckTool` | Built-in tool for task checking | Y | `fixtures/ts/harness/task-tools/basic` |
 
 ### Harness Features
 
@@ -431,8 +518,69 @@
 | State management | Custom state schema with display state |
 | Permissions | Category-based permission rules |
 | Subagents | Constrained subagent management |
+| Browser | Harness-level browser propagation to mode agents |
 | Observational memory | OM integration with model switching |
 | Token tracking | Usage tracking across sessions |
+
+Brainkit currently proves the live Harness happy path with
+`fixtures/ts/harness/send-message/basic`: a real OpenAI-backed `Agent`,
+Harness `init()`, `sendMessage()`, event emission, thread/session state,
+persisted memory messages, display-idle state, and teardown. The embedded
+compatibility layer also waits for Brainkit's delayed first stream chunk before
+returning from idle `Harness.sendMessage()` calls.
+
+Brainkit also proves Harness tool approval with
+`fixtures/ts/harness/tool-approval/basic`: a live OpenAI-backed `sendMessage()`
+run reaches `tool_approval_required`, `respondToToolApproval()` approves the
+tool, the approval resume stream is consumed, and display state returns idle.
+The embedded compatibility layer consumes approval/decline resume streams
+directly because upstream Harness does not process the returned
+`approveToolCall()` stream on Brainkit's QuickJS subscription path.
+
+Brainkit proves Harness tool suspension with
+`fixtures/ts/harness/tool-suspension/basic`: a live OpenAI-backed
+`sendMessage()` run executes a tool that calls `suspend()`, emits
+`tool_suspended`, ends the first run as `suspended`, resumes through
+`respondToToolSuspension()`, and completes with display state cleaned up.
+
+Brainkit proves Harness subagents with two live fixtures:
+`fixtures/ts/harness/subagents/basic` covers the isolated child-agent path where
+the parent model calls the built-in `subagent` tool and the child agent resolves
+through `resolveModel`; `fixtures/ts/harness/subagents/forked` covers the forked
+path where the built-in tool clones the parent memory thread, runs the parent
+agent on the fork, hides fork threads by default, and preserves fork metadata.
+
+Brainkit proves Harness workspace integration with
+`fixtures/ts/harness/workspace/basic`: static `Workspace` init/ready/destroy
+events, LocalFilesystem access, workspace tool constants and helpers exported
+through deployed TypeScript, a real OpenAI-backed Harness subagent constrained
+with `allowedWorkspaceTools`, and the child agent reading a secret from disk via
+Mastra's workspace read-file tool.
+
+Brainkit proves the core Harness browser contract with
+`fixtures/ts/harness/browser/basic`: `MastraBrowser` and
+`BrowserContextProcessor` are exported through the curated `"agent"` module and
+deployed TypeScript endowments, a Harness-level browser propagates to a static
+mode agent, browser context is written to `RequestContext`, browser tools remain
+absent from `agent.listTools()` but execute during a live OpenAI-backed run, and
+the browser provider lifecycle is closed explicitly. Concrete provider packages
+(`@mastra/agent-browser`, `@mastra/stagehand`, BrowserViewer), browser process
+ownership, CDP, and screencast remain future module/resolver work.
+
+Brainkit proves the Harness observational-memory control surface with
+`fixtures/ts/harness/observational-memory/basic`: Harness helper exports
+(`defaultDisplayState`, `defaultOMProgressState`, `assignTaskIds`,
+`parseSubagentMeta`), observer/reflector default model resolution and switch
+events, threshold persistence in thread metadata, seeded OM record lookup,
+`loadOMProgress()`, OM stream data-part event mapping, display-state updates,
+activation/title events, and OM failure abort handling.
+
+Brainkit also proves built-in Harness tool behavior with
+`fixtures/ts/harness/task-tools/basic` and
+`fixtures/ts/harness/interactive-tools/basic`: task state mutation, structured
+task checking, multiple in-progress rejection, `ask_user` question resolution,
+and `submit_plan` approval/rejection resolution through real Harness request
+contexts.
 
 ---
 
@@ -478,7 +626,6 @@ Features available in Mastra but NOT imported in the agent-embed bundle:
 | Editor | `@mastra/core/editor` | Not applicable |
 | Events system | `@mastra/core/events` | brainkit has its own bus |
 | Integration | `@mastra/core/integration` | Not yet needed |
-| CompositeFilesystem | `@mastra/core/workspace` | Not imported (single filesystem sufficient) |
 | Filesystem-based storage | `@mastra/core/storage` | brainkit uses libsql/pg bridges |
 | A2A protocol | `@mastra/core/a2a` | Not yet needed |
 | TTS providers | `@mastra/core/tts` | Not yet needed |
@@ -541,7 +688,8 @@ The Go wrapper provides a typed Go API for creating agents and calling generate/
 | `MongoDBStore`, `MongoDBVector` | `@mastra/mongodb` |
 | `ModelRouterEmbeddingModel` | `@mastra/core/llm` |
 | `RequestContext` | `@mastra/core/request-context` |
-| `Workspace`, `LocalFilesystem`, `LocalSandbox` | `@mastra/core/workspace` |
+| `Workspace`, `LocalFilesystem`, `LocalSandbox`, `CompositeFilesystem`, `WORKSPACE_TOOLS`, `createWorkspaceTools`, workspace tool helpers | `@mastra/core/workspace` |
+| `MastraBrowser`, `BrowserContextProcessor` | `@mastra/core/browser` |
 | `MDocument`, `GraphRAG` | `@mastra/rag` |
 | `createVectorQueryTool`, `createDocumentChunkerTool`, `createGraphRAGTool` | `@mastra/rag` |
 | `rerank`, `rerankWithScorer` | `@mastra/rag` |
@@ -555,4 +703,6 @@ All of the above plus:
 - 11 LLM-based scorers (createHallucinationScorer, etc.)
 - 11 processors (ModerationProcessor, PIIDetector, etc.)
 - Harness + built-in tools (askUserTool, submitPlanTool, etc.)
+- Workspace tool constants/helpers used by deployed TypeScript packages
+- Browser base/context processor used by deployed TypeScript packages
 - `SensitiveDataFilter` from observability

@@ -1,10 +1,17 @@
 // Test: custom span via Observability — construct a default-enabled
 // Observability registry, get its selected instance, start a span,
 // record an event + end. Asserts the span has an id and traceId.
-import { Observability } from "agent";
+import { DefaultExporter, Observability } from "agent";
 import { output } from "kit";
 
-const obs = new Observability({ default: { enabled: true } } as any);
+const obs = new Observability({
+  configs: {
+    default: {
+      serviceName: "brainkit-fixture",
+      exporters: [new DefaultExporter()],
+    },
+  },
+} as any);
 
 const instance: any = obs.getDefaultInstance();
 let spanShape = false;

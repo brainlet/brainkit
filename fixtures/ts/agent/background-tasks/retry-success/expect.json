@@ -1,0 +1,14 @@
+{
+  "chunkTypes": "~background-task-completed",
+  "hasBackgroundStarted": true,
+  "hasBackgroundCompleted": true,
+  "hasNoBackgroundFailed": true,
+  "hasMatchingTaskId": true,
+  "completedStatus": "completed",
+  "retryCount": 1,
+  "attemptCount": 2,
+  "resultAttempts": 2,
+  "completedTaskCount": "*",
+  "resultIncludesTopic": true,
+  "textIncludesTopic": true
+}

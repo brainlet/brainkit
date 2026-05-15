@@ -37,8 +37,9 @@ normalized JS artifacts before runtime handoff.
 
 ## Resolver policy
 
-The standard esbuild builder uses the `source-relative` resolver profile. It is
-for package source deployment, not arbitrary npm application bundling.
+The standard esbuild builder uses the `source-relative` resolver profile by
+default. It is for package source deployment, not arbitrary npm application
+bundling.
 
 Allowed imports are:
 
@@ -54,6 +55,44 @@ specifier, importer, source package, current profile (`source-relative`), the
 allowed bare imports, and the future owner: an opt-in npm ecosystem resolver
 profile. Do not treat esbuild's package resolver as that future profile.
 
+An experimental `npm-preview` resolver profile exists for filesystem package
+directories only. It is opt-in through `manifest.json`:
+
+```json
+{
+  "name": "my-package",
+  "entry": "index.ts",
+  "resolver": "npm-preview"
+}
+```
+
+or through caller-side source helpers:
+
+```go
+pkg, _ := packagesource.FromDir("my-package")
+pkg = pkg.WithResolver(packagesource.ResolverNPMPreview)
+```
+
+`npm-preview` requires `package.json` and `pnpm-lock.yaml` in the package root,
+runs `pnpm install --frozen-lockfile --ignore-scripts`, then bundles installed
+bare npm imports into the normalized JS artifact. Inline packages and single
+file deploys still use `source-relative` and reject `npm-preview`.
+
+This profile is deliberately narrow. It can bundle npm dependencies that stay
+inside Brainkit-owned runtime compatibility. Supported Node builtins are
+resolved to jsbridge-backed stubs, for example `node:events`, `node:stream`,
+`node:buffer`, `node:module`, `node:crypto`, and `node:fs` where Brainkit
+already owns the behavior. Dynamic `import()` is lowered to the constrained
+runtime `require` path so SES never sees package-manager-era dynamic import
+syntax in normalized artifacts.
+
+Unsupported Node APIs, native addons, workers, server listeners, and
+browser/provider processes remain explicit Brainkit runtime/module boundaries.
+A dependency that imports `node:vm`, `http2`, or a similar unsupported runtime
+API must fail with structured resolver diagnostics until a real owner exists.
+Arbitrary runtime `require()` also remains unsupported and is reported as a
+typed dynamic-require boundary.
+
 Triage package deploy failures this way:
 
 - missing resolver profile: unsupported bare npm import from source deployment;
@@ -61,6 +100,8 @@ Triage package deploy failures this way:
   jsbridge does not own yet;
 - unsupported native/worker boundary: dependency needs native addons, workers,
   server listeners, or another explicit runtime boundary;
+- unsupported dynamic require: dependency computes a package/module specifier at
+  runtime instead of using a static import that the resolver can analyze;
 - package patch required: a specific dependency version needs a declared,
   tested source/bundle patch.
 

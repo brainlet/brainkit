@@ -28,6 +28,22 @@ func TestInlineDeployPayload(t *testing.T) {
 	}
 }
 
+func TestInlineDeployPayloadIncludesResolver(t *testing.T) {
+	pkg := Inline("demo", "index.ts", `output("ok");`).WithResolver(ResolverNPMPreview)
+	payload, err := pkg.DeployPayload()
+	if err != nil {
+		t.Fatalf("DeployPayload: %v", err)
+	}
+
+	var manifest map[string]string
+	if err := json.Unmarshal(payload.Manifest, &manifest); err != nil {
+		t.Fatalf("manifest json: %v", err)
+	}
+	if manifest["resolver"] != ResolverNPMPreview {
+		t.Fatalf("resolver = %q, want %q", manifest["resolver"], ResolverNPMPreview)
+	}
+}
+
 func TestFromDirDeployPayloadUsesPath(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(`{"name":"demo","version":"1.0.0","entry":"index.ts"}`), 0o644); err != nil {
@@ -44,6 +60,32 @@ func TestFromDirDeployPayloadUsesPath(t *testing.T) {
 	}
 	if payload.Path != dir || len(payload.Manifest) != 0 || len(payload.Files) != 0 {
 		t.Fatalf("payload = %#v", payload)
+	}
+}
+
+func TestFromDirDeployPayloadIncludesResolverOverride(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(`{"name":"demo","version":"1.0.0","entry":"index.ts"}`), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	pkg, err := FromDir(dir)
+	if err != nil {
+		t.Fatalf("FromDir: %v", err)
+	}
+	payload, err := pkg.WithResolver(ResolverNPMPreview).DeployPayload()
+	if err != nil {
+		t.Fatalf("DeployPayload: %v", err)
+	}
+	if payload.Path != dir || len(payload.Files) != 0 {
+		t.Fatalf("payload = %#v", payload)
+	}
+	var manifest map[string]string
+	if err := json.Unmarshal(payload.Manifest, &manifest); err != nil {
+		t.Fatalf("manifest json: %v", err)
+	}
+	if manifest["resolver"] != ResolverNPMPreview {
+		t.Fatalf("resolver = %q, want %q", manifest["resolver"], ResolverNPMPreview)
 	}
 }
 

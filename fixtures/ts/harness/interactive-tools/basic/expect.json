@@ -1,0 +1,15 @@
+{
+  "questionEvent": true,
+  "questionSelectionMode": "multi_select",
+  "questionOptionCount": 3,
+  "displayQuestion": true,
+  "questionAnswered": true,
+  "approvalEvent": true,
+  "approvalTitle": "Fixture plan",
+  "displayPlan": true,
+  "approvalAccepted": true,
+  "rejectionEvent": true,
+  "rejectionReturned": true,
+  "askEvents": 1,
+  "planEvents": 2
+}

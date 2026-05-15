@@ -1,0 +1,17 @@
+{
+  "harnessType": "function",
+  "sent": true,
+  "containsToken": true,
+  "agentStarted": true,
+  "agentEnded": true,
+  "messageStarted": true,
+  "messageEnded": true,
+  "threadCreated": true,
+  "hasCurrentThread": true,
+  "currentMode": "default",
+  "threadCount": 1,
+  "displayIdle": true,
+  "messageCount": 2,
+  "text": "~HARNESS_WORKS"
+}
+

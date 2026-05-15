@@ -1,0 +1,7 @@
+{
+  "chunkTypes": "~data-sub-agent-progress",
+  "customDataCount": "*",
+  "hasSubAgentCustomData": true,
+  "hasInitializing": true,
+  "hasProcessing": true
+}

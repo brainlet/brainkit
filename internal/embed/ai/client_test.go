@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,9 +17,23 @@ import (
 
 func loadEnv(t *testing.T) {
 	t.Helper()
-	data, err := os.ReadFile("../.env")
+	dir, err := os.Getwd()
 	if err != nil {
+		t.Logf("load .env: getwd: %v", err)
 		return
+	}
+	var data []byte
+	for {
+		candidate := filepath.Join(dir, ".env")
+		data, err = os.ReadFile(candidate)
+		if err == nil {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return
+		}
+		dir = parent
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
@@ -729,7 +744,7 @@ func TestGenerateTextWithMessagesRealOpenAI(t *testing.T) {
 	defer c.Close()
 
 	result, err := c.GenerateText(GenerateTextParams{
-		Model: Model{ID: "openai/gpt-4o-mini", Provider: &ProviderConfig{APIKey: key}},
+		Model:  Model{ID: "openai/gpt-4o-mini", Provider: &ProviderConfig{APIKey: key}},
 		System: "You are a helpful assistant. Always respond in exactly one word.",
 		Messages: []Message{
 			UserMessage("What color is the sky?"),

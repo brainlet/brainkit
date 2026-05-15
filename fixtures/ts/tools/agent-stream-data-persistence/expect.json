@@ -1,0 +1,9 @@
+{
+  "chunkTypes": "~data-progress",
+  "streamedDataCount": 2,
+  "persistedDataCount": 2,
+  "hasStreamedProgress": true,
+  "hasPersistedProgress": true,
+  "persistedStatuses": "~in-progress",
+  "assistantMessageCount": "*"
+}

@@ -25,6 +25,7 @@ const (
 	CapabilityProbeAll               = "brainkit.core.probe_all"
 	CapabilityCallJS                 = "brainkit.core.call_js"
 	CapabilityHarnessRuntime         = "brainkit.core.harness_runtime"
+	CapabilityBrowserManager         = "brainkit.core.browser_manager"
 	CapabilityTransportKind          = "brainkit.core.transport_kind"
 	CapabilitySecretStore            = "brainkit.core.secret_store"
 	CapabilityPluginRestarter        = "brainkit.core.plugin_restarter"

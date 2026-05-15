@@ -86,21 +86,21 @@ is implementation detail.
 go run ./examples/harness-lite
 ```
 
-Current output (JS backend not wired in this build):
+Current output (the example intentionally does not deploy `demo-agent`):
 
 ```
-Harness JS backend is not wired in this build.
+Harness JS backend is wired, but the example did not deploy demo-agent.
 The frozen Go-side contract (Module / Instance / Event) still compiles:
-  module name        : harness
+  module id          : harness
   module status      : wip (WIP)
   Instance interface : SendMessage / Abort / Steer / FollowUp / Subscribe / CurrentThread / CurrentMode / Close
   frozen event types : agent_start, agent_end, message_update, tool_start, tool_end, error
-  boot error         : brainkit: module "harness" init: harness: create JS harness: ...
+  boot error         : brainkit: module "harness" mount: ... demo-agent ... is not registered
 ```
 
-When the JS-side `__kit.createHarness` lands and an agent named
-`demo-agent` is registered via `kit.register("agent", "demo-agent",
-new Agent({...}))`, the example will transition to live mode: the
+When an agent named `demo-agent` is registered via
+`kit.register("agent", "demo-agent", new Agent({...}))`, the example
+will transition to live mode: the
 Instance resolves, Subscribe starts receiving events, and
 `SendMessage` drives an actual agent run.
 

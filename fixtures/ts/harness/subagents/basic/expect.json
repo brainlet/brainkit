@@ -1,0 +1,21 @@
+{
+  "subagentStarted": true,
+  "subagentEnded": true,
+  "subagentAgentType": "analyst",
+  "subagentModelId": "openai/gpt-4o-mini",
+  "subagentForked": false,
+  "subagentResultContainsToken": true,
+  "parentToolStarted": true,
+  "parentToolEnded": true,
+  "startSnapshotRunning": true,
+  "endSnapshotCompleted": true,
+  "agentEndedComplete": true,
+  "messageEnded": true,
+  "containsParentToken": true,
+  "displayIdle": true,
+  "displaySubagentsCleared": true,
+  "hasCurrentThread": true,
+  "normalThreadCount": 1,
+  "forkThreadCount": 1,
+  "messageCount": 2
+}

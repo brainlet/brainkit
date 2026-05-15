@@ -15,6 +15,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	browsermod "github.com/brainlet/brainkit/modules/browser"
 	mcppkg "github.com/brainlet/brainkit/modules/mcp"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/presets/standard"
@@ -119,7 +120,7 @@ func (r *Runner) run(t *testing.T, patterns []string) {
 			mongoAddr := testutil.StartContainer(t, "mongo:7", "27017/tcp", nil,
 				wait.ForLog("Waiting for connections").WithStartupTimeout(60*time.Second),
 				"MONGO_INITDB_ROOT_USERNAME=test", "MONGO_INITDB_ROOT_PASSWORD=test")
-			os.Setenv("MONGODB_URL", "mongodb://test:test@"+mongoAddr)
+			os.Setenv("MONGODB_URL", "mongodb://test:test@"+mongoAddr+"/?authSource=admin")
 			os.Setenv("MONGODB_LOG_ALL", "off")
 			t.Logf("MongoDB container started: %s", mongoAddr)
 
@@ -312,6 +313,11 @@ func (r *Runner) defaultKit(t *testing.T, needs FixtureNeeds) *brainkit.Kit {
 	}
 
 	tk := testutil.NewTestKitFull(t)
+	if needs.Browser {
+		if err := tk.Kit.Mount(context.Background(), browsermod.NewModule(browsermod.Config{Headless: true})); err != nil {
+			t.Fatalf("mount browser module: %v", err)
+		}
+	}
 	return tk.Kit
 }
 

@@ -1,0 +1,7 @@
+{
+  "status": "success",
+  "tier": "pro",
+  "doubled": 42,
+  "hasContext": true,
+  "runtimeAliasMatchesRequestContext": true
+}

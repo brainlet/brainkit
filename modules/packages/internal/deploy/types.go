@@ -6,6 +6,7 @@ type PackageManifest struct {
 	Version     string        `json:"version"`
 	Description string        `json:"description,omitempty"`
 	Entry       string        `json:"entry,omitempty"`
+	Resolver    string        `json:"resolver,omitempty"`
 	Requires    *Requirements `json:"requires,omitempty"`
 }
 

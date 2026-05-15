@@ -266,8 +266,11 @@ const bufferJS = `
     return buf;
   }
 
-  var _Buffer = {
-    from: function(v, encOrOffset, length) {
+  function _Buffer(v, encOrOffset, length) {
+    if (typeof v === "number") return _Buffer.alloc(v);
+    return _Buffer.from(v, encOrOffset, length);
+  }
+  _Buffer.from = function(v, encOrOffset, length) {
       if (v instanceof ArrayBuffer) {
         var offset = encOrOffset || 0;
         var len = length !== undefined ? length : v.byteLength - offset;
@@ -298,28 +301,28 @@ const bufferJS = `
         return _addBufferMethods(new Uint8Array(v));
       }
       return _addBufferMethods(new Uint8Array(0));
-    },
-    alloc: function(n, fill) {
+    };
+    _Buffer.alloc = function(n, fill) {
       var b = new Uint8Array(n);
       if (fill !== undefined) b.fill(typeof fill === "number" ? fill : 0);
       return _addBufferMethods(b);
-    },
-    allocUnsafe: function(n) { return _addBufferMethods(new Uint8Array(n)); },
-    allocUnsafeSlow: function(n) { return _addBufferMethods(new Uint8Array(n)); },
-    isBuffer: function(obj) { return !!(obj && obj._isBuffer); },
-    isEncoding: function(enc) {
+    };
+    _Buffer.allocUnsafe = function(n) { return _addBufferMethods(new Uint8Array(n)); };
+    _Buffer.allocUnsafeSlow = function(n) { return _addBufferMethods(new Uint8Array(n)); };
+    _Buffer.isBuffer = function(obj) { return !!(obj && obj._isBuffer); };
+    _Buffer.isEncoding = function(enc) {
       return ["utf8","utf-8","ascii","latin1","binary","hex","base64","ucs2","ucs-2","utf16le","utf-16le"]
         .indexOf((enc || "").toLowerCase()) !== -1;
-    },
-    byteLength: function(str, enc) {
+    };
+    _Buffer.byteLength = function(str, enc) {
       if (typeof str === "string") {
         if (enc === "base64") return Math.ceil(str.length * 3 / 4);
         return _te.encode(str).length;
       }
       if (str instanceof Uint8Array || str instanceof ArrayBuffer) return str.byteLength || str.length;
       return 0;
-    },
-    concat: function(bufs, totalLength) {
+    };
+    _Buffer.concat = function(bufs, totalLength) {
       if (!totalLength) {
         totalLength = 0;
         for (var i = 0; i < bufs.length; i++) totalLength += bufs[i].length;
@@ -331,16 +334,16 @@ const bufferJS = `
         off += bufs[i].length;
       }
       return _addBufferMethods(r);
-    },
-    compare: function(a, b) {
+    };
+    _Buffer.compare = function(a, b) {
       var len = Math.min(a.length, b.length);
       for (var i = 0; i < len; i++) {
         if (a[i] < b[i]) return -1;
         if (a[i] > b[i]) return 1;
       }
       return a.length < b.length ? -1 : a.length > b.length ? 1 : 0;
-    },
-  };
+    };
+  _Buffer.prototype = Uint8Array.prototype;
 
   // Support "x instanceof Buffer" — pg uses this check
   Object.defineProperty(_Buffer, Symbol.hasInstance, {

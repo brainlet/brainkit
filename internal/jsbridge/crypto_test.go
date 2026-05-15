@@ -88,15 +88,54 @@ func TestCrypto_SCRAMSequence(t *testing.T) {
 		var sig = c.createHmac("sha256", storedKey).update("test-auth-message").digest();
 		JSON.stringify({
 			saltedPwLen: saltedPw.length,
+			saltedPwHex: Buffer.from(saltedPw).toString("hex"),
 			clientKeyLen: clientKey.length,
+			clientKeyHex: Buffer.from(clientKey).toString("hex"),
 			storedKeyLen: storedKey.length,
+			storedKeyHex: Buffer.from(storedKey).toString("hex"),
 			sigLen: sig.length,
+			sigHex: Buffer.from(sig).toString("hex"),
 			allCorrectLen: saltedPw.length === 32 && clientKey.length === 32 && storedKey.length === 32 && sig.length === 32,
 		});
 	`)
-	expected := `{"saltedPwLen":32,"clientKeyLen":32,"storedKeyLen":32,"sigLen":32,"allCorrectLen":true}`
+	expected := `{"saltedPwLen":32,"saltedPwHex":"c4a49510323ab4f952cac1fa99441939e78ea74d6be81ddf7096e87513dc615d","clientKeyLen":32,"clientKeyHex":"a60fc923d67e8644a92d16b96eda5ef4656b0c725c484374be25535576996e8b","storedKeyLen":32,"storedKeyHex":"586e5df283e6dceb5c3e791d8b8528ec191e664045ce971792e2e6b5bb13e2a6","sigLen":32,"sigHex":"8e4aca3ab701264c1675ac645b75f39b5329532fd05cab9633d332bea5bd28a0","allCorrectLen":true}`
 	if result != expected {
 		t.Errorf("got %s", result)
+	}
+}
+
+func TestCrypto_WebCryptoSCRAMSequence(t *testing.T) {
+	b := newTestBridge(t, Console(), Encoding(), Buffer(), Crypto())
+	val, err := b.EvalAsync("test.js", `(async () => {
+		function hex(v) { return Buffer.from(v).toString("hex"); }
+		const password = "pencil";
+		const salt = Buffer.from("W22ZaJ0SNY7soEsUEjb6gQ==", "base64");
+		const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), { name: "PBKDF2" }, false, ["deriveBits"]);
+		const saltedPw = new Uint8Array(await crypto.subtle.deriveBits({
+			name: "PBKDF2",
+			salt,
+			iterations: 4096,
+			hash: { name: "SHA-256" },
+		}, key, 256));
+		const hmacKey = await crypto.subtle.importKey("raw", saltedPw, { name: "HMAC", hash: { name: "SHA-256" } }, false, ["sign"]);
+		const clientKey = new Uint8Array(await crypto.subtle.sign("HMAC", hmacKey, new TextEncoder().encode("Client Key")));
+		const storedKey = new Uint8Array(await crypto.subtle.digest("SHA-256", clientKey));
+		const sigKey = await crypto.subtle.importKey("raw", storedKey, { name: "HMAC", hash: { name: "SHA-256" } }, false, ["sign"]);
+		const sig = new Uint8Array(await crypto.subtle.sign("HMAC", sigKey, new TextEncoder().encode("test-auth-message")));
+		return JSON.stringify({
+			saltedPwHex: hex(saltedPw),
+			clientKeyHex: hex(clientKey),
+			storedKeyHex: hex(storedKey),
+			sigHex: hex(sig),
+		});
+	})()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer val.Free()
+	expected := `{"saltedPwHex":"c4a49510323ab4f952cac1fa99441939e78ea74d6be81ddf7096e87513dc615d","clientKeyHex":"a60fc923d67e8644a92d16b96eda5ef4656b0c725c484374be25535576996e8b","storedKeyHex":"586e5df283e6dceb5c3e791d8b8528ec191e664045ce971792e2e6b5bb13e2a6","sigHex":"8e4aca3ab701264c1675ac645b75f39b5329532fd05cab9633d332bea5bd28a0"}`
+	if val.String() != expected {
+		t.Fatalf("got %s", val.String())
 	}
 }
 

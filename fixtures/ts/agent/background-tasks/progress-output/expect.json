@@ -1,0 +1,12 @@
+{
+  "chunkTypes": "~background-task-output",
+  "outputLabels": "~queued",
+  "hasBackgroundStarted": true,
+  "hasBackgroundCompleted": true,
+  "hasMatchingTaskId": true,
+  "backgroundOutputCount": "*",
+  "hasQueuedOutput": true,
+  "hasHalfwayOutput": true,
+  "completedTaskCount": "*",
+  "taskResultIncludesReport": true
+}

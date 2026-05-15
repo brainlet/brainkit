@@ -11,6 +11,7 @@ type FixtureNeeds struct {
 	LibSQLServer bool   // needs libsql-server container (vector extensions)
 	AI           bool   // needs OPENAI_API_KEY
 	MCP          bool   // needs in-process MCP server
+	Browser      bool   // needs modules/browser mounted
 }
 
 // containerBackends maps path segments to container names.
@@ -56,6 +57,7 @@ var aiCategories = map[string]bool{
 	"ai":            true,
 	"observability": true,
 	"composition":   true,
+	"harness":       true,
 	// Voice fixtures need at least OPENAI_API_KEY (the default
 	// provider) for most tests; construct-only fixtures for
 	// non-OpenAI providers skip gracefully when the provider's
@@ -71,12 +73,18 @@ var aiCategories = map[string]bool{
 
 // aiSegments trigger AI need when found anywhere in the path.
 var aiSegments = map[string]bool{
-	"with-agent-step":   true,
-	"vector-query-tool": true,
-	"with-llm-judge":    true,
-	"semantic-recall":   true,
-	"generate-title":    true,
-	"working-memory":    true,
+	"with-agent-step":               true,
+	"agent-stream-data-persistence": true,
+	"agent-stream-data-transient":   true,
+	"agent-stream-writer":           true,
+	"agent-stream-subagent-writer":  true,
+	"create-with-schema":            true,
+	"vector-query-tool":             true,
+	"with-llm-judge":                true,
+	"semantic-recall":               true,
+	"generate-title":                true,
+	"observational":                 true,
+	"working-memory":                true,
 	// RAG rerank / graph-rag use embedding or judge models.
 	"rerank":    true,
 	"graph-rag": true,
@@ -104,6 +112,9 @@ func ClassifyFixture(relPath string) FixtureNeeds {
 	// MCP detection
 	if category == "mcp" {
 		needs.MCP = true
+	}
+	if category == "browser" {
+		needs.Browser = true
 	}
 
 	// AI detection: category-level

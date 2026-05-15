@@ -1,0 +1,9 @@
+{
+  "chunkTypes": "~data-processing-metrics",
+  "toolOutputCount": 2,
+  "customDataCount": 1,
+  "hasRegularWrite": true,
+  "hasCustomData": true,
+  "customValue": "alpha",
+  "customPhase": "middle"
+}

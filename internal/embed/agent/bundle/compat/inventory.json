@@ -6,7 +6,7 @@
     "packageJSON": "internal/embed/agent/bundle/package.json",
     "packageManager": "pnpm@10.2.1"
   },
-  "packageCount": 226,
+  "packageCount": 229,
   "surfaceCount": 70,
   "packages": [
     {
@@ -512,8 +512,8 @@
       "proofTiers": [
         "offline-fake"
       ],
-      "inputs": 87,
-      "bytes": 5823830,
+      "inputs": 90,
+      "bytes": 5871770,
       "nodeAPIs": [
         "async_hooks",
         "child_process",
@@ -2422,6 +2422,20 @@
       "bytes": 27829
     },
     {
+      "name": "ip-address",
+      "version": "10.2.0",
+      "dependencyClass": "transitive",
+      "category": "utility",
+      "runtimeRisks": [
+        "pure-js"
+      ],
+      "proofTiers": [
+        "offline-fake"
+      ],
+      "inputs": 9,
+      "bytes": 78541
+    },
+    {
       "name": "is-extendable",
       "version": "0.1.1",
       "dependencyClass": "transitive",
@@ -2758,8 +2772,7 @@
         "@mongodb-js/zstd",
         "kerberos",
         "mongodb-client-encryption",
-        "snappy",
-        "socks"
+        "snappy"
       ],
       "compatibilityTests": [
         "internal/embed/agent/compat_manifest_test.go",
@@ -3525,6 +3538,55 @@
       ],
       "inputs": 1,
       "bytes": 2708
+    },
+    {
+      "name": "smart-buffer",
+      "version": "4.2.0",
+      "dependencyClass": "transitive",
+      "category": "utility",
+      "runtimeRisks": [
+        "node-core",
+        "pure-js"
+      ],
+      "proofTiers": [
+        "offline-fake"
+      ],
+      "inputs": 2,
+      "bytes": 48773,
+      "nodeAPIs": [
+        "buffer"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/buffer_test.go"
+      ]
+    },
+    {
+      "name": "socks",
+      "version": "2.8.9",
+      "dependencyClass": "transitive",
+      "category": "utility",
+      "runtimeRisks": [
+        "network",
+        "node-core",
+        "pure-js",
+        "stream"
+      ],
+      "proofTiers": [
+        "local-service",
+        "offline-fake"
+      ],
+      "inputs": 6,
+      "bytes": 53202,
+      "nodeAPIs": [
+        "events",
+        "net",
+        "stream"
+      ],
+      "compatibilityTests": [
+        "internal/jsbridge/bridge_test.go",
+        "internal/jsbridge/net_test.go",
+        "internal/jsbridge/nodestreams_test.go"
+      ]
     },
     {
       "name": "sparse-bitfield",
@@ -4610,10 +4672,7 @@
       ],
       "status": "unsupported",
       "owner": "agent embed bundle external",
-      "used": true,
-      "usedByPackages": [
-        "mongodb"
-      ],
+      "used": false,
       "boundaryClass": "external-service",
       "suggestedOwner": "future resolver profile",
       "package": "socks",
@@ -4870,7 +4929,8 @@
         "fetch-blob",
         "node-fetch",
         "readable-stream",
-        "safer-buffer"
+        "safer-buffer",
+        "smart-buffer"
       ],
       "globals": [
         "Buffer"
@@ -5098,7 +5158,8 @@
         "mongodb",
         "pg",
         "pg-pool",
-        "readable-stream"
+        "readable-stream",
+        "socks"
       ],
       "globals": [
         "EventEmitter"
@@ -5313,6 +5374,7 @@
         "mongodb",
         "node-fetch",
         "pg",
+        "socks",
         "vscode-jsonrpc"
       ],
       "globals": [
@@ -5582,6 +5644,7 @@
         "pgpass",
         "probe-image-size",
         "sax",
+        "socks",
         "split2"
       ],
       "globals": [

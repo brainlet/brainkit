@@ -1,4 +1,4 @@
-.PHONY: all brainkit install deps deps-go deps-npm deps-root deps-root-save deps-root-check deps-profiles deps-profile-check deps-modules build agent-embed-rebuild jsbridge-compat-report jsbridge-compat-report-save jsbridge-compat-inventory jsbridge-compat-inventory-save jsbridge-compat-inventory-check agent-embed-capability-matrix-check agent-embed-node-api-target-check jsbridge-compat-check jsbridge-lifecycle-check agent-embed-check agent-embed-rebuild-check generate test test-v test-compile test-suite test-full test-all test-campaigns-transport test-campaigns-transport-embedded test-campaigns-transport-nats test-campaigns-transport-amqp test-campaigns-transport-redis test-campaigns-transport-external bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples examples-smoke examples-smoke-compile examples-smoke-offline examples-smoke-live examples-smoke-server examples-smoke-external examples-smoke-all plugins-build plugins-test plugins-smoke clean podman-init podman-start podman-up podman-launchd-up podman-launchd-down podman-link-socket podman-verify podman-down podman-status podman-reset podman-nuke podman-ensure type-check
+.PHONY: all brainkit install deps deps-go deps-npm deps-root deps-root-save deps-root-check deps-profiles deps-profile-check deps-modules build agent-embed-rebuild jsbridge-compat-report jsbridge-compat-report-save jsbridge-compat-inventory jsbridge-compat-inventory-save jsbridge-compat-inventory-check agent-embed-capability-matrix-check agent-embed-node-api-target-check jsbridge-compat-check jsbridge-lifecycle-check agent-embed-check agent-embed-rebuild-check generate test test-v test-compile test-suite test-full test-all fixtures-live-category fixtures-live-memory-sharded fixtures-live-sharded test-campaigns-transport test-campaigns-transport-embedded test-campaigns-transport-nats test-campaigns-transport-amqp test-campaigns-transport-redis test-campaigns-transport-external bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples examples-smoke examples-smoke-compile examples-smoke-offline examples-smoke-live examples-smoke-server examples-smoke-external examples-smoke-all plugins-build plugins-test plugins-smoke clean podman-init podman-start podman-up podman-launchd-up podman-launchd-down podman-link-socket podman-verify podman-down podman-status podman-reset podman-nuke podman-ensure type-check
 
 PODMAN_MACHINE ?= brainkit
 PODMAN_CPUS ?= 4
@@ -10,6 +10,10 @@ PODMAN_LAUNCHD_LOG ?= /tmp/podman/$(PODMAN_MACHINE)-launchd-start.out
 TEST_SUITE_P ?= 2
 TEST_ALL_TIMEOUT ?= 1800s
 TEST_TRANSPORT_TIMEOUT ?= 1200s
+FIXTURE_LIVE_TIMEOUT ?= 900s
+FIXTURE_CATEGORY ?= agent
+FIXTURE_LIVE_CATEGORIES ?= agent ai browser bus composition cross-feature ecosystem evals harness kit mcp observability polyfill processors rag storage tools vector voice workflow
+FIXTURE_LIVE_MEMORY_SHARDS ?= generate-title libsql-local-debug messages observational semantic-recall storage threads working-memory processor read-only
 PLUGINS_ROOT ?= ../plugins
 PLUGIN_REPOS ?=
 PLUGIN_BUILD_DIR ?=
@@ -172,6 +176,45 @@ test-full: podman-ensure test-compile test-suite
 # Run every package with a timeout large enough for campaign packages.
 test-all: podman-ensure
 	go test -p $(TEST_SUITE_P) ./... -count=1 -timeout=$(TEST_ALL_TIMEOUT)
+
+# Run one live fixture category with real provider credentials from .env.
+# Example: make fixtures-live-category FIXTURE_CATEGORY=agent
+fixtures-live-category: podman-ensure
+	@log="/tmp/brainkit-fixtures-$(FIXTURE_CATEGORY).jsonl"; \
+	echo "==> fixtures category: $(FIXTURE_CATEGORY)"; \
+	if ! env BRAINKIT_TEST_LIVE_AI=1 go test -json ./test/fixtures -run '^TestFixtures$$/^$(FIXTURE_CATEGORY)' -count=1 -timeout=$(FIXTURE_LIVE_TIMEOUT) > "$$log" 2>&1; then \
+		tail -n 160 "$$log"; \
+		exit 1; \
+	fi; \
+	echo "ok $(FIXTURE_CATEGORY) ($$log)"
+
+# Memory is currently too heavy as one process on this machine; keep it split
+# until the fixture runner memory pressure is fixed.
+fixtures-live-memory-sharded: podman-ensure
+	@for shard in $(FIXTURE_LIVE_MEMORY_SHARDS); do \
+		safe=$$(printf '%s' "$$shard" | tr '/:' '__'); \
+		log="/tmp/brainkit-fixtures-memory-$$safe.jsonl"; \
+		echo "==> fixtures memory shard: $$shard"; \
+		if ! env BRAINKIT_TEST_LIVE_AI=1 go test -json ./test/fixtures -run "^TestFixtures$$/^memory$$/^$$shard" -count=1 -timeout=$(FIXTURE_LIVE_TIMEOUT) > "$$log" 2>&1; then \
+			tail -n 160 "$$log"; \
+			exit 1; \
+		fi; \
+		echo "ok memory/$$shard ($$log)"; \
+	done
+
+# Release-grade live fixture proof that avoids the current monolithic
+# test/fixtures process memory limit. Requires OPENAI_API_KEY in .env.
+fixtures-live-sharded: podman-ensure
+	@for cat in $(FIXTURE_LIVE_CATEGORIES); do \
+		log="/tmp/brainkit-fixtures-$$cat.jsonl"; \
+		echo "==> fixtures category: $$cat"; \
+		if ! env BRAINKIT_TEST_LIVE_AI=1 go test -json ./test/fixtures -run "^TestFixtures$$/^$$cat" -count=1 -timeout=$(FIXTURE_LIVE_TIMEOUT) > "$$log" 2>&1; then \
+			tail -n 160 "$$log"; \
+			exit 1; \
+		fi; \
+		echo "ok $$cat ($$log)"; \
+	done
+	@$(MAKE) fixtures-live-memory-sharded
 
 # Run the heavy transport campaign as backend/domain-shard packages so each
 # shard gets its own timeout budget and failures are easier to isolate.

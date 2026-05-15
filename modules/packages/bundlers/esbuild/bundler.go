@@ -1,7 +1,10 @@
 package esbuild
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -12,13 +15,16 @@ import (
 
 const (
 	resolverProfileSourceRelative = "source-relative"
+	resolverProfileNPMPreview     = "npm-preview"
 	suggestedNPMResolverOwner     = "future opt-in npm ecosystem resolver profile"
 )
 
 var allowedBareImports = []string{"kit", "ai", "agent", "compiler"}
 
 type bundleOptions struct {
-	sourcePackage string
+	sourcePackage   string
+	resolverProfile string
+	packageRoot     string
 }
 
 // Bundle reads a .ts entry point from the filesystem, resolves all relative
@@ -30,19 +36,24 @@ func Bundle(entryPath string) (string, error) {
 }
 
 func bundle(entryPath string, opts bundleOptions) (string, error) {
+	opts = opts.withDefaults()
 	result := api.Build(api.BuildOptions{
-		EntryPoints: []string{entryPath},
-		Bundle:      true,
-		Format:      api.FormatESModule,
-		Platform:    api.PlatformBrowser,
-		External:    []string{"kit", "ai", "agent", "compiler"},
-		Write:       false,
+		EntryPoints:   []string{entryPath},
+		Bundle:        true,
+		Format:        api.FormatESModule,
+		Platform:      api.PlatformBrowser,
+		AbsWorkingDir: opts.packageRoot,
+		MainFields:    []string{"browser", "module", "main"},
+		Write:         false,
 		Loader: map[string]api.Loader{
 			".ts": api.LoaderTS,
 		},
 		TreeShaking: api.TreeShakingTrue,
 		Target:      api.ESNext,
-		Plugins:     []api.Plugin{resolverPolicyPlugin(opts)},
+		Supported: map[string]bool{
+			"dynamic-import": false,
+		},
+		Plugins: resolverPolicyPlugins(opts),
 	})
 
 	return bundleResult(result, entryPath)
@@ -55,6 +66,7 @@ func BundleInMemory(files map[string]string, entry string) (string, error) {
 }
 
 func bundleInMemory(files map[string]string, entry string, opts bundleOptions) (string, error) {
+	opts = opts.withDefaults()
 	if _, ok := files[entry]; !ok {
 		return "", fmt.Errorf("bundle: entry %q not in files map", entry)
 	}
@@ -63,7 +75,11 @@ func bundleInMemory(files map[string]string, entry string, opts bundleOptions) (
 	resolve := func(args api.OnResolveArgs) (api.OnResolveResult, error) {
 		if isBareImport(args.Path) {
 			if isAllowedBareImport(args.Path) {
-				return api.OnResolveResult{Path: args.Path, External: true}, nil
+				id, _ := brainkitRuntimeModuleStub(args.Path)
+				return api.OnResolveResult{Path: id, Namespace: brainkitRuntimeModuleNamespace}, nil
+			}
+			if opts.resolverProfile == resolverProfileNPMPreview {
+				return unsupportedNPMPreviewInMemoryResult(args.Path, args.Importer, opts), nil
 			}
 			return unsupportedBareImportResult(args.Path, args.Importer, opts), nil
 		}
@@ -107,6 +123,14 @@ func bundleInMemory(files map[string]string, entry string, opts bundleOptions) (
 				})
 			build.OnResolve(api.OnResolveOptions{Filter: ".*", Namespace: ns}, resolve)
 			build.OnLoad(api.OnLoadOptions{Filter: ".*", Namespace: ns}, load)
+			build.OnLoad(api.OnLoadOptions{Filter: ".*", Namespace: brainkitRuntimeModuleNamespace},
+				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+					contents, ok := brainkitRuntimeModuleStubContents(args.Path)
+					if !ok {
+						return api.OnLoadResult{}, fmt.Errorf("Brainkit runtime module stub %q is not registered", args.Path)
+					}
+					return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS}, nil
+				})
 		},
 	}
 
@@ -115,12 +139,14 @@ func bundleInMemory(files map[string]string, entry string, opts bundleOptions) (
 		Bundle:      true,
 		Format:      api.FormatESModule,
 		Platform:    api.PlatformBrowser,
-		External:    []string{"kit", "ai", "agent", "compiler"},
 		Write:       false,
 		Loader:      map[string]api.Loader{".ts": api.LoaderTS},
 		TreeShaking: api.TreeShakingTrue,
 		Target:      api.ESNext,
-		Plugins:     []api.Plugin{plugin},
+		Supported: map[string]bool{
+			"dynamic-import": false,
+		},
+		Plugins: []api.Plugin{plugin},
 	})
 
 	return bundleResult(result, entry)
@@ -143,12 +169,29 @@ func bundleResult(result api.BuildResult, entryPath string) (string, error) {
 		return "", fmt.Errorf("bundle %s: no output produced", entryPath)
 	}
 
-	return NormalizeJSArtifact(string(result.OutputFiles[0].Contents)), nil
+	code := NormalizeJSArtifact(string(result.OutputFiles[0].Contents))
+	return sanitizeSESRejectedImportText(code), nil
+}
+
+func (opts bundleOptions) withDefaults() bundleOptions {
+	if opts.resolverProfile == "" {
+		opts.resolverProfile = resolverProfileSourceRelative
+	}
+	return opts
+}
+
+func resolverPolicyPlugins(opts bundleOptions) []api.Plugin {
+	return []api.Plugin{resolverPolicyPlugin(opts)}
 }
 
 func resolverPolicyPlugin(opts bundleOptions) api.Plugin {
+	opts = opts.withDefaults()
+	name := "brainkit-source-relative-resolver"
+	if opts.resolverProfile == resolverProfileNPMPreview {
+		name = "brainkit-npm-preview-resolver"
+	}
 	return api.Plugin{
-		Name: "brainkit-source-relative-resolver",
+		Name: name,
 		Setup: func(build api.PluginBuild) {
 			build.OnResolve(api.OnResolveOptions{Filter: ".*"},
 				func(args api.OnResolveArgs) (api.OnResolveResult, error) {
@@ -156,9 +199,65 @@ func resolverPolicyPlugin(opts bundleOptions) api.Plugin {
 						return api.OnResolveResult{}, nil
 					}
 					if isAllowedBareImport(args.Path) {
-						return api.OnResolveResult{Path: args.Path, External: true}, nil
+						id, _ := brainkitRuntimeModuleStub(args.Path)
+						return api.OnResolveResult{Path: id, Namespace: brainkitRuntimeModuleNamespace}, nil
+					}
+					if opts.resolverProfile == resolverProfileNPMPreview {
+						if args.Path == "zod" {
+							resolved := build.Resolve("zod/v4", api.ResolveOptions{
+								Importer:   args.Importer,
+								Namespace:  args.Namespace,
+								ResolveDir: args.ResolveDir,
+								Kind:       args.Kind,
+								PluginData: args.PluginData,
+								With:       args.With,
+							})
+							return api.OnResolveResult{
+								Errors:     resolved.Errors,
+								Warnings:   resolved.Warnings,
+								Path:       resolved.Path,
+								External:   resolved.External,
+								Namespace:  resolved.Namespace,
+								Suffix:     resolved.Suffix,
+								PluginData: resolved.PluginData,
+							}, nil
+						}
+						if id, _, ok := npmPreviewPackageStub(args.Path); ok {
+							return api.OnResolveResult{Path: id, Namespace: npmPreviewPackageStubNamespace}, nil
+						}
+						if isNodeBuiltinImport(args.Path) {
+							if id, _, ok := npmPreviewNodeStub(args.Path); ok {
+								return api.OnResolveResult{Path: id, Namespace: npmPreviewNodeStubNamespace}, nil
+							}
+							return unsupportedNodeBuiltinResult(args.Path, args.Importer, opts), nil
+						}
+						return api.OnResolveResult{}, nil
 					}
 					return unsupportedBareImportResult(args.Path, args.Importer, opts), nil
+				})
+			build.OnLoad(api.OnLoadOptions{Filter: ".*", Namespace: npmPreviewNodeStubNamespace},
+				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+					contents, ok := npmPreviewNodeStubs[args.Path]
+					if !ok {
+						return api.OnLoadResult{}, fmt.Errorf("npm-preview Node stub %q is not registered", args.Path)
+					}
+					return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS}, nil
+				})
+			build.OnLoad(api.OnLoadOptions{Filter: ".*", Namespace: npmPreviewPackageStubNamespace},
+				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+					contents, ok := npmPreviewPackageStubs[args.Path]
+					if !ok {
+						return api.OnLoadResult{}, fmt.Errorf("npm-preview package stub %q is not registered", args.Path)
+					}
+					return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS}, nil
+				})
+			build.OnLoad(api.OnLoadOptions{Filter: ".*", Namespace: brainkitRuntimeModuleNamespace},
+				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+					contents, ok := brainkitRuntimeModuleStubContents(args.Path)
+					if !ok {
+						return api.OnLoadResult{}, fmt.Errorf("Brainkit runtime module stub %q is not registered", args.Path)
+					}
+					return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS}, nil
 				})
 		},
 	}
@@ -169,7 +268,7 @@ func unsupportedBareImportResult(specifier, importer string, opts bundleOptions)
 		Specifier:          specifier,
 		Importer:           importer,
 		Source:             opts.sourcePackage,
-		Profile:            resolverProfileSourceRelative,
+		Profile:            opts.withDefaults().resolverProfile,
 		AllowedBareImports: append([]string(nil), allowedBareImports...),
 		SuggestedOwner:     suggestedNPMResolverOwner,
 	}
@@ -179,6 +278,73 @@ func unsupportedBareImportResult(specifier, importer string, opts bundleOptions)
 			Detail: err,
 		}},
 	}
+}
+
+func unsupportedNodeBuiltinResult(specifier, importer string, opts bundleOptions) api.OnResolveResult {
+	err := &sdkerrors.PackageResolverError{
+		Specifier:          specifier,
+		Importer:           importer,
+		Source:             opts.sourcePackage,
+		Profile:            opts.withDefaults().resolverProfile,
+		AllowedBareImports: append([]string(nil), allowedBareImports...),
+		SuggestedOwner:     "jsbridge, browser module, or package-specific adapter",
+		Reason:             "npm-preview does not currently expose this Node builtin/subpath for package deployments",
+		BoundaryClass:      "unsupported-node-api",
+	}
+	return api.OnResolveResult{
+		Errors: []api.Message{{
+			Text:   err.Error(),
+			Detail: err,
+		}},
+	}
+}
+
+func unsupportedNPMPreviewInMemoryResult(specifier, importer string, opts bundleOptions) api.OnResolveResult {
+	err := &sdkerrors.PackageResolverError{
+		Specifier:          specifier,
+		Importer:           importer,
+		Source:             opts.sourcePackage,
+		Profile:            opts.withDefaults().resolverProfile,
+		AllowedBareImports: append([]string(nil), allowedBareImports...),
+		SuggestedOwner:     "filesystem package deploy with npm-preview resolver",
+		Reason:             "npm-preview requires a filesystem package root with package.json and pnpm-lock.yaml",
+		BoundaryClass:      "resolver-profile",
+	}
+	return api.OnResolveResult{
+		Errors: []api.Message{{
+			Text:   err.Error(),
+			Detail: err,
+		}},
+	}
+}
+
+func prepareNPMPreviewPackage(ctx context.Context, dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, "package.json")); err != nil {
+		if os.IsNotExist(err) {
+			return &sdkerrors.ValidationError{
+				Field:   "manifest.resolver",
+				Message: "npm-preview requires package.json in the filesystem package root",
+			}
+		}
+		return fmt.Errorf("npm-preview resolver stat package.json: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "pnpm-lock.yaml")); err != nil {
+		if os.IsNotExist(err) {
+			return &sdkerrors.ValidationError{
+				Field:   "manifest.resolver",
+				Message: "npm-preview requires pnpm-lock.yaml and runs pnpm install --frozen-lockfile --ignore-scripts",
+			}
+		}
+		return fmt.Errorf("npm-preview resolver stat pnpm-lock.yaml: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, "pnpm", "install", "--frozen-lockfile", "--ignore-scripts")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "CI=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("npm-preview resolver install failed: %w\n%s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func isBareImport(specifier string) bool {
@@ -218,4 +384,124 @@ var esImportRe = regexp.MustCompile(`(?m)^import\s+(type\s+)?(\{[^}]*\}|\*\s+as\
 // import declarations.
 func NormalizeJSArtifact(code string) string {
 	return esImportRe.ReplaceAllString(code, "")
+}
+
+func sanitizeSESRejectedImportText(code string) string {
+	var out strings.Builder
+	out.Grow(len(code))
+
+	const (
+		stateNormal = iota
+		stateSingle
+		stateDouble
+		stateTemplate
+		stateLineComment
+		stateBlockComment
+	)
+
+	state := stateNormal
+	escaped := false
+	for i := 0; i < len(code); {
+		switch state {
+		case stateNormal:
+			if code[i] == '\'' {
+				state = stateSingle
+			} else if code[i] == '"' {
+				state = stateDouble
+			} else if code[i] == '`' {
+				state = stateTemplate
+			} else if code[i] == '/' && i+1 < len(code) && code[i+1] == '/' {
+				state = stateLineComment
+				out.WriteByte(code[i])
+				out.WriteByte(code[i+1])
+				i += 2
+				continue
+			} else if code[i] == '/' && i+1 < len(code) && code[i+1] == '*' {
+				state = stateBlockComment
+				out.WriteByte(code[i])
+				out.WriteByte(code[i+1])
+				i += 2
+				continue
+			}
+			out.WriteByte(code[i])
+			i++
+
+		case stateSingle:
+			if strings.HasPrefix(code[i:], "import(") {
+				out.WriteString("import\\u0028")
+				i += len("import(")
+				continue
+			}
+			out.WriteByte(code[i])
+			if escaped {
+				escaped = false
+			} else if code[i] == '\\' {
+				escaped = true
+			} else if code[i] == '\'' {
+				state = stateNormal
+			}
+			i++
+
+		case stateDouble:
+			if strings.HasPrefix(code[i:], "import(") {
+				out.WriteString("import\\u0028")
+				i += len("import(")
+				continue
+			}
+			out.WriteByte(code[i])
+			if escaped {
+				escaped = false
+			} else if code[i] == '\\' {
+				escaped = true
+			} else if code[i] == '"' {
+				state = stateNormal
+			}
+			i++
+
+		case stateTemplate:
+			if strings.HasPrefix(code[i:], "import(") {
+				out.WriteString("import\\u0028")
+				i += len("import(")
+				continue
+			}
+			out.WriteByte(code[i])
+			if escaped {
+				escaped = false
+			} else if code[i] == '\\' {
+				escaped = true
+			} else if code[i] == '`' {
+				state = stateNormal
+			}
+			i++
+
+		case stateLineComment:
+			if strings.HasPrefix(code[i:], "import(") {
+				out.WriteString("import\\u0028")
+				i += len("import(")
+				continue
+			}
+			out.WriteByte(code[i])
+			if code[i] == '\n' {
+				state = stateNormal
+			}
+			i++
+
+		case stateBlockComment:
+			if strings.HasPrefix(code[i:], "import(") {
+				out.WriteString("import\\u0028")
+				i += len("import(")
+				continue
+			}
+			if code[i] == '*' && i+1 < len(code) && code[i+1] == '/' {
+				out.WriteByte(code[i])
+				out.WriteByte(code[i+1])
+				i += 2
+				state = stateNormal
+				continue
+			}
+			out.WriteByte(code[i])
+			i++
+		}
+	}
+	return out.String()
 }

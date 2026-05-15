@@ -1,0 +1,11 @@
+{
+  "chunkTypes": "~background-task-started",
+  "hasBackgroundStarted": true,
+  "hasNoBackgroundCompleted": true,
+  "startedTaskStatus": "running",
+  "hasCancelEvent": true,
+  "cancelEventTaskMatches": true,
+  "cancelledStatus": "cancelled",
+  "cancelledTaskCount": "*",
+  "toolAbortObserved": true
+}

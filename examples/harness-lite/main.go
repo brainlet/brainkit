@@ -8,12 +8,10 @@
 // observational memory) may move without deprecation. See
 // modules/harness/README.md + designs/09-harness-boundary.md.
 //
-// This example builds a Kit with a minimal harness.Config, resolves
-// the Instance, subscribes to events, and issues a SendMessage. If
-// the underlying JS Harness backend is not wired in this build, the
-// boot step returns an error — the example catches that and prints
-// a clear message so readers see the frozen Go-side contract even
-// when the JS side is still landing.
+// This example builds a Kit with a minimal harness.Config. The
+// referenced agent is intentionally not deployed here, so startup
+// prints the frozen Go-side contract and the clean missing-agent
+// error without requiring a live provider.
 //
 // Run from the repo root:
 //
@@ -72,8 +70,8 @@ func run() error {
 		Modules:   append(standard.RuntimeSet(), harnessMod),
 	})
 	if err != nil {
-		if isHarnessJSMissing(err) {
-			fmt.Println("Harness JS backend is not wired in this build.")
+		if isHarnessSetupMissing(err) {
+			fmt.Println("Harness JS backend is wired, but the example did not deploy demo-agent.")
 			fmt.Println("The frozen Go-side contract (Module / Instance / Event) still compiles:")
 			fmt.Printf("  module id          : %s\n", harnessMod.ID())
 			fmt.Printf("  module status      : %s (WIP)\n", harnessMod.Status())
@@ -134,17 +132,15 @@ func run() error {
 	return nil
 }
 
-// isHarnessJSMissing matches the error surfaced when the JS-side
-// createHarness / init call is absent. Kept as a string match
-// because the wrapper error text is the only stable signal — the
-// WIP JS shim may or may not be compiled into this build.
-func isHarnessJSMissing(err error) bool {
+// isHarnessSetupMissing matches the clean boot error surfaced when
+// the example's referenced agent has not been deployed into the JS
+// registry yet. Kept as a string match because the wrapper error text
+// is the only stable signal while modules/harness remains WIP.
+func isHarnessSetupMissing(err error) bool {
 	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "harness: create JS harness"),
-		strings.Contains(msg, "harness: init:"),
-		strings.Contains(msg, "__kit.createHarness"),
-		strings.Contains(msg, "createHarness is not a function"):
+	case strings.Contains(msg, "harness.createHarness: agent"),
+		strings.Contains(msg, "is not registered"):
 		return true
 	}
 	return false

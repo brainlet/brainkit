@@ -411,6 +411,10 @@ func (b *Bridge) EvalOnJSThread(file string, code string) (string, error) {
 		}
 		if val.IsPromise() {
 			awaited := b.ctx.Await(val)
+			if awaited == nil {
+				val.Free()
+				return "", fmt.Errorf("jsbridge: await returned nil for %s", file)
+			}
 			if awaited.IsException() {
 				e := b.ctx.Exception()
 				awaited.Free()
@@ -447,6 +451,11 @@ func (b *Bridge) EvalOnJSThread(file string, code string) (string, error) {
 		}
 		if val.IsPromise() {
 			awaited := ctx.Await(val)
+			if awaited == nil {
+				val.Free()
+				ch <- evalResult{err: fmt.Errorf("jsbridge: await returned nil for %s", file)}
+				return
+			}
 			if awaited.IsException() {
 				e := ctx.Exception()
 				awaited.Free()
@@ -546,6 +555,10 @@ func (b *Bridge) evalAsync(file string, code string, module bool) (result *quick
 	}
 	if val.IsPromise() {
 		awaited := b.ctx.Await(val)
+		if awaited == nil {
+			val.Free()
+			return nil, fmt.Errorf("jsbridge: await returned nil for %s", file)
+		}
 		if awaited.IsException() {
 			e := b.ctx.Exception()
 			awaited.Free()

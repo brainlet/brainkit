@@ -121,8 +121,7 @@
     "kerberos",
     "mongodb-client-encryption",
     "pg-native",
-    "snappy",
-    "socks"
+    "snappy"
   ],
   "dynamicRequires": [
     "@opentelemetry/api",

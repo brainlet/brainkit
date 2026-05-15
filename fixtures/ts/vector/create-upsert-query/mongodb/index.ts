@@ -2,8 +2,15 @@ import { MongoDBVector } from "agent";
 import { output } from "kit";
 const url = process.env.MONGODB_URL;
 if (!url) throw new Error("MONGODB_URL not set");
+const mongoUrl = url.includes("?")
+  ? `${url}&directConnection=true&serverSelectionTimeoutMS=5000`
+  : `${url}?authSource=admin&directConnection=true&serverSelectionTimeoutMS=5000`;
 try {
-  const vs = new MongoDBVector({ id: "mongo-crud", uri: url, dbName: "vector_test" });
+  const vs = new MongoDBVector({
+    id: "mongo-crud",
+    uri: mongoUrl,
+    dbName: "vector_test",
+  });
   // MongoDB Community Edition doesn't support $vectorSearch (needs Atlas)
   // Test createIndex + upsert at minimum
   const indexName = "test_crud_" + Date.now();

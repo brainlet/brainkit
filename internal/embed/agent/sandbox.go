@@ -309,6 +309,9 @@ func (s *Sandbox) Eval(ctx context.Context, filename, code string) (string, erro
 	if err != nil {
 		return "", s.wrapEvalError("eval", filename, "", "", "", err)
 	}
+	if val == nil {
+		return "", s.wrapEvalError("eval", filename, "", "", "", fmt.Errorf("jsbridge: eval returned nil value"))
+	}
 	defer val.Free()
 	return val.String(), nil
 }

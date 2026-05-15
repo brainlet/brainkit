@@ -66,6 +66,29 @@ All agent fixtures require AI (OPENAI_API_KEY) since the `agent` category is in 
 |---------|-----|-----------|---------------|
 | on-step-finish | yes | no | `onStepFinish` callback fires for each agent step; asserts callback count > 0 |
 
+### background-tasks/
+
+| Fixture | AI | Container | What it tests |
+|---------|-----|-----------|---------------|
+| cancel-running | yes | no | Live OpenAI-backed `Agent.stream()` dispatches a background task, `BackgroundTaskManager.cancel()` emits `background-task-cancelled`, stores `cancelled`, and aborts the running tool |
+| concurrency-queue | yes | no | Real Mastra `createBackgroundTask()` queue semantics with `globalConcurrency: 2` and `perAgentConcurrency: 1`; asserts queued pending task starts after same-agent slot frees |
+| lifecycle-callbacks | yes | no | Real Mastra `createBackgroundTask()` lifecycle callbacks; asserts per-task execution/chunk/result/complete/failed hooks and manager `onTaskComplete`/`onTaskFailed` hooks |
+| manager-stream-filter-abort | yes | no | Real Mastra `BackgroundTaskManager.stream()` filter behavior for `agentId` and `taskId`, including `AbortSignal` stream closure |
+| progress-output | yes | no | Live OpenAI-backed `Agent.streamUntilIdle()` with a background tool that emits progress via `writer.write`; asserts `background-task-output` chunks and completed task result |
+| retry-success | yes | no | Live OpenAI-backed `Agent.streamUntilIdle()` with a background tool that fails once then succeeds; asserts two execute attempts, stored `retryCount: 1`, and completed result |
+| start-workers-all | yes | no | Real Mastra manager dispatch after plain `mastra.startWorkers()`; Brainkit starts the safe background-task worker while leaving generic scheduler/orchestration loops unclaimed |
+| start-workers-surface | yes | no | Plain `mastra.startWorkers()`/`stopWorkers()` returns in QuickJS with the default Mastra worker set present |
+| suspend-resume | yes | no | Live OpenAI-backed background tool suspension and out-of-band `BackgroundTaskManager.resume`; asserts suspended storage state, completed result storage, and follow-up recall |
+| stream-until-idle | yes | no | Live OpenAI-backed `Agent.streamUntilIdle()` with a Mastra background tool: emits running/completed lifecycle chunks, stores the completed task result, and performs the continuation turn |
+| stream-worker-teardown | yes | no | Real Mastra manager stream/worker teardown: stream aborts, manager shutdown, `stopWorkers()`, and Brainkit debug counters prove no active streams, task contexts, abort controllers, or workers remain |
+| timeout-failure | yes | no | Live OpenAI-backed `Agent.streamUntilIdle()` with explicit `_background.timeoutMs`; asserts `background-task-failed`, stored `timed_out` state, and timeout error payload |
+
+### channels/
+
+| Fixture | AI | Container | What it tests |
+|---------|-----|-----------|---------------|
+| core | yes | no | Core Mastra channel orchestration: `AgentChannels`, `channels` Agent config, webhook route generation, `Mastra.getChannels()`, channel reaction tools, and `ChatChannelProcessor` request-context prompt injection. This is not concrete Slack/Discord/Telegram provider support |
+
 ### integration/
 
 | Fixture | AI | Container | What it tests |

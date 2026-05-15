@@ -133,7 +133,12 @@ const nodeCompatJS = `
 
   function inherits(ctor, superCtor) {
     ctor.prototype = Object.create(superCtor.prototype);
-    ctor.prototype.constructor = ctor;
+    Object.defineProperty(ctor.prototype, "constructor", {
+      value: ctor,
+      writable: true,
+      configurable: true,
+      enumerable: false,
+    });
   }
 
   function format(fmt) {
@@ -553,6 +558,156 @@ const nodeCompatJS = `
     MessageChannel: MessageChannel,
     MessagePort: MessagePort,
   };
+
+  var builtinModuleNames = [
+    "assert", "assert/strict", "async_hooks", "buffer", "child_process",
+    "crypto", "diagnostics_channel", "dns", "dns/promises", "events",
+    "fs", "fs/promises", "http", "https", "net", "os", "path",
+    "path/posix", "perf_hooks", "process", "querystring", "stream",
+    "stream/promises", "stream/web", "string_decoder", "timers",
+    "timers/promises", "tls", "url", "util", "util/types",
+    "worker_threads", "zlib",
+  ];
+  function normalizeBuiltinSpecifier(specifier) {
+    specifier = String(specifier || "");
+    return specifier.indexOf("node:") === 0 ? specifier.slice(5) : specifier;
+  }
+  function makeBufferModule() {
+    var B = globalThis.Buffer;
+    if (!B) return undefined;
+    function NodeBuffer(arg, encodingOrOffset, length) {
+      if (typeof arg === "number") return B.alloc(arg);
+      return B.from(arg, encodingOrOffset, length);
+    }
+    for (var key in B) {
+      try { NodeBuffer[key] = B[key]; } catch (_) {}
+    }
+    NodeBuffer.prototype = Uint8Array.prototype;
+    return { Buffer: NodeBuffer, default: { Buffer: NodeBuffer } };
+  }
+  function getBuiltinModule(specifier) {
+    switch (normalizeBuiltinSpecifier(specifier)) {
+    case "assert":
+    case "assert/strict":
+      return globalThis.assert;
+    case "async_hooks":
+      return globalThis.async_hooks;
+    case "buffer":
+      return makeBufferModule();
+    case "child_process":
+      return globalThis.child_process;
+    case "crypto":
+      return globalThis.crypto;
+    case "diagnostics_channel":
+      return globalThis.diagnostics_channel;
+    case "dns":
+      return globalThis.dns;
+    case "dns/promises":
+      return globalThis.dns && globalThis.dns.promises;
+    case "events":
+      return { EventEmitter: globalThis.EventEmitter, default: globalThis.EventEmitter };
+    case "fs":
+      return globalThis.fs;
+    case "fs/promises":
+      return globalThis.fs && globalThis.fs.promises;
+    case "http":
+      return globalThis.http;
+    case "https":
+      return globalThis.https;
+    case "module":
+      return globalThis.node_module;
+    case "net":
+      return globalThis.net;
+    case "os":
+      return globalThis.os;
+    case "path":
+    case "path/posix":
+      return globalThis.path;
+    case "perf_hooks":
+      return globalThis.perf_hooks;
+    case "process":
+      return globalThis.process;
+    case "querystring":
+      return globalThis.querystring;
+    case "stream":
+      return globalThis.stream;
+    case "stream/promises":
+      return globalThis.stream && globalThis.stream.promises;
+    case "stream/web":
+      return {
+        ReadableStream: globalThis.ReadableStream,
+        WritableStream: globalThis.WritableStream,
+        TransformStream: globalThis.TransformStream,
+      };
+    case "string_decoder":
+      return { StringDecoder: globalThis.StringDecoder };
+    case "timers":
+      return {
+        setTimeout: globalThis.setTimeout,
+        clearTimeout: globalThis.clearTimeout,
+        setInterval: globalThis.setInterval,
+        clearInterval: globalThis.clearInterval,
+        setImmediate: globalThis.setImmediate,
+        clearImmediate: globalThis.clearImmediate,
+      };
+    case "timers/promises":
+      return globalThis.timersPromises;
+    case "tls":
+      return globalThis.tls;
+    case "url":
+      return globalThis.node_url;
+    case "util":
+      return globalThis.util;
+    case "util/types":
+      return globalThis.utilTypes;
+    case "worker_threads":
+      return globalThis.worker_threads;
+    case "zlib":
+      return globalThis.zlib;
+    default:
+      return undefined;
+    }
+  }
+  function requireUnsupportedBoundary(specifier) {
+    throw brainkitUnsupportedBoundary({
+      api: "module.createRequire(" + String(specifier) + ")",
+      importPath: String(specifier || ""),
+      boundaryClass: "dynamic-require",
+      suggestedOwner: "future npm resolver package patch or adapter",
+      owner: "internal/jsbridge.NodeCompat",
+    });
+  }
+  function createRequire() {
+    function require(specifier) {
+      var mod = getBuiltinModule(specifier);
+      if (mod !== undefined) return mod;
+      return requireUnsupportedBoundary(specifier);
+    }
+    require.resolve = function(specifier) {
+      if (globalThis.node_module.isBuiltin(specifier)) return normalizeBuiltinSpecifier(specifier);
+      return requireUnsupportedBoundary(specifier);
+    };
+    require.cache = {};
+    require.extensions = {};
+    require.main = undefined;
+    return require;
+  }
+  class Module {}
+  globalThis.node_module = {
+    createRequire: createRequire,
+    builtinModules: builtinModuleNames.slice(),
+    isBuiltin: function(specifier) {
+      var id = normalizeBuiltinSpecifier(specifier);
+      return builtinModuleNames.indexOf(id) >= 0 || id === "module";
+    },
+    syncBuiltinESMExports: function() {},
+    Module: Module,
+    default: null,
+  };
+  globalThis.node_module.default = globalThis.node_module;
+  if (globalThis.process && typeof globalThis.process.getBuiltinModule !== "function") {
+    globalThis.process.getBuiltinModule = getBuiltinModule;
+  }
 
   function unavailable(name, boundaryClass, suggestedOwner, importPath) {
     return function() {

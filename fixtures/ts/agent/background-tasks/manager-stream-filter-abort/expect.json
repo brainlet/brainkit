@@ -1,0 +1,10 @@
+{
+  "started": "~agent-a",
+  "snapshotAgentMatches": true,
+  "snapshotRunMatches": true,
+  "agentFilterIgnoredAgentACompletion": true,
+  "agentCompletionMatches": true,
+  "agentStreamClosedOnAbort": true,
+  "taskSnapshotMatches": true,
+  "taskStreamClosedOnAbort": true
+}

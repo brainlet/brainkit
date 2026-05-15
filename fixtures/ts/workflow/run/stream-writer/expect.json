@@ -1,0 +1,8 @@
+{
+  "eventCount": "*",
+  "eventTypes": "~workflow-finish",
+  "customMessages": "custom:alpha",
+  "writerWriteBubbled": "*",
+  "sawCustomEvent": true,
+  "completed": true
+}

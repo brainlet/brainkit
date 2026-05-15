@@ -1,48 +1,64 @@
 # Fixtures Test Map
 
 **Purpose:** TS fixture integration tests. Deploy `index.ts`, read output, assert against `expect.json`.
-**Count:** 291 fixtures across 21 categories
+**Count:** 329 fixtures across 23 categories; the general runner discovers 327 because `cross-kit` and `plugin` use specialized runners.
 **Runner:** `test/fixtures/runner.go` (WalkDir + path-based classification via `classify.go`)
 **Entry:** `TestFixtures` in `fixtures_test.go` calls `runner.RunAll(t)`
+**Live AI:** AI fixtures use `BRAINKIT_TEST_LIVE_AI=1`; the harness loads the root `.env` and real provider credentials such as `OPENAI_API_KEY`. Provider support rows require real provider implementations; fixture-local stand-ins only prove Brainkit-owned contracts.
 **Assertion:** `helpers.go` -- `"*"` (key exists), `"~prefix"` (contains substring), exact match, float delta 0.01; `deployErrorContains` expects deployment to fail with the given substring.
 
 ## Filesystem Count Summary
 
-Refreshed from `find fixtures/ts -name index.ts` on 2026-05-13.
+Refreshed from `find fixtures/ts -name index.ts` on 2026-05-15.
 The category counts below are authoritative; the descriptive tables that follow
 are human-maintained summaries of representative fixture behavior.
 
 | Category | Fixtures |
 |----------|---------:|
-| agent | 43 |
+| agent | 56 |
 | ai | 32 |
+| browser | 1 |
 | bus | 17 |
 | composition | 2 |
 | cross-feature | 5 |
 | cross-kit | 1 |
 | ecosystem | 1 |
 | evals | 22 |
+| harness | 10 |
 | kit | 17 |
 | mcp | 2 |
 | memory | 26 |
 | observability | 9 |
 | plugin | 1 |
 | polyfill | 17 |
-| processors | 15 |
+| processors | 16 |
 | rag | 22 |
 | storage | 1 |
-| tools | 9 |
+| tools | 15 |
 | vector | 9 |
 | voice | 15 |
-| workflow | 25 |
+| workflow | 32 |
 
 ## Categories
 
-### agent/ (43 fixtures)
+### agent/ (56 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
+| agent/background-tasks/cancel-running | yes | no | Live OpenAI-backed background task cancellation through `BackgroundTaskManager.cancel`, including cancelled event, stored state, and tool abort signal |
+| agent/background-tasks/concurrency-queue | yes | no | Real Mastra background task queue semantics: global/per-agent concurrency limits keep one task pending until a slot frees |
+| agent/background-tasks/lifecycle-callbacks | yes | no | Real Mastra background task lifecycle callbacks for completion and failure: per-task hooks plus manager `onTaskComplete`/`onTaskFailed` |
+| agent/background-tasks/manager-stream-filter-abort | yes | no | Real Mastra `BackgroundTaskManager.stream()` filters running/completed task events by `agentId` and `taskId`, and closes readers on `AbortSignal` |
+| agent/background-tasks/progress-output | yes | no | Live OpenAI-backed `Agent.streamUntilIdle()` with background tool progress output chunks and completed task result |
+| agent/background-tasks/retry-success | yes | no | Live OpenAI-backed background task retry: first execute attempt fails, second succeeds, stored `retryCount` is 1 |
+| agent/background-tasks/start-workers-all | yes | no | Plain `mastra.startWorkers()` starts Brainkit's safe background-task worker path and real Mastra manager dispatch completes |
+| agent/background-tasks/start-workers-surface | yes | no | Plain `mastra.startWorkers()`/`stopWorkers()` returns with the default Mastra worker set present in QuickJS |
+| agent/background-tasks/suspend-resume | yes | no | Live OpenAI-backed background tool suspension, out-of-band manager resume, completed result storage, and follow-up recall |
+| agent/background-tasks/stream-until-idle | yes | no | Live OpenAI-backed `Agent.streamUntilIdle()` with a Mastra background tool, lifecycle chunks, task persistence, and continuation turn |
+| agent/background-tasks/stream-worker-teardown | yes | no | Real Mastra manager stream/worker teardown: stream abort, manager shutdown, `stopWorkers()`, and zero active Brainkit stream/task/worker debug counters |
+| agent/background-tasks/timeout-failure | yes | no | Live OpenAI-backed background task `_background.timeoutMs` override emits `background-task-failed` and stores `timed_out` task state |
 | agent/callbacks/on-step-finish | yes | no | onStepFinish callback fires during generation |
+| agent/channels/core | yes | no | Core Mastra channel orchestration: `AgentChannels`, channel config, route generation, Mastra aggregation, channel reaction tools, and `ChatChannelProcessor` context injection. This is not concrete Slack/Discord/Telegram provider support |
 | agent/generate/active-tools | yes | no | Agent generation with active tool selection |
 | agent/generate/basic | yes | no | Basic agent generate -- usage stats, finish reason |
 | agent/generate/dynamic-instructions | yes | no | Dynamic instructions produce different outputs per call |
@@ -98,6 +114,12 @@ are human-maintained summaries of representative fixture behavior.
 | ai/stream-text/on-finish | yes | no | onFinish callback after streaming |
 | ai/stream-text/with-tools | yes | no | Streaming with tool calls (usage stats) |
 | ai/tool/with-suspend | yes | no | Tool suspension and resume with approval flow |
+
+### browser/ (1 fixture)
+
+| Path | Needs AI | Needs Container | What it tests |
+|------|----------|-----------------|---------------|
+| browser/session-api | no | no | Deployed TypeScript `kit.browser` lifecycle API reaches modules/browser list/launch/close surface without launching a provider |
 
 ### bus/ (17 fixtures)
 
@@ -156,6 +178,21 @@ are human-maintained summaries of representative fixture behavior.
 | evals/scorer/with-llm-judge | yes | no | LLM-as-judge scorer |
 | evals/scorer/with-preprocess | yes | no | Scorer with preprocessing (positive score in range) |
 | evals/scorer/with-reason | yes | no | Scorer with reason (score=1, has reason string) |
+
+### harness/ (10 fixtures)
+
+| Path | Needs AI | Needs Container | What it tests |
+|------|----------|-----------------|---------------|
+| harness/browser/basic | yes | no | Live OpenAI-backed Harness browser contract: `MastraBrowser`/`BrowserContextProcessor` export surface, Harness browser propagation to a mode agent, browser context on `RequestContext`, execution-time browser tool availability, permission-unblocked browser tool call, lifecycle hooks, and teardown |
+| harness/interactive-tools/basic | yes | no | Real Harness interactive tools through deployed TypeScript: `ask_user`, `submit_plan`, `respondToQuestion`, `respondToPlanApproval`, question/plan events, display pending state, approval and rejection results |
+| harness/observational-memory/basic | yes | no | Harness observational-memory control surface: exported OM helpers, observer/reflector model defaults and switches, threshold persistence, seeded OM record lookup, `loadOMProgress`, OM stream data-part events, display-state updates, activation/title events, and failure abort handling |
+| harness/send-message/basic | yes | no | Live OpenAI-backed Mastra `Harness` through deployed TypeScript: init, `sendMessage`, events, thread/session state, display idle state, and teardown |
+| harness/subagents/basic | yes | no | Live OpenAI-backed isolated Harness subagent path: parent model calls built-in `subagent`, child agent resolves through `resolveModel`, subagent events/display snapshots, parent tool lifecycle, and display cleanup |
+| harness/subagents/forked | yes | no | Live OpenAI-backed forked Harness subagent path: built-in `subagent` clones the parent memory thread, runs the parent agent on the fork, preserves fork metadata/thread filtering, returns cloned-history context, and records completed display state |
+| harness/task-tools/basic | yes | no | Real Harness task tools through deployed TypeScript: task write/update/complete/check, task state mutation, multiple-in-progress rejection, task events, display task state, and teardown |
+| harness/tool-approval/basic | yes | no | Live OpenAI-backed Harness approval path: require-approval tool call, `tool_approval_required`, display pending approval, `respondToToolApproval`, resumed stream completion, and display cleanup |
+| harness/tool-suspension/basic | yes | no | Live OpenAI-backed Harness suspension path: tool `suspend()`, `tool_suspended`, `agent_end: suspended`, display pending suspension, `respondToToolSuspension`, resumed stream completion, and display cleanup |
+| harness/workspace/basic | yes | no | Live OpenAI-backed Harness workspace integration: static workspace lifecycle events, LocalFilesystem access, workspace tool export surface, built-in `subagent` with `allowedWorkspaceTools`, child workspace read-file tool use, display completion, and teardown |
 
 ### kit/ (17 fixtures)
 
@@ -257,7 +294,7 @@ are human-maintained summaries of representative fixture behavior.
 | rag/rerank/functional | no | no | Functional reranking |
 | rag/vector-query-tool | yes | no | Vector query tool (has results, needs AI for embedding) |
 
-### processors/ (15 fixtures)
+### processors/ (16 fixtures)
 
 See the filesystem count summary for current count. Processor fixture behavior
 is covered by `fixtures/ts/processors/*`.
@@ -267,16 +304,25 @@ is covered by `fixtures/ts/processors/*`.
 See the filesystem count summary for current count. Storage fixture behavior is
 covered by `fixtures/ts/storage/*`.
 
-### tools/ (9 fixtures)
+### tools/ (15 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
 | tools/call-from-ts | no | no | Call Go tool from TS (uppercase "HELLO BRAINLET") |
 | tools/call-go-tool | no | no | Call Go tool (echo + sum=42) |
+| tools/abort-signal | no | no | Tool execution context receives an already-aborted AbortSignal |
+| tools/agent-stream-data-persistence | yes | no | Live OpenAI-backed agent stream persists non-transient `data-*` tool chunks into memory |
+| tools/agent-stream-data-transient | yes | no | Live OpenAI-backed agent stream omits transient `data-*` chunks from memory while persisting non-transient chunks |
+| tools/agent-stream-subagent-writer | yes | no | Live OpenAI-backed parent/sub-agent fullStream bubbles sub-agent tool `writer.custom()` `data-*` chunks |
+| tools/agent-stream-writer | yes | no | Live OpenAI-backed agent fullStream tool writer chunks: `writer.write()` -> `tool-output`, `writer.custom()` -> direct `data-*` chunk |
 | tools/create-basic | no | no | Create tool in TS (sum=42, registered) |
 | tools/create-with-schema | yes | no | Create tool with JSON schema |
 | tools/register-list | no | no | Register and list tools |
 | tools/register-unregister | no | no | Register, find, unregister, verify removed |
+| tools/require-approval | no | no | Tool-level approval suspend/approve flow |
+| tools/runtime-context | no | no | RuntimeContext alias + tool execution context access |
+| tools/with-output-schema | no | no | Tool output schema result shape |
+| tools/with-streaming | no | no | Direct tool stream writer progress chunks |
 
 ### vector/ (9 fixtures)
 
@@ -294,7 +340,7 @@ covered by `fixtures/ts/storage/*`.
 See the filesystem count summary for current count. Voice fixture behavior is
 covered by `fixtures/ts/voice/*`.
 
-### workflow/ (25 fixtures)
+### workflow/ (32 fixtures)
 
 | Path | Needs AI | Needs Container | What it tests |
 |------|----------|-----------------|---------------|
@@ -307,6 +353,13 @@ covered by `fixtures/ts/voice/*`.
 | workflow/loop-dountil | no | no | DoUntil loop (success) |
 | workflow/nested | no | no | Nested workflows (is42, success) |
 | workflow/parallel | no | no | Parallel step execution (success) |
+| workflow/run/stream-writer | no | no | `run.stream()` delivers `writer.custom()` events and records `writer.write()` bubbling behavior |
+| workflow/runtime-context | no | no | Workflow step reads per-run context through RuntimeContext/RequestContext |
+| workflow/scheduled/basic | no | no | Declarative `createWorkflow({ schedule })` registers a schedule row, fires through the Brainkit-owned workflow event listener, records trigger history, and tears down scheduler/listener state |
+| workflow/scheduled/multi | no | no | Array-form scheduled workflow registers `wf_<workflow>__<schedule>` rows, preserves per-entry schedule data, fires both due schedules, records trigger history, and tears down scheduler/listener state |
+| workflow/scheduled/pause-resume | no | no | Paused due schedule rows are skipped without trigger history or `nextFireAt` advancement, then resumed active rows fire through the workflow-event listener |
+| workflow/scheduled/redeploy-diff | no | no | Declarative redeploy diffing preserves paused status while updating config, migrates single-form to array-form rows, removes stale `wf_` rows, and preserves user-created schedule rows |
+| workflow/scheduled/timezone | no | no | Timezone-aware scheduled workflow stores `America/New_York`, computes initial/recomputed fire times at 09:00 in that zone, fires through the workflow-event listener, and tears down scheduler/listener state |
 | workflow/sleep | no | no | Sleep step (success) |
 | workflow/state/get-step-result | no | no | Get previous step result (correct=true, fromStep1=42) |
 | workflow/state/shared | no | no | Shared state across steps (success) |
@@ -330,5 +383,5 @@ Some fixtures require Go-side tool registration (in `runner.go:registerFixtureTo
 - Vector campaigns call `RunMatching(t, "vector/*/pgvector")`
 - `cross-kit/` and `plugin/` are in `skipCategories` -- not run by general runner
 - Classification logic is in `classify.go` -- scans all path segments for infrastructure markers
-- AI categories (always need OPENAI_API_KEY): agent, ai, observability, composition
-- AI segments (need OPENAI_API_KEY anywhere in path): with-agent-step, vector-query-tool, with-llm-judge, semantic-recall, generate-title, working-memory
+- AI categories (always need OPENAI_API_KEY): agent, ai, observability, composition, voice, processors
+- AI segments (need OPENAI_API_KEY anywhere in path): with-agent-step, agent-stream-data-persistence, agent-stream-data-transient, agent-stream-writer, agent-stream-subagent-writer, create-with-schema, vector-query-tool, with-llm-judge, semantic-recall, generate-title, working-memory, rerank, graph-rag, prebuilt

@@ -122,6 +122,9 @@ func (h *Harness) CloseContext(ctx context.Context) error {
 	if err := h.waitHeartbeats(ctx); err != nil {
 		return err
 	}
+	if err := h.destroyJSHarness(ctx); err != nil {
+		return err
+	}
 	h.closed.Store(true)
 	h.closing.Store(false)
 	return nil
@@ -137,8 +140,6 @@ func (h *Harness) waitHeartbeats(ctx context.Context) error {
 	h.hbWait.Do(func() {
 		go func() {
 			h.hbWG.Wait()
-			h.closed.Store(true)
-			h.closing.Store(false)
 			close(done)
 		}()
 	})
@@ -149,6 +150,20 @@ func (h *Harness) waitHeartbeats(ctx context.Context) error {
 	case <-ctx.Done():
 		return fmt.Errorf("harness heartbeat shutdown: %w", ctx.Err())
 	}
+}
+
+func (h *Harness) destroyJSHarness(ctx context.Context) error {
+	if h.rt == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	_, err := h.rt.EvalJS(ctx, "harness-destroy.ts", `return JSON.stringify(await __kit.destroyHarness())`)
+	if err != nil {
+		return fmt.Errorf("harness: destroy JS harness: %w", err)
+	}
+	return nil
 }
 
 // GetDisplayState returns a thread-safe deep copy of the canonical display state.
@@ -684,20 +699,50 @@ func (h *Harness) buildJSConfig() map[string]any {
 		subs := make([]map[string]any, len(h.config.Subagents))
 		for i, s := range h.config.Subagents {
 			subs[i] = map[string]any{
-				"id":             s.ID,
-				"allowedTools":   s.AllowedTools,
-				"defaultModelId": s.DefaultModelID,
-				"instructions":   s.Instructions,
+				"id":                    s.ID,
+				"name":                  s.Name,
+				"description":           s.Description,
+				"allowedHarnessTools":   s.AllowedHarnessTools,
+				"allowedTools":          s.AllowedTools,
+				"allowedWorkspaceTools": s.AllowedWorkspaceTools,
+				"defaultModelId":        s.DefaultModelID,
+				"instructions":          s.Instructions,
 			}
 		}
 		cfg["subagents"] = subs
 	}
+	if len(h.config.Tools) > 0 {
+		cfg["toolNames"] = h.config.Tools
+	}
+	if h.config.Workspace != nil {
+		cfg["workspace"] = map[string]any{
+			"id":      h.config.Workspace.ID,
+			"name":    h.config.Workspace.Name,
+			"rootDir": h.config.Workspace.RootDir,
+		}
+	}
 	if h.config.OMConfig != nil {
+		observerModelID := h.config.OMConfig.DefaultObserverModelID
+		if observerModelID == "" {
+			observerModelID = h.config.OMConfig.DefaultObserverModel
+		}
+		reflectorModelID := h.config.OMConfig.DefaultReflectorModelID
+		if reflectorModelID == "" {
+			reflectorModelID = h.config.OMConfig.DefaultReflectorModel
+		}
+		observationThreshold := h.config.OMConfig.DefaultObservationThreshold
+		if observationThreshold == 0 {
+			observationThreshold = h.config.OMConfig.ObservationThreshold
+		}
+		reflectionThreshold := h.config.OMConfig.DefaultReflectionThreshold
+		if reflectionThreshold == 0 {
+			reflectionThreshold = h.config.OMConfig.ReflectionThreshold
+		}
 		cfg["omConfig"] = map[string]any{
-			"defaultObserverModel":  h.config.OMConfig.DefaultObserverModel,
-			"defaultReflectorModel": h.config.OMConfig.DefaultReflectorModel,
-			"observationThreshold":  h.config.OMConfig.ObservationThreshold,
-			"reflectionThreshold":   h.config.OMConfig.ReflectionThreshold,
+			"defaultObserverModelId":      observerModelID,
+			"defaultReflectorModelId":     reflectorModelID,
+			"defaultObservationThreshold": observationThreshold,
+			"defaultReflectionThreshold":  reflectionThreshold,
 		}
 	}
 	if len(h.config.Permissions) > 0 {
@@ -715,6 +760,9 @@ func (h *Harness) buildJSConfig() map[string]any {
 			cats[tool] = string(cat)
 		}
 		cfg["toolCategories"] = cats
+	}
+	if len(h.config.AlwaysAllowTools) > 0 {
+		cfg["alwaysAllowTools"] = h.config.AlwaysAllowTools
 	}
 
 	return cfg

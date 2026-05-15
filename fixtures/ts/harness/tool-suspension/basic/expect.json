@@ -1,0 +1,15 @@
+{
+  "suspended": true,
+  "suspendedToolName": "confirmAction",
+  "suspendPayloadAction": "DEPLOY_FIXTURE",
+  "suspendPayloadReason": "Needs live Harness suspension confirmation",
+  "agentEndedSuspended": true,
+  "displaySuspension": true,
+  "resumeStarted": true,
+  "toolEnded": true,
+  "agentEndedComplete": true,
+  "messageEnded": true,
+  "displayIdle": true,
+  "displaySuspensionCleared": true,
+  "containsToken": true
+}

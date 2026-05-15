@@ -1,0 +1,13 @@
+{
+  "processorId": "mastra/response-cache",
+  "processorName": "@mastra/response-cache",
+  "cacheRoundTrip": true,
+  "listLength": 2,
+  "incremented": true,
+  "contextIsRequestContext": true,
+  "contextHasOptions": true,
+  "applyReturnedSameContext": true,
+  "deterministicKey": true,
+  "keyPrefix": true,
+  "defaultTtl": 300
+}

@@ -1,7 +1,7 @@
 // Test: Agent HITL — tool with requireApproval suspends, then approve/decline resumes
 // Mastra pattern: createTool({ requireApproval: true }) → agent.generate returns
 // finishReason:"suspended" with suspendPayload → agent.approveToolCallGenerate resumes
-import { Agent, createTool, z, InMemoryStore, Memory } from "agent";
+import { Agent, Mastra, createTool, z, InMemoryStore, Memory } from "agent";
 import { model, output } from "kit";
 
 const deleteTool = createTool({
@@ -15,11 +15,12 @@ const deleteTool = createTool({
   },
 });
 
-// HITL requires a storage provider for snapshot persistence
+// HITL approval/resume requires the agent to be attached to a Mastra instance
+// with storage so workflow snapshots can be persisted and reloaded.
 const store = new InMemoryStore();
 const mem = new Memory({ storage: store });
 
-const agent = new Agent({
+const hitlAgent = new Agent({
   name: "hitl-agent",
   model: model("openai", "gpt-4o-mini"),
   instructions: "When asked to delete, use the delete-record tool.",
@@ -27,6 +28,13 @@ const agent = new Agent({
   memory: mem,
   maxSteps: 3,
 });
+
+const mastra = new Mastra({
+  agents: { "hitl-agent": hitlAgent },
+  storage: store,
+});
+
+const agent = mastra.getAgent("hitl-agent");
 
 try {
   // Phase 1: generate — should suspend because tool requires approval
@@ -55,7 +63,6 @@ try {
         finalText: approved?.text?.substring(0, 100) || "",
       });
     } catch (e: any) {
-      // Approve might fail if snapshot storage isn't fully wired
       output({
         suspended: true,
         hasSuspendPayload,

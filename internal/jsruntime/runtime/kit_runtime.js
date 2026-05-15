@@ -19,6 +19,245 @@
   var output = globalThis.__kit_output;
   var generateWithApproval = globalThis.__kit_generateWithApproval;
 
+  function harnessErrorMessage(error) {
+    if (error && typeof error.message === "string") return error.message;
+    return String(error);
+  }
+
+  function sanitizeHarnessValue(value, depth) {
+    if (depth > 8) return "[MaxDepth]";
+    if (value instanceof Error) {
+      return { name: value.name || "Error", message: value.message || "", stack: value.stack || "" };
+    }
+    if (Array.isArray(value)) {
+      return value.map(function(item) { return sanitizeHarnessValue(item, depth + 1); });
+    }
+    if (value && typeof value === "object") {
+      var out = {};
+      for (var key in value) {
+        out[key] = sanitizeHarnessValue(value[key], depth + 1);
+      }
+      return out;
+    }
+    if (typeof value === "bigint") return String(value);
+    return value;
+  }
+
+  function sanitizeHarnessEvent(event) {
+    var out = sanitizeHarnessValue(event || { type: "error", error: "empty harness event" }, 0);
+    if (out && typeof out.error === "object" && typeof out.error.message === "string") {
+      out.error = out.error.message;
+    }
+    return out;
+  }
+
+  function resolveHarnessModel(modelId) {
+    if (!modelId || typeof modelId !== "string") return undefined;
+    var slash = modelId.indexOf("/");
+    if (slash < 0) return globalThis.__kit_resolveModel("openai", modelId);
+    return globalThis.__kit_resolveModel(modelId.slice(0, slash), modelId.slice(slash + 1));
+  }
+
+  var browserAPI = {
+    launch: async function(req) {
+      var resp = await bus.call("browser.session.launch", req || {}, { timeoutMs: 60000 });
+      return resp && resp.session;
+    },
+    close: async function(idOrSession) {
+      var id = typeof idOrSession === "string" ? idOrSession : (idOrSession && idOrSession.id);
+      var resp = await bus.call("browser.session.close", { id: id || "" }, { timeoutMs: 30000 });
+      return !!(resp && resp.closed);
+    },
+    list: async function() {
+      var resp = await bus.call("browser.session.list", {}, { timeoutMs: 10000 });
+      return (resp && resp.sessions) || [];
+    },
+  };
+
+  function buildHarnessTool(toolName) {
+    var info = tools.resolve(toolName);
+    if (!info) {
+      throw new Error("harness.createHarness: tool '" + toolName + "' is not registered");
+    }
+    var parsedSchema = null;
+    if (info.inputSchema) {
+      if (typeof info.inputSchema === "string") {
+        try { parsedSchema = JSON.parse(info.inputSchema); } catch(e) { parsedSchema = null; }
+      } else if (typeof info.inputSchema === "object") {
+        parsedSchema = info.inputSchema;
+      }
+    }
+    return embed.createTool({
+      id: info.shortName || toolName,
+      description: info.description || "",
+      inputSchema: parsedSchema || embed.z.any(),
+      execute: async function(input) {
+        var args = (input && input.context !== undefined) ? input.context : input;
+        return await tools.call(toolName, args);
+      },
+    });
+  }
+
+  function normalizeHarnessOMConfig(omConfig) {
+    if (!omConfig || typeof omConfig !== "object") return undefined;
+    var out = {};
+    var observerModel = omConfig.defaultObserverModelId || omConfig.defaultObserverModel;
+    var reflectorModel = omConfig.defaultReflectorModelId || omConfig.defaultReflectorModel;
+    var observationThreshold = omConfig.defaultObservationThreshold !== undefined
+      ? omConfig.defaultObservationThreshold
+      : omConfig.observationThreshold;
+    var reflectionThreshold = omConfig.defaultReflectionThreshold !== undefined
+      ? omConfig.defaultReflectionThreshold
+      : omConfig.reflectionThreshold;
+    if (observerModel !== undefined && observerModel !== "") out.defaultObserverModelId = observerModel;
+    if (reflectorModel !== undefined && reflectorModel !== "") out.defaultReflectorModelId = reflectorModel;
+    if (observationThreshold !== undefined && observationThreshold !== 0) out.defaultObservationThreshold = observationThreshold;
+    if (reflectionThreshold !== undefined && reflectionThreshold !== 0) out.defaultReflectionThreshold = reflectionThreshold;
+    return out;
+  }
+
+  async function destroyHarnessFromGo() {
+    var unsubscribe = globalThis.__brainkit_harness_unsubscribe;
+    globalThis.__brainkit_harness_unsubscribe = undefined;
+    if (typeof unsubscribe === "function") {
+      try { unsubscribe(); } catch(e) {}
+    }
+    var harness = globalThis.__brainkit_harness;
+    if (harness && typeof harness.destroy === "function") {
+      await harness.destroy();
+    }
+    globalThis.__brainkit_harness = undefined;
+    return { ok: true };
+  }
+
+  async function createHarnessFromGo(rawConfig) {
+    if (!embed.Harness) {
+      throw new Error("harness.createHarness: Harness export is unavailable");
+    }
+    var cfg = typeof rawConfig === "string" ? JSON.parse(rawConfig) : (rawConfig || {});
+    var registryRefs = globalThis.__kit_registry;
+    var storage = cfg.storage || new embed.InMemoryStore();
+    var memory = cfg.memory || new embed.Memory({ storage: storage, options: { lastMessages: 10 } });
+    var modes = (cfg.modes || []).map(function(mode) {
+      var next = {};
+      for (var key in mode) next[key] = mode[key];
+      if (!next.agent && next.agentName) {
+        var entry = registryRefs && registryRefs.get("agent", next.agentName);
+        next.agent = entry && entry.ref;
+        if (!next.agent) {
+          throw new Error("harness.createHarness: agent '" + next.agentName + "' is not registered");
+        }
+      }
+      if (!next.agent) {
+        throw new Error("harness.createHarness: mode '" + (next.id || "?") + "' has no agent");
+      }
+      delete next.agentName;
+      return next;
+    });
+    if (modes.length === 0) {
+      throw new Error("harness.createHarness: at least one mode is required");
+    }
+
+    var harnessConfig = {};
+    for (var cfgKey in cfg) harnessConfig[cfgKey] = cfg[cfgKey];
+    harnessConfig.storage = storage;
+    harnessConfig.memory = memory;
+    harnessConfig.modes = modes;
+
+    if (Array.isArray(cfg.toolNames) && !harnessConfig.tools) {
+      var resolvedTools = {};
+      cfg.toolNames.forEach(function(toolName) {
+        resolvedTools[toolName] = buildHarnessTool(toolName);
+      });
+      harnessConfig.tools = resolvedTools;
+    }
+    delete harnessConfig.toolNames;
+
+    if (Array.isArray(cfg.subagents)) {
+      harnessConfig.subagents = cfg.subagents.map(function(subagent) {
+        var next = {};
+        for (var key in subagent) next[key] = subagent[key];
+        if (!next.name) next.name = next.id;
+        if (!next.description) next.description = String(next.instructions || next.id || "Harness subagent");
+        if (!next.allowedHarnessTools && next.allowedTools) next.allowedHarnessTools = next.allowedTools;
+        delete next.allowedTools;
+        return next;
+      });
+    }
+
+    var omConfig = normalizeHarnessOMConfig(cfg.omConfig);
+    if (omConfig) harnessConfig.omConfig = omConfig;
+    if (!harnessConfig.resolveModel) harnessConfig.resolveModel = resolveHarnessModel;
+
+    if (!harnessConfig.threadLock &&
+        typeof globalThis.__go_harness_lock_acquire === "function" &&
+        typeof globalThis.__go_harness_lock_release === "function") {
+      harnessConfig.threadLock = {
+        acquire: async function(threadId) {
+          var err = globalThis.__go_harness_lock_acquire(String(threadId || ""));
+          if (err) throw new Error(String(err));
+        },
+        release: async function(threadId) {
+          var err = globalThis.__go_harness_lock_release(String(threadId || ""));
+          if (err) throw new Error(String(err));
+        },
+      };
+    }
+
+    if (harnessConfig.toolCategories && !harnessConfig.toolCategoryResolver) {
+      var categoryByTool = harnessConfig.toolCategories;
+      harnessConfig.toolCategoryResolver = function(toolName) {
+        return categoryByTool[toolName] || null;
+      };
+      delete harnessConfig.toolCategories;
+    }
+
+    if (harnessConfig.defaultPermissions || harnessConfig.alwaysAllowTools) {
+      var initialState = harnessConfig.initialState || {};
+      var permissionRules = initialState.permissionRules || { categories: {}, tools: {} };
+      if (harnessConfig.defaultPermissions) {
+        for (var category in harnessConfig.defaultPermissions) {
+          permissionRules.categories[category] = harnessConfig.defaultPermissions[category];
+        }
+      }
+      if (Array.isArray(harnessConfig.alwaysAllowTools)) {
+        harnessConfig.alwaysAllowTools.forEach(function(toolName) {
+          permissionRules.tools[toolName] = "allow";
+        });
+      }
+      initialState.permissionRules = permissionRules;
+      harnessConfig.initialState = initialState;
+      delete harnessConfig.defaultPermissions;
+      delete harnessConfig.alwaysAllowTools;
+    }
+
+    if (harnessConfig.workspace && harnessConfig.workspace.rootDir && embed.Workspace && embed.LocalFilesystem) {
+      harnessConfig.workspace = new embed.Workspace({
+        id: harnessConfig.workspace.id || harnessConfig.id + "-workspace",
+        name: harnessConfig.workspace.name || harnessConfig.workspace.id || harnessConfig.id + " workspace",
+        filesystem: new embed.LocalFilesystem({ basePath: harnessConfig.workspace.rootDir }),
+      });
+    }
+
+    if (globalThis.__brainkit_harness) {
+      await destroyHarnessFromGo();
+    }
+
+    var harness = new embed.Harness(harnessConfig);
+    var unsubscribe = typeof harness.subscribe === "function" ? harness.subscribe(function(event) {
+      var bridge = globalThis.__go_harness_event;
+      if (typeof bridge !== "function") return;
+      try {
+        bridge(JSON.stringify(sanitizeHarnessEvent(event)));
+      } catch (error) {
+        bridge(JSON.stringify({ type: "error", error: "harness event serialization failed: " + harnessErrorMessage(error), fatal: false }));
+      }
+    }) : function() {};
+    globalThis.__brainkit_harness = harness;
+    globalThis.__brainkit_harness_unsubscribe = unsubscribe;
+    return { ok: true, id: cfg.id || "" };
+  }
+
   // ─── Export to globalThis.__kit ───────────────────────────────
 
   globalThis.__kit = {
@@ -33,11 +272,14 @@
     vectorStore: globalThis.__kit_resolveVectorStore,
     registry: registry,
     tools: tools,
+    browser: browserAPI,
     fs: fs,
     mcp: mcp,
     output: output,
     secrets: secretsAPI,
     generateWithApproval: generateWithApproval,
+    createHarness: createHarnessFromGo,
+    destroyHarness: destroyHarnessFromGo,
   };
 
   // ─── Compartment Endowments ───────────────────────────────────
@@ -173,6 +415,7 @@
     var endowments = {
       // Error class — must be in endowments so Compartment code can catch with instanceof
       BrainkitError: _BKE,
+      Error: globalThis.Error,
       // brainkit infrastructure ("kit" module)
       bus: {
         publish: rewrapErrors(scopedBus.publish),
@@ -203,6 +446,11 @@
         call: rewrapErrorsAsync(_kitObj.tools.call),
         list: rewrapErrors(_kitObj.tools.list),
         resolve: rewrapErrors(_kitObj.tools.resolve),
+      },
+      browser: {
+        launch: rewrapErrorsAsync(_kitObj.browser.launch),
+        close: rewrapErrorsAsync(_kitObj.browser.close),
+        list: rewrapErrorsAsync(_kitObj.browser.list),
       },
       // Unified `tool` endowment — single identifier serving both surfaces.
       //
@@ -301,7 +549,6 @@
       z: embed.z,
       // Mastra
       Agent: embed.Agent,
-      Mastra: embed.Mastra,
       createTool: ws(embed.createTool),
       createWorkflow: ws(embed.createWorkflow),
       createStep: embed.createStep,
@@ -324,11 +571,17 @@
       },
       PgVector: embed.PgVector,
       MongoDBVector: embed.MongoDBVector,
+      PineconeVector: embed.PineconeVector,
+      ChromaVector: embed.ChromaVector,
+      QdrantVector: embed.QdrantVector,
       ModelRouterEmbeddingModel: embed.ModelRouterEmbeddingModel,
       RequestContext: embed.RequestContext,
+      RuntimeContext: embed.RuntimeContext || embed.RequestContext,
       Workspace: embed.Workspace,
       LocalFilesystem: embed.LocalFilesystem,
       LocalSandbox: embed.LocalSandbox,
+      WORKSPACE_TOOLS_PREFIX: embed.WORKSPACE_TOOLS_PREFIX,
+      WORKSPACE_TOOLS: embed.WORKSPACE_TOOLS,
       // Voice — OpenAIVoice handles whisper-1 (STT) + tts-1 (TTS);
       // CompositeVoice routes different providers for STT vs TTS.
       //
@@ -436,6 +689,12 @@
       SkillsProcessor: embed.SkillsProcessor,
       SkillSearchProcessor: embed.SkillSearchProcessor,
       WorkspaceInstructionsProcessor: embed.WorkspaceInstructionsProcessor,
+      ResponseCache: embed.ResponseCache,
+      DEFAULT_RESPONSE_CACHE_TTL_SECONDS: embed.DEFAULT_RESPONSE_CACHE_TTL_SECONDS,
+      RESPONSE_CACHE_CONTEXT_KEY: embed.RESPONSE_CACHE_CONTEXT_KEY,
+      buildResponseCacheKey: embed.buildResponseCacheKey,
+      InMemoryServerCache: embed.InMemoryServerCache,
+      MastraServerCache: embed.MastraServerCache,
       // JS built-ins
       console: {
         log:   function() { __go_console_log_tagged(source, "log", __util_format(Array.prototype.slice.call(arguments))); },
@@ -476,6 +735,7 @@
       atob: globalThis.atob,
       btoa: globalThis.btoa,
       crypto: globalThis.crypto,
+      Intl: globalThis.Intl,
       WebSocket: globalThis.WebSocket,
       structuredClone: globalThis.structuredClone,
       // Date — SES tamed
@@ -512,11 +772,33 @@
       Buffer: globalThis.Buffer,
       EventEmitter: globalThis.EventEmitter,
       stream: globalThis.stream,
+      Readable: globalThis.stream && globalThis.stream.Readable,
+      Writable: globalThis.stream && globalThis.stream.Writable,
+      Duplex: globalThis.stream && globalThis.stream.Duplex,
+      Transform: globalThis.stream && globalThis.stream.Transform,
+      PassThrough: globalThis.stream && globalThis.stream.PassThrough,
       net: globalThis.net,
+      tls: globalThis.tls,
       os: globalThis.os,
+      path: globalThis.path,
       dns: globalThis.dns,
       zlib: globalThis.zlib,
       child_process: globalThis.child_process,
+      http: globalThis.http,
+      https: globalThis.https,
+      node_url: globalThis.node_url,
+      node_module: globalThis.node_module,
+      require: globalThis.node_module && globalThis.node_module.createRequire("brainkit:package"),
+      util: globalThis.util,
+      utilTypes: globalThis.utilTypes,
+      assert: globalThis.assert,
+      querystring: globalThis.querystring,
+      StringDecoder: globalThis.StringDecoder,
+      perf_hooks: globalThis.perf_hooks,
+      timersPromises: globalThis.timersPromises,
+      async_hooks: globalThis.async_hooks,
+      diagnostics_channel: globalThis.diagnostics_channel,
+      worker_threads: globalThis.worker_threads,
 
       // ── Gap 12: Mastra + AI SDK surface completion ───────────────
       // These landed after the initial endowment pass to close surface
@@ -534,6 +816,25 @@
       cloneWorkflow: embed.cloneWorkflow,
       cloneStep: embed.cloneStep,
       mapVariable: embed.mapVariable,
+
+      // Mastra core — background tasks
+      BackgroundTaskManager: embed.BackgroundTaskManager,
+      createBackgroundTask: embed.createBackgroundTask,
+      generateBackgroundTaskSystemPrompt: embed.generateBackgroundTaskSystemPrompt,
+      __brainkitMastraBackgroundTaskDebug: embed.__brainkitMastraBackgroundTaskDebug,
+
+      // Mastra core — Harness
+      Harness: embed.Harness,
+      assignTaskIds: embed.assignTaskIds,
+      askUserTool: embed.askUserTool,
+      defaultDisplayState: embed.defaultDisplayState,
+      defaultOMProgressState: embed.defaultOMProgressState,
+      parseSubagentMeta: embed.parseSubagentMeta,
+      submitPlanTool: embed.submitPlanTool,
+      taskWriteTool: embed.taskWriteTool,
+      taskUpdateTool: embed.taskUpdateTool,
+      taskCompleteTool: embed.taskCompleteTool,
+      taskCheckTool: embed.taskCheckTool,
 
       // Mastra core — logger
       ConsoleLogger: embed.ConsoleLogger,
@@ -560,6 +861,7 @@
       // Mastra workspace — extended filesystem + tool factory + individual tools
       CompositeFilesystem: embed.CompositeFilesystem,
       createWorkspaceTools: embed.createWorkspaceTools,
+      resolveToolConfig: embed.resolveToolConfig,
       readFileTool: embed.readFileTool,
       writeFileTool: embed.writeFileTool,
       editFileTool: embed.editFileTool,
@@ -570,6 +872,20 @@
       searchTool: embed.searchTool,
       indexContentTool: embed.indexContentTool,
       executeCommandTool: embed.executeCommandTool,
+      requireWorkspace: embed.requireWorkspace,
+      requireFilesystem: embed.requireFilesystem,
+      requireSandbox: embed.requireSandbox,
+
+      // Mastra browser — core provider contract + context processor
+      MastraBrowser: embed.MastraBrowser,
+      BrowserContextProcessor: embed.BrowserContextProcessor,
+
+      // Mastra channels — core AgentChannels orchestration surface.
+      // Concrete Slack/Discord/Telegram adapters still need explicit module /
+      // gateway ownership before they count as provider support.
+      AgentChannels: embed.AgentChannels,
+      ChatChannelProcessor: embed.ChatChannelProcessor,
+      MastraStateAdapter: embed.MastraStateAdapter,
 
       // Mastra voice — extended defaults
       DefaultVoice: embed.DefaultVoice,
@@ -672,6 +988,7 @@
       InvalidToolApprovalError: embed.InvalidToolApprovalError,
       ToolCallNotFoundForApprovalError: embed.ToolCallNotFoundForApprovalError,
     };
+    endowments.global = endowments;
     return typeof globalThis.harden === "function" ? globalThis.harden(endowments) : endowments;
   };
 })();

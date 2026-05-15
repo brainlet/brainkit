@@ -1,0 +1,21 @@
+{
+  "engineType": "evented",
+  "initialStatus": "active",
+  "pausedStatus": "paused",
+  "skippedWhilePaused": true,
+  "nextFireUnchangedWhilePaused": true,
+  "resumedStatus": "active",
+  "workerSubscriptionStarted": true,
+  "schedulerRunningBeforeShutdown": true,
+  "executionCount": 1,
+  "executionUserId": "paused-user",
+  "executionSource": "schedule-pause-resume-fixture",
+  "triggerOutcome": "published",
+  "triggerRunIdMatches": true,
+  "lastRunIdMatches": true,
+  "nextFireAdvancedAfterResume": true,
+  "workflowEventHandled": true,
+  "workflowEventFailures": 0,
+  "finalActiveWorkflowSubscriptions": 0,
+  "finalActiveSchedulerCount": 0
+}

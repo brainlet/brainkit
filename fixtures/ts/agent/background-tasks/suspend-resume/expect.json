@@ -1,0 +1,13 @@
+{
+  "firstChunkTypes": "~background-task-suspended",
+  "hasBackgroundStarted": true,
+  "hasBackgroundSuspended": true,
+  "hasNoInitialCompletion": true,
+  "suspendedStatus": "suspended",
+  "suspendPayloadTopic": "solana",
+  "completedStatus": "completed",
+  "completedResultIncludesTopic": true,
+  "completedResultIncludesNotes": true,
+  "followupTextIncludesTopic": true,
+  "followupTextIncludesNotes": true
+}

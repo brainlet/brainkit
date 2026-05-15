@@ -12,13 +12,19 @@ import (
 
 // Package describes a deployment unit.
 type Package struct {
-	Name    string            `json:"name"`
-	Version string            `json:"version,omitempty"`
-	Entry   string            `json:"entry,omitempty"`
-	Files   map[string]string `json:"files,omitempty"`
+	Name     string            `json:"name"`
+	Version  string            `json:"version,omitempty"`
+	Entry    string            `json:"entry,omitempty"`
+	Resolver string            `json:"resolver,omitempty"`
+	Files    map[string]string `json:"files,omitempty"`
 
 	path string `json:"-"`
 }
+
+const (
+	ResolverSourceRelative = "source-relative"
+	ResolverNPMPreview     = "npm-preview"
+)
 
 // DeployPayload is the source portion of a package.deploy request.
 type DeployPayload struct {
@@ -72,10 +78,24 @@ func FromFile(path string) (Package, error) {
 	}, nil
 }
 
+// WithResolver returns a copy configured for an explicit package resolver
+// profile. The default resolver is source-relative.
+func (p Package) WithResolver(resolver string) Package {
+	p.Resolver = resolver
+	return p
+}
+
 // DeployPayload builds the source payload carried by package.deploy.
 func (p Package) DeployPayload() (DeployPayload, error) {
 	if p.path != "" {
-		return DeployPayload{Path: p.path}, nil
+		if p.Resolver == "" {
+			return DeployPayload{Path: p.path}, nil
+		}
+		raw, err := json.Marshal(map[string]string{"resolver": p.Resolver})
+		if err != nil {
+			return DeployPayload{}, err
+		}
+		return DeployPayload{Path: p.path, Manifest: raw}, nil
 	}
 	if p.Name == "" {
 		return DeployPayload{}, fmt.Errorf("packagesource: Package.Name is required for inline deploy")
@@ -89,6 +109,9 @@ func (p Package) DeployPayload() (DeployPayload, error) {
 	manifest := map[string]string{"name": p.Name, "entry": p.Entry}
 	if p.Version != "" {
 		manifest["version"] = p.Version
+	}
+	if p.Resolver != "" {
+		manifest["resolver"] = p.Resolver
 	}
 	raw, err := json.Marshal(manifest)
 	if err != nil {

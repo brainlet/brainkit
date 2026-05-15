@@ -119,27 +119,38 @@ type ModeConfig struct {
 	Default        bool   // true for the default mode
 	DefaultModelID string // default model ID for this mode
 	Color          string // color hint for TUI rendering
-	AgentName      string // name of the agent in globalThis.__agents
+	AgentName      string // name of the agent registered with kit.register("agent", name, agent)
 }
 
 // HarnessSubagentConfig defines a constrained subagent.
 type HarnessSubagentConfig struct {
-	ID             string   // subagent type ID (e.g., "explore", "execute")
-	AllowedTools   []string // tool names this subagent can use
-	DefaultModelID string   // default model ID
-	Instructions   string   // system instructions
+	ID                    string   // subagent type ID (e.g., "explore", "execute")
+	Name                  string   // display name
+	Description           string   // description used in the generated subagent tool
+	AllowedHarnessTools   []string // harness tool names this subagent can use
+	AllowedTools          []string // legacy alias for AllowedHarnessTools
+	AllowedWorkspaceTools []string // workspace tool names this subagent can use
+	DefaultModelID        string   // default model ID
+	Instructions          string   // system instructions
 }
 
 // HarnessOMConfig configures observational memory for the Harness.
 type HarnessOMConfig struct {
+	DefaultObserverModelID      string
+	DefaultReflectorModelID     string
+	DefaultObservationThreshold int // token threshold for observations
+	DefaultReflectionThreshold  int // token threshold for reflections
+	// Legacy aliases accepted while modules/harness remains WIP.
 	DefaultObserverModel  string
 	DefaultReflectorModel string
-	ObservationThreshold  int // messages between observations (default: 5)
-	ReflectionThreshold   int // observations between reflections (default: 3)
+	ObservationThreshold  int
+	ReflectionThreshold   int
 }
 
 // WorkspaceHarnessConfig configures a static workspace.
 type WorkspaceHarnessConfig struct {
+	ID      string // workspace ID
+	Name    string // display name
 	RootDir string // workspace root directory
 }
 
@@ -188,8 +199,8 @@ func validateHarnessConfig(cfg HarnessConfig) error {
 		if s.ID == "" {
 			return fmt.Errorf("harness: subagent ID is required")
 		}
-		if len(s.AllowedTools) == 0 {
-			return fmt.Errorf("harness: subagent %q: AllowedTools is required", s.ID)
+		if len(s.AllowedHarnessTools) == 0 && len(s.AllowedTools) == 0 && len(s.AllowedWorkspaceTools) == 0 {
+			return fmt.Errorf("harness: subagent %q: at least one allowed tool set is required", s.ID)
 		}
 	}
 	return nil

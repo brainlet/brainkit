@@ -1,0 +1,13 @@
+{
+  "chunkTypes": "~data-sandbox-exit",
+  "streamedStdoutCount": 1,
+  "streamedStderrCount": 1,
+  "streamedExitCount": 1,
+  "persistedStdoutCount": 0,
+  "persistedStderrCount": 0,
+  "persistedExitCount": 1,
+  "streamsTransientChunks": true,
+  "persistsNonTransientExit": true,
+  "omitsTransientFromMemory": true,
+  "assistantMessageCount": "*"
+}

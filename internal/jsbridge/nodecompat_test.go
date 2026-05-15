@@ -10,7 +10,7 @@ import (
 )
 
 func TestNodeCompatPureModules(t *testing.T) {
-	b := newTestBridge(t, Inspect(), Encoding(), Buffer(), URL(), Performance(), NodeCompat())
+	b := newTestBridge(t, Inspect(), Encoding(), Buffer(), URL(), Performance(), Process(), NodeCompat())
 
 	result := evalString(t, b, `
 		JSON.stringify({
@@ -55,6 +55,15 @@ func TestNodeCompatPureModules(t *testing.T) {
 			})()
 			, httpStatus: http.STATUS_CODES[404]
 			, httpsAgent: typeof https.Agent === "function"
+			, moduleAssert: node_module.createRequire("file:///tmp/pkg/index.js")("node:assert").strictEqual === assert.strictEqual
+			, moduleBufferPrototype: typeof node_module.createRequire("file:///tmp/pkg/index.js")("node:buffer").Buffer === "function" &&
+				!!Object.create(node_module.createRequire("file:///tmp/pkg/index.js")("buffer").Buffer.prototype)
+			, processBuiltinUtil: process.getBuiltinModule("node:util").format("m:%s", "ok")
+			, moduleIsBuiltin: node_module.isBuiltin("node:fs") && !node_module.isBuiltin("left-pad")
+			, dynamicRequireBoundary: (function() {
+				try { node_module.createRequire("file:///tmp/pkg/index.js")("left-pad"); return ""; }
+				catch (err) { return err.code + ":" + err.boundaryClass + ":" + err.importPath; }
+			})()
 		});
 	`)
 
@@ -78,6 +87,11 @@ func TestNodeCompatPureModules(t *testing.T) {
 		HTTPCreateServerThrows bool   `json:"httpCreateServerThrows"`
 		HTTPStatus             string `json:"httpStatus"`
 		HTTPSAgent             bool   `json:"httpsAgent"`
+		ModuleAssert           bool   `json:"moduleAssert"`
+		ModuleBufferPrototype  bool   `json:"moduleBufferPrototype"`
+		ProcessBuiltinUtil     string `json:"processBuiltinUtil"`
+		ModuleIsBuiltin        bool   `json:"moduleIsBuiltin"`
+		DynamicRequireBoundary string `json:"dynamicRequireBoundary"`
 	}
 	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 		t.Fatalf("json: %v\n%s", err, result)
@@ -111,6 +125,12 @@ func TestNodeCompatPureModules(t *testing.T) {
 	}
 	if !parsed.HTTPRequest || !parsed.HTTPCreateServerThrows || parsed.HTTPStatus != "Not Found" || !parsed.HTTPSAgent {
 		t.Fatalf("http/https shape failed: %+v", parsed)
+	}
+	if !parsed.ModuleAssert || !parsed.ModuleBufferPrototype || parsed.ProcessBuiltinUtil != "m:ok" || !parsed.ModuleIsBuiltin {
+		t.Fatalf("module/getBuiltinModule shape failed: %+v", parsed)
+	}
+	if parsed.DynamicRequireBoundary != "BRAINKIT_UNSUPPORTED_BOUNDARY:dynamic-require:left-pad" {
+		t.Fatalf("dynamic require boundary = %q", parsed.DynamicRequireBoundary)
 	}
 }
 

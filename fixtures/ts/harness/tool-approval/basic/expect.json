@@ -1,0 +1,12 @@
+{
+  "approvalRequired": true,
+  "approvalToolName": "delete-record",
+  "approvalArgsContainId": true,
+  "displayApproval": true,
+  "toolEnded": true,
+  "agentEndedComplete": true,
+  "messageEnded": true,
+  "displayIdle": true,
+  "displayApprovalCleared": true,
+  "containsToken": true
+}

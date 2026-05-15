@@ -1,0 +1,16 @@
+{
+  "workerStarted": true,
+  "callerSnapshotMatches": true,
+  "callerStreamClosedOnAbort": true,
+  "callerAbortDrainedStreams": true,
+  "shutdownSnapshotMatches": true,
+  "activeStreamObservedBeforeShutdown": true,
+  "shutdownStreamClosed": true,
+  "finalActiveStreams": 0,
+  "finalTrackedStreams": 0,
+  "finalTaskContexts": 0,
+  "finalAbortControllers": 0,
+  "finalActiveWorkers": 0,
+  "shutdownCalls": "*",
+  "workerStopCalls": "*"
+}

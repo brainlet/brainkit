@@ -235,6 +235,43 @@ declare module "kit" {
     inputSchema?: Record<string, unknown>;
   }
 
+  // ── Browser Lifecycle ───────────────────────────────────────
+
+  export type BrowserSessionScope = "thread" | "shared";
+
+  export interface BrowserSessionLaunchRequest {
+    provider?: string;
+    threadId?: string;
+    scope?: BrowserSessionScope;
+    executablePath?: string;
+    profileDir?: string;
+    headless?: boolean;
+    args?: string[];
+  }
+
+  export interface BrowserSessionInfo {
+    id: string;
+    provider?: string;
+    threadId?: string;
+    scope?: BrowserSessionScope;
+    cdpUrl?: string;
+    webSocketDebuggerUrl?: string;
+    profileDir?: string;
+    executablePath?: string;
+    pid?: number;
+    external?: boolean;
+    createdAt: string;
+  }
+
+  export const browser: {
+    /** Launch a local CDP-capable browser through modules/browser. */
+    launch(req?: BrowserSessionLaunchRequest): Promise<BrowserSessionInfo>;
+    /** Close a tracked browser session by ID or session object. */
+    close(idOrSession: string | Pick<BrowserSessionInfo, "id">): Promise<boolean>;
+    /** List browser sessions tracked by modules/browser. */
+    list(): Promise<BrowserSessionInfo[]>;
+  };
+
   // ── Filesystem ───────────────────────────────────────────────
 
   export const fs: {

@@ -32,6 +32,22 @@ Tests the Mastra workflow engine: step chaining, branching, parallel execution, 
 |---------|----|-----------|---------------|
 | with-agent-step | yes | none | Workflow step creates Agent, calls `agent.generate()` to answer a question, formats result; combines workflows + AI |
 
+### run/
+
+| Fixture | AI | Container | What it tests |
+|---------|----|-----------|---------------|
+| stream-writer | no | none | `run.stream()` delivers custom events emitted by step `writer.custom()`; records whether `writer.write()` also bubbles |
+
+### scheduled/
+
+| Fixture | AI | Container | What it tests |
+|---------|----|-----------|---------------|
+| basic | no | none | Declarative `createWorkflow({ schedule })` auto-promotes to evented workflow, registers a Mastra schedule row, fires through Brainkit's workflow-event listener after a forced due tick, records trigger history, and tears down scheduler/listener state |
+| multi | no | none | Array-form scheduled workflow registers one Mastra row per stable schedule id, preserves per-entry input/context/metadata, fires both due rows through Brainkit's workflow-event listener, records trigger history, and tears down scheduler/listener state |
+| pause-resume | no | none | Paused schedule rows are skipped while due, preserve `nextFireAt`, then fire through Brainkit's workflow-event listener after the row is resumed to `active` |
+| redeploy-diff | no | none | Declarative redeploy diffing updates cron/target/metadata without unpausing, recomputes `nextFireAt`, migrates single-form rows to array-form rows, deletes stale `wf_` rows, and preserves user-created rows |
+| timezone | no | none | Timezone-aware scheduled workflow with `timezone: "America/New_York"`; verifies Croner computes initial and recomputed `nextFireAt` at 09:00 in the configured zone and fires through Brainkit's workflow-event listener |
+
 ### state/
 
 | Fixture | AI | Container | What it tests |

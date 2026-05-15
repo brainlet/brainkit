@@ -1,0 +1,19 @@
+{
+  "hasAgentChannels": true,
+  "adapterKeys": "local",
+  "hasLocalAdapter": true,
+  "hasMissingAdapter": false,
+  "routeCount": 1,
+  "routePath": "/api/agents/channel-agent/channels/local/webhook",
+  "routeMethod": "POST",
+  "routeRequiresAuth": false,
+  "serverHasCustomRoute": true,
+  "serverHasChannelRoute": true,
+  "mastraAggregated": true,
+  "addReactionTool": true,
+  "removeReactionTool": true,
+  "processorId": "chat-channel-context",
+  "processorMentionsPlatform": true,
+  "processorMentionsPublicThread": true,
+  "processorMentionsBotIdentity": true
+}

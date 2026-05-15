@@ -30,6 +30,8 @@ globalThis.ReadableStream = class ReadableStream {
     this._locked = false;
     this._source = underlyingSource || {};
     this._pendingRead = null;
+    this._startCalled = false;
+    this._startPromise = undefined;
     this._controller = {
       enqueue: (chunk) => {
         if (this._pendingRead) {
@@ -59,12 +61,46 @@ globalThis.ReadableStream = class ReadableStream {
       },
       desiredSize: 1,
     };
-    if (this._source.start) {
-      this._source.start(this._controller);
+
+    // Synchronous starts capture controllers for fetch bodies, TransformStream,
+    // tee(), and one-shot Response bodies. Async starts are often stream
+    // producers. Deferring those until first read prevents QuickJS Await from
+    // running long-lived producers while resolving the object that contains the
+    // stream, which is the shape Mastra uses for background task streams.
+    if (this._source.start && !this._isAsyncStart(this._source.start)) {
+      this._start(true);
     }
   }
 
   get locked() { return this._locked; }
+
+  _isAsyncStart(fn) {
+    return !!(fn && fn.constructor && fn.constructor.name === 'AsyncFunction');
+  }
+
+  _start(rethrow) {
+    if (this._startCalled) return this._startPromise;
+    this._startCalled = true;
+    if (!this._source.start) {
+      this._startPromise = Promise.resolve();
+      return this._startPromise;
+    }
+    try {
+      const result = this._source.start(this._controller);
+      if (result && typeof result.then === 'function') {
+        this._startPromise = Promise.resolve(result).catch((e) => {
+          this._controller.error(e);
+        });
+      } else {
+        this._startPromise = Promise.resolve();
+      }
+    } catch (e) {
+      this._controller.error(e);
+      if (rethrow) throw e;
+      this._startPromise = Promise.resolve();
+    }
+    return this._startPromise;
+  }
 
   getReader() {
     if (this._locked) throw new TypeError('ReadableStream is already locked');
@@ -76,6 +112,7 @@ globalThis.ReadableStream = class ReadableStream {
       get closed() { return Promise.resolve(this._closed); },
       async read() {
         const s = this._stream;
+        s._start(false);
         if (s._queue.length > 0) {
           return { done: false, value: s._queue.shift() };
         }
@@ -85,14 +122,57 @@ globalThis.ReadableStream = class ReadableStream {
         }
         if (s._errored) throw s._storedError;
         if (s._source.pull) {
-          await s._source.pull(s._controller);
-          if (s._queue.length > 0) {
-            return { done: false, value: s._queue.shift() };
-          }
-          if (s._closeRequested) {
-            this._closed = true;
-            return { done: true, value: undefined };
-          }
+          return new Promise((resolve, reject) => {
+            let settled = false;
+            const finish = (result) => {
+              if (settled) return;
+              settled = true;
+              resolve(result);
+            };
+            const fail = (error) => {
+              if (settled) return;
+              settled = true;
+              s._pendingRead = null;
+              reject(error);
+            };
+            const settleFromState = () => {
+              if (settled) return;
+              if (s._queue.length > 0) {
+                s._pendingRead = null;
+                finish({ done: false, value: s._queue.shift() });
+                return;
+              }
+              if (s._closeRequested) {
+                s._pendingRead = null;
+                this._closed = true;
+                finish({ done: true, value: undefined });
+                return;
+              }
+              if (s._errored) {
+                s._pendingRead = null;
+                fail(s._storedError);
+              }
+            };
+
+            // A real Web Streams pull may enqueue data and then keep the
+            // pull promise pending while downstream callbacks run. Register
+            // the pending read before calling pull so controller.enqueue()
+            // can satisfy this read immediately instead of deadlocking until
+            // pull resolves.
+            s._pendingRead = { resolve: finish, reject: fail };
+            let pullResult;
+            try {
+              pullResult = s._source.pull(s._controller);
+            } catch (error) {
+              fail(error);
+              return;
+            }
+            if (pullResult && typeof pullResult.then === 'function') {
+              pullResult.then(settleFromState, fail);
+            } else {
+              settleFromState();
+            }
+          });
         }
         // No data yet and no pull — wait for enqueue/close/error
         return new Promise((resolve, reject) => {
@@ -135,22 +215,40 @@ globalThis.ReadableStream = class ReadableStream {
   pipeThrough(transform, options) {
     const reader = this.getReader();
     const writer = transform.writable.getWriter();
-    const srcLocked = this._locked;
-    (async () => {
-      let n = 0;
+    const readable = transform.readable;
+    const originalPull = readable._source && readable._source.pull;
+    let done = false;
+    let pumping = false;
+
+    // Web streams are lazy: piping should not drain the source until the
+    // returned readable is consumed. Mastra constructs response objects by
+    // chaining pipeThrough() before the caller starts reading; eager pumping
+    // makes long-lived/background streams run during top-level await and can
+    // starve the resolved promise behind endless stream microtasks.
+    readable._source.pull = async (controller) => {
+      if (readable._queue.length > 0 || done) return;
+      if (originalPull) await originalPull(controller);
+      if (readable._queue.length > 0 || done) return;
+      if (pumping) return;
+      pumping = true;
       try {
-        while (true) {
-          const { done, value } = await reader.read();
-          n++;
-          if (done) { await writer.close(); break; }
-          await writer.write(value);
+        while (readable._queue.length === 0 && !done) {
+          const readResult = await reader.read();
+          if (readResult.done) {
+            done = true;
+            await writer.close();
+            break;
+          }
+          await writer.write(readResult.value);
         }
       } catch (e) {
-        console.error('[pipeThrough pipe] error after ' + n + ' reads:', e?.message || e);
         try { await writer.abort(e); } catch(_) {}
+        if (readable._controller) readable._controller.error(e);
+      } finally {
+        pumping = false;
       }
-    })();
-    return transform.readable;
+    };
+    return readable;
   }
 
   async pipeTo(dest, options) {

@@ -264,12 +264,14 @@ const moduleStubs = {
     export var rmSync = F.rmSync.bind(F);
     export var readdirSync = F.readdirSync.bind(F);
     export var statSync = F.statSync.bind(F);
+    export var lstatSync = F.lstatSync.bind(F);
+    export var unlinkSync = F.unlinkSync.bind(F);
     export var appendFileSync = F.appendFileSync.bind(F);
     export var createReadStream = F.createReadStream.bind(F);
     export var createWriteStream = F.createWriteStream.bind(F);
     export var promises = F.promises;
     export var constants = F.constants;
-    export default { readFile, writeFile, appendFile, readdir, stat, lstat, access, mkdir, unlink, rm, rename, copyFile, realpath, readFileSync, writeFileSync, existsSync, realpathSync, mkdirSync, renameSync, rmSync, readdirSync, statSync, appendFileSync, createReadStream, createWriteStream, promises, constants };
+    export default { readFile, writeFile, appendFile, readdir, stat, lstat, access, mkdir, unlink, rm, rename, copyFile, realpath, readFileSync, writeFileSync, existsSync, realpathSync, mkdirSync, renameSync, rmSync, readdirSync, statSync, lstatSync, unlinkSync, appendFileSync, createReadStream, createWriteStream, promises, constants };
   `,
   "fs/promises": `
     var F = globalThis.fs.promises;

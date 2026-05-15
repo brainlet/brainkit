@@ -150,6 +150,8 @@ type PackageResolverError struct {
 	Profile            string
 	AllowedBareImports []string
 	SuggestedOwner     string
+	Reason             string
+	BoundaryClass      string
 }
 
 func (e *PackageResolverError) Error() string {
@@ -157,8 +159,16 @@ func (e *PackageResolverError) Error() string {
 	if e.Source != "" {
 		source = fmt.Sprintf(" in source package %q", e.Source)
 	}
-	return fmt.Sprintf("package resolver %s: unsupported bare import %q from %q%s; allowed bare imports: %s; suggested future owner: %s",
-		e.Profile, e.Specifier, e.Importer, source, joinStrings(e.AllowedBareImports), e.SuggestedOwner)
+	reason := ""
+	if e.Reason != "" {
+		reason = "; reason: " + e.Reason
+	}
+	boundary := ""
+	if e.BoundaryClass != "" {
+		boundary = "; boundary: " + e.BoundaryClass
+	}
+	return fmt.Sprintf("package resolver %s: unsupported bare import %q from %q%s; allowed bare imports: %s%s%s; suggested future owner: %s",
+		e.Profile, e.Specifier, e.Importer, source, joinStrings(e.AllowedBareImports), reason, boundary, e.SuggestedOwner)
 }
 func (e *PackageResolverError) Code() string { return "PACKAGE_RESOLVER_UNSUPPORTED_IMPORT" }
 func (e *PackageResolverError) Details() map[string]any {
@@ -169,6 +179,8 @@ func (e *PackageResolverError) Details() map[string]any {
 		"profile":              e.Profile,
 		"allowedBareImports":   append([]string(nil), e.AllowedBareImports...),
 		"suggestedFutureOwner": e.SuggestedOwner,
+		"reason":               e.Reason,
+		"boundaryClass":        e.BoundaryClass,
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -228,6 +229,86 @@ func TestHarnessEvent_ToolArgs(t *testing.T) {
 	}
 	if event.Args["content"] != "package main" {
 		t.Errorf("args.content = %v", event.Args["content"])
+	}
+}
+
+func TestBuildJSConfigAlignsCurrentMastraHarnessKeys(t *testing.T) {
+	h := &Harness{config: HarnessConfig{
+		ID: "go-harness",
+		Modes: []ModeConfig{{
+			ID:             "default",
+			Name:           "Default",
+			Default:        true,
+			DefaultModelID: "openai/gpt-4o-mini",
+			AgentName:      "fixture-agent",
+		}},
+		Subagents: []HarnessSubagentConfig{{
+			ID:                    "reader",
+			Name:                  "Reader",
+			Description:           "Reads workspace evidence.",
+			AllowedHarnessTools:   []string{"go.lookup"},
+			AllowedWorkspaceTools: []string{"filesystem.read_file"},
+			DefaultModelID:        "openai/gpt-4o-mini",
+			Instructions:          "Read the file.",
+		}},
+		Tools: []string{"go.lookup"},
+		Workspace: &WorkspaceHarnessConfig{
+			ID:      "ws",
+			Name:    "Workspace",
+			RootDir: "/tmp/brainkit-harness-test",
+		},
+		OMConfig: &HarnessOMConfig{
+			DefaultObserverModelID:      "openai/gpt-4o-mini",
+			DefaultReflectorModelID:     "openai/gpt-4o-mini",
+			DefaultObservationThreshold: 30000,
+			DefaultReflectionThreshold:  40000,
+		},
+		Permissions:      DefaultPermissions(),
+		ToolCategories:   map[string]ToolCategory{"go.lookup": CategoryRead},
+		AlwaysAllowTools: []string{"go.lookup"},
+	}}
+
+	cfg := h.buildJSConfig()
+	if got, want := cfg["toolNames"], []string{"go.lookup"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("toolNames = %#v, want %#v", got, want)
+	}
+
+	om, ok := cfg["omConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("omConfig = %#v, want map", cfg["omConfig"])
+	}
+	for _, staleKey := range []string{"defaultObserverModel", "defaultReflectorModel", "observationThreshold", "reflectionThreshold"} {
+		if _, ok := om[staleKey]; ok {
+			t.Fatalf("omConfig contains stale key %q: %#v", staleKey, om)
+		}
+	}
+	if got := om["defaultObserverModelId"]; got != "openai/gpt-4o-mini" {
+		t.Fatalf("defaultObserverModelId = %#v", got)
+	}
+	if got := om["defaultObservationThreshold"]; got != 30000 {
+		t.Fatalf("defaultObservationThreshold = %#v", got)
+	}
+
+	subs, ok := cfg["subagents"].([]map[string]any)
+	if !ok || len(subs) != 1 {
+		t.Fatalf("subagents = %#v, want one subagent", cfg["subagents"])
+	}
+	if got, want := subs[0]["allowedHarnessTools"], []string{"go.lookup"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("allowedHarnessTools = %#v, want %#v", got, want)
+	}
+	if got, want := subs[0]["allowedWorkspaceTools"], []string{"filesystem.read_file"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("allowedWorkspaceTools = %#v, want %#v", got, want)
+	}
+
+	workspace, ok := cfg["workspace"].(map[string]any)
+	if !ok {
+		t.Fatalf("workspace = %#v, want map", cfg["workspace"])
+	}
+	if got := workspace["rootDir"]; got != "/tmp/brainkit-harness-test" {
+		t.Fatalf("workspace.rootDir = %#v", got)
+	}
+	if got, want := cfg["alwaysAllowTools"], []string{"go.lookup"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("alwaysAllowTools = %#v, want %#v", got, want)
 	}
 }
 

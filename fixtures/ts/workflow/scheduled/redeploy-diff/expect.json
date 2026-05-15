@@ -1,0 +1,16 @@
+{
+  "initialScheduleRegistered": true,
+  "pausedStatusBeforeRedeploy": "paused",
+  "statusPreservedAfterRedeploy": "paused",
+  "cronUpdated": "30 14 * * 5",
+  "inputUpdated": 2,
+  "requestContextUpdated": "scheduled-redeploy-rev-2",
+  "metadataUpdated": "2",
+  "nextFireRecomputed": true,
+  "legacyRemovedOnArrayMigration": true,
+  "arrayRowIds": "wf_scheduled-redeploy__a,wf_scheduled-redeploy__b",
+  "staleArrayEntryRemoved": true,
+  "userSchedulePreserved": true,
+  "finalScheduleIds": "user-created-schedule,wf_scheduled-redeploy__a",
+  "finalActiveSchedulerCount": 0
+}

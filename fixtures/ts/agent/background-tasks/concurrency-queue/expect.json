@@ -1,0 +1,13 @@
+{
+  "startOrder": "~a1-first",
+  "initialRunningCount": 2,
+  "initialPendingCount": 1,
+  "pendingTaskWasSecondAgentATask": true,
+  "secondStayedPendingBeforeRelease": true,
+  "secondStartedAfterRelease": true,
+  "afterReleaseRunningCount": 2,
+  "afterReleasePendingCount": 0,
+  "completedAfterFirstRelease": 1,
+  "finalCompletedCount": 3,
+  "finalLabels": "a1-first,a1-second,a2-first"
+}

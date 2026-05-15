@@ -17,7 +17,25 @@ export const cloneStep = globalThis.__agent_embed.cloneStep;
 export const mapVariable = globalThis.__agent_embed.mapVariable;
 export const Memory = globalThis.__agent_embed.Memory;
 export const RequestContext = globalThis.__agent_embed.RequestContext;
+export const RuntimeContext = globalThis.__agent_embed.RuntimeContext || globalThis.__agent_embed.RequestContext;
 export const z = globalThis.__agent_embed.z;
+export const BackgroundTaskManager = globalThis.__agent_embed.BackgroundTaskManager;
+export const createBackgroundTask = globalThis.__agent_embed.createBackgroundTask;
+export const generateBackgroundTaskSystemPrompt = globalThis.__agent_embed.generateBackgroundTaskSystemPrompt;
+export const __brainkitMastraBackgroundTaskDebug = globalThis.__agent_embed.__brainkitMastraBackgroundTaskDebug;
+
+// Harness
+export const Harness = globalThis.__agent_embed.Harness;
+export const assignTaskIds = globalThis.__agent_embed.assignTaskIds;
+export const askUserTool = globalThis.__agent_embed.askUserTool;
+export const defaultDisplayState = globalThis.__agent_embed.defaultDisplayState;
+export const defaultOMProgressState = globalThis.__agent_embed.defaultOMProgressState;
+export const parseSubagentMeta = globalThis.__agent_embed.parseSubagentMeta;
+export const submitPlanTool = globalThis.__agent_embed.submitPlanTool;
+export const taskWriteTool = globalThis.__agent_embed.taskWriteTool;
+export const taskUpdateTool = globalThis.__agent_embed.taskUpdateTool;
+export const taskCompleteTool = globalThis.__agent_embed.taskCompleteTool;
+export const taskCheckTool = globalThis.__agent_embed.taskCheckTool;
 
 // Logger — required by Mastra config; previously no way to construct one.
 export const ConsoleLogger = globalThis.__agent_embed.ConsoleLogger;
@@ -35,6 +53,9 @@ export const MongoDBStore = globalThis.__agent_embed.MongoDBStore;
 export const LibSQLVector = globalThis.__agent_embed.LibSQLVector;
 export const PgVector = globalThis.__agent_embed.PgVector;
 export const MongoDBVector = globalThis.__agent_embed.MongoDBVector;
+export const PineconeVector = globalThis.__agent_embed.PineconeVector;
+export const ChromaVector = globalThis.__agent_embed.ChromaVector;
+export const QdrantVector = globalThis.__agent_embed.QdrantVector;
 export const ModelRouterEmbeddingModel = globalThis.__agent_embed.ModelRouterEmbeddingModel;
 
 // Workspace
@@ -42,7 +63,10 @@ export const Workspace = globalThis.__agent_embed.Workspace;
 export const LocalFilesystem = globalThis.__agent_embed.LocalFilesystem;
 export const LocalSandbox = globalThis.__agent_embed.LocalSandbox;
 export const CompositeFilesystem = globalThis.__agent_embed.CompositeFilesystem;
+export const WORKSPACE_TOOLS_PREFIX = globalThis.__agent_embed.WORKSPACE_TOOLS_PREFIX;
+export const WORKSPACE_TOOLS = globalThis.__agent_embed.WORKSPACE_TOOLS;
 export const createWorkspaceTools = globalThis.__agent_embed.createWorkspaceTools;
+export const resolveToolConfig = globalThis.__agent_embed.resolveToolConfig;
 export const readFileTool = globalThis.__agent_embed.readFileTool;
 export const writeFileTool = globalThis.__agent_embed.writeFileTool;
 export const editFileTool = globalThis.__agent_embed.editFileTool;
@@ -53,6 +77,18 @@ export const mkdirTool = globalThis.__agent_embed.mkdirTool;
 export const searchTool = globalThis.__agent_embed.searchTool;
 export const indexContentTool = globalThis.__agent_embed.indexContentTool;
 export const executeCommandTool = globalThis.__agent_embed.executeCommandTool;
+export const requireWorkspace = globalThis.__agent_embed.requireWorkspace;
+export const requireFilesystem = globalThis.__agent_embed.requireFilesystem;
+export const requireSandbox = globalThis.__agent_embed.requireSandbox;
+
+// Browser
+export const MastraBrowser = globalThis.__agent_embed.MastraBrowser;
+export const BrowserContextProcessor = globalThis.__agent_embed.BrowserContextProcessor;
+
+// Channels
+export const AgentChannels = globalThis.__agent_embed.AgentChannels;
+export const ChatChannelProcessor = globalThis.__agent_embed.ChatChannelProcessor;
+export const MastraStateAdapter = globalThis.__agent_embed.MastraStateAdapter;
 
 // RAG
 export const MDocument = globalThis.__agent_embed.MDocument;
@@ -152,6 +188,12 @@ export const AgentsMDInjector = globalThis.__agent_embed.AgentsMDInjector;
 export const SkillsProcessor = globalThis.__agent_embed.SkillsProcessor;
 export const SkillSearchProcessor = globalThis.__agent_embed.SkillSearchProcessor;
 export const WorkspaceInstructionsProcessor = globalThis.__agent_embed.WorkspaceInstructionsProcessor;
+export const ResponseCache = globalThis.__agent_embed.ResponseCache;
+export const DEFAULT_RESPONSE_CACHE_TTL_SECONDS = globalThis.__agent_embed.DEFAULT_RESPONSE_CACHE_TTL_SECONDS;
+export const RESPONSE_CACHE_CONTEXT_KEY = globalThis.__agent_embed.RESPONSE_CACHE_CONTEXT_KEY;
+export const buildResponseCacheKey = globalThis.__agent_embed.buildResponseCacheKey;
+export const InMemoryServerCache = globalThis.__agent_embed.InMemoryServerCache;
+export const MastraServerCache = globalThis.__agent_embed.MastraServerCache;
 
 // Observability (@mastra/observability) — already exported above, so keep this section for the new
 // primitives that landed in the recent gap fill; the three original exports are above.

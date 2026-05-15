@@ -1,0 +1,6 @@
+{
+  "hasOrchestrationWorker": true,
+  "hasBackgroundTaskWorker": true,
+  "startWorkersReturned": true,
+  "stopWorkersReturned": true
+}

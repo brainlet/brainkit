@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -149,14 +150,29 @@ func DeployWithOpts(rt sdk.Runtime, source, code, packageName string) error {
 		Files:    map[string]string{source: code},
 	}
 	// AI-backed fixtures run top-level awaits inside the deploy
-	// (Agent.generate, embedder probe, semantic recall). Budget
-	// 60s to cover chained OpenAI calls + vector index creation.
-	payload, err := roundTrip(rt, msg, 60*time.Second)
+	// (Agent.generate, embedder probe, semantic recall, Mastra
+	// background-task continuations). Keep non-live fixtures on the
+	// historical 60s budget, but let live runs use more of the
+	// surrounding Go test timeout. Override with
+	// BRAINKIT_TEST_DEPLOY_TIMEOUT=90s/5m when debugging.
+	payload, err := roundTrip(rt, msg, deployTimeout())
 	if err != nil {
 		return err
 	}
 	_, err = decodeResp[packagemsg.PackageDeployResp](payload)
 	return err
+}
+
+func deployTimeout() time.Duration {
+	if raw := os.Getenv("BRAINKIT_TEST_DEPLOY_TIMEOUT"); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			return d
+		}
+	}
+	if LiveAIEnabled() {
+		return 5 * time.Minute
+	}
+	return 60 * time.Second
 }
 
 func DeployWithResources(t *testing.T, rt sdk.Runtime, source, code string) []sdk.ResourceInfo {

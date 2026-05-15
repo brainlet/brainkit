@@ -1,0 +1,21 @@
+{
+  "parentThreadCreated": true,
+  "subagentToolAvailable": true,
+  "subagentStarted": true,
+  "subagentEnded": true,
+  "subagentAgentType": "context",
+  "subagentModelId": "openai/gpt-4o-mini",
+  "subagentForked": true,
+  "resultOk": true,
+  "resultContainsSecret": true,
+  "endResultContainsSecret": true,
+  "startSnapshotRunning": true,
+  "endSnapshotCompleted": true,
+  "displaySubagentCompleted": true,
+  "normalThreadCount": 1,
+  "forkThreadCount": 2,
+  "forkThreadHiddenByDefault": true,
+  "forkMetadata": true,
+  "forkParentMetadata": true,
+  "forkMessagesContainSecret": true
+}

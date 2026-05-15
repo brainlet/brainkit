@@ -13,5 +13,10 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("secret_dependency_check", func(t *testing.T) { testSecretDependencyCheck(t, env) })
 		t.Run("inline_files_redeploy_picks_up_new_code", func(t *testing.T) { testInlineFilesRedeployPicksUpNewCode(t, env) })
 		t.Run("topic_collision", func(t *testing.T) { testTopicCollision(t, env) })
+		t.Run("ai_stream_text_local_openai", func(t *testing.T) { testPackageAIStreamTextLocalOpenAI(t, env) })
+		t.Run("npm_preview_stagehand_package_import", func(t *testing.T) { testNPMPreviewStagehandPackageImport(t, env) })
+		t.Run("npm_preview_stagehand_local_browser_lifecycle", func(t *testing.T) {
+			testNPMPreviewStagehandLocalBrowserLifecycle(t, env)
+		})
 	})
 }

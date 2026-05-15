@@ -1,0 +1,7 @@
+{
+  "workersStarted": true,
+  "hasOrchestrationWorker": true,
+  "hasBackgroundTaskWorker": true,
+  "completedStatus": "completed",
+  "completedCheck": "all-workers"
+}

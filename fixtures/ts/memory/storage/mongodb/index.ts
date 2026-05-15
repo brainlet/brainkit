@@ -5,11 +5,14 @@ import { model, output } from "kit";
 
 const url = process.env.MONGODB_URL;
 if (!url) throw new Error("MONGODB_URL not set");
+const mongoUrl = url.includes("?")
+  ? `${url}&directConnection=true&serverSelectionTimeoutMS=5000`
+  : `${url}?authSource=admin&directConnection=true&serverSelectionTimeoutMS=5000`;
 
 try {
   const store = new MongoDBStore({
     id: "test-mongodb-store",
-    url: url,
+    url: mongoUrl,
     dbName: "brainlet_test",
   });
 

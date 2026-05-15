@@ -73,6 +73,26 @@ func TestBundleExports(t *testing.T) {
 			createTool: typeof globalThis.__agent_embed.createTool,
 			Mastra: typeof globalThis.__agent_embed.Mastra,
 			createOpenAI: typeof globalThis.__agent_embed.createOpenAI,
+			ResponseCache: typeof globalThis.__agent_embed.ResponseCache,
+			InMemoryServerCache: typeof globalThis.__agent_embed.InMemoryServerCache,
+			buildResponseCacheKey: typeof globalThis.__agent_embed.buildResponseCacheKey,
+			Harness: typeof globalThis.__agent_embed.Harness,
+			WORKSPACE_TOOLS: typeof globalThis.__agent_embed.WORKSPACE_TOOLS,
+			MastraBrowser: typeof globalThis.__agent_embed.MastraBrowser,
+			BrowserContextProcessor: typeof globalThis.__agent_embed.BrowserContextProcessor,
+			AgentChannels: typeof globalThis.__agent_embed.AgentChannels,
+			ChatChannelProcessor: typeof globalThis.__agent_embed.ChatChannelProcessor,
+			MastraStateAdapter: typeof globalThis.__agent_embed.MastraStateAdapter,
+			assignTaskIds: typeof globalThis.__agent_embed.assignTaskIds,
+			defaultDisplayState: typeof globalThis.__agent_embed.defaultDisplayState,
+			defaultOMProgressState: typeof globalThis.__agent_embed.defaultOMProgressState,
+			parseSubagentMeta: typeof globalThis.__agent_embed.parseSubagentMeta,
+			askUserTool: typeof globalThis.__agent_embed.askUserTool,
+			submitPlanTool: typeof globalThis.__agent_embed.submitPlanTool,
+			taskWriteTool: typeof globalThis.__agent_embed.taskWriteTool,
+			taskUpdateTool: typeof globalThis.__agent_embed.taskUpdateTool,
+			taskCompleteTool: typeof globalThis.__agent_embed.taskCompleteTool,
+			taskCheckTool: typeof globalThis.__agent_embed.taskCheckTool,
 			z: typeof globalThis.__agent_embed.z,
 		});
 	`)
@@ -82,8 +102,17 @@ func TestBundleExports(t *testing.T) {
 
 	var types map[string]string
 	json.Unmarshal([]byte(result), &types)
+	harnessTools := map[string]bool{
+		"WORKSPACE_TOOLS":   true,
+		"askUserTool":      true,
+		"submitPlanTool":   true,
+		"taskWriteTool":    true,
+		"taskUpdateTool":   true,
+		"taskCompleteTool": true,
+		"taskCheckTool":    true,
+	}
 	for name, typ := range types {
-		if name == "z" {
+		if name == "z" || harnessTools[name] {
 			if typ != "object" {
 				t.Errorf("__agent_embed.%s = %q, want 'object'", name, typ)
 			}
@@ -92,6 +121,93 @@ func TestBundleExports(t *testing.T) {
 		}
 	}
 	t.Logf("Exports: %v", types)
+
+	cacheSmoke, err := sandbox.Eval(context.Background(), "response-cache-smoke.js", `
+		(async function() {
+			const cache = new globalThis.__agent_embed.InMemoryServerCache({ maxSize: 4, ttlMs: 0 });
+			await cache.set("k", { ok: true }, 0);
+			const hit = await cache.get("k");
+			const processor = new globalThis.__agent_embed.ResponseCache({ cache });
+			return JSON.stringify({
+				hit: hit && hit.ok === true,
+				processorId: processor.id,
+				contextIsRequestContext: globalThis.__agent_embed.ResponseCache.context({ key: "k" }) instanceof globalThis.__agent_embed.RequestContext,
+			});
+		})()
+	`)
+	if err != nil {
+		t.Fatalf("response cache smoke: %v", err)
+	}
+	var smoke struct {
+		Hit                     bool   `json:"hit"`
+		ProcessorID             string `json:"processorId"`
+		ContextIsRequestContext bool   `json:"contextIsRequestContext"`
+	}
+	json.Unmarshal([]byte(cacheSmoke), &smoke)
+	if !smoke.Hit || smoke.ProcessorID != "mastra/response-cache" || !smoke.ContextIsRequestContext {
+		t.Fatalf("unexpected response cache smoke result: %+v", smoke)
+	}
+
+	schemaSmoke, err := sandbox.Eval(context.Background(), "harness-tool-schema-smoke.js", `
+		JSON.stringify(Object.fromEntries([
+			"askUserTool",
+			"submitPlanTool",
+			"taskWriteTool",
+			"taskUpdateTool",
+			"taskCompleteTool",
+			"taskCheckTool",
+		].map((name) => {
+			const tool = globalThis.__agent_embed[name];
+			return [name, {
+				inputStandard: !!tool?.inputSchema?.["~standard"]?.jsonSchema,
+				inputZod: !!tool?.inputSchema?._zod,
+				outputStandard: tool?.outputSchema ? !!tool.outputSchema?.["~standard"]?.jsonSchema : true,
+				outputZod: !!tool?.outputSchema?._zod,
+			}];
+		})));
+	`)
+	if err != nil {
+		t.Fatalf("harness tool schema smoke: %v", err)
+	}
+	var schemas map[string]struct {
+		InputStandard  bool `json:"inputStandard"`
+		InputZod       bool `json:"inputZod"`
+		OutputStandard bool `json:"outputStandard"`
+		OutputZod      bool `json:"outputZod"`
+	}
+	json.Unmarshal([]byte(schemaSmoke), &schemas)
+	for name, schema := range schemas {
+		if !schema.InputStandard || schema.InputZod || !schema.OutputStandard || schema.OutputZod {
+			t.Fatalf("unexpected harness schema for %s: %+v", name, schema)
+		}
+	}
+
+	harnessPatchSmoke, err := sandbox.Eval(context.Background(), "harness-patch-smoke.js", `
+		JSON.stringify({
+			sendMessageWait: globalThis.__agent_embed.Harness.prototype.__brainkitSendMessageWaitInstalled === true,
+			toolApprovalResume: globalThis.__agent_embed.Harness.prototype.__brainkitToolApprovalResumeInstalled === true,
+			processStream: typeof globalThis.__agent_embed.Harness.prototype.processStream,
+			handleToolApprove: typeof globalThis.__agent_embed.Harness.prototype.handleToolApprove,
+			handleToolDecline: typeof globalThis.__agent_embed.Harness.prototype.handleToolDecline,
+		});
+	`)
+	if err != nil {
+		t.Fatalf("harness patch smoke: %v", err)
+	}
+	var harnessPatch struct {
+		SendMessageWait    bool   `json:"sendMessageWait"`
+		ToolApprovalResume bool   `json:"toolApprovalResume"`
+		ProcessStream      string `json:"processStream"`
+		HandleToolApprove  string `json:"handleToolApprove"`
+		HandleToolDecline  string `json:"handleToolDecline"`
+	}
+	json.Unmarshal([]byte(harnessPatchSmoke), &harnessPatch)
+	if !harnessPatch.SendMessageWait || !harnessPatch.ToolApprovalResume ||
+		harnessPatch.ProcessStream != "function" ||
+		harnessPatch.HandleToolApprove != "function" ||
+		harnessPatch.HandleToolDecline != "function" {
+		t.Fatalf("unexpected harness patch smoke result: %+v", harnessPatch)
+	}
 }
 
 func TestStatelessGenerate(t *testing.T) {

@@ -1,0 +1,16 @@
+{
+  "events": "~execution:complete",
+  "completedStatus": "completed",
+  "failedStatus": "failed",
+  "completedResultLabel": "complete",
+  "failedErrorIncludesPlanned": true,
+  "managerCompleteCount": 1,
+  "managerFailedCount": 1,
+  "perTaskExecutionCount": 2,
+  "hasCompleteChunk": true,
+  "hasFailedChunk": true,
+  "hasCompleteResult": true,
+  "hasFailedResult": true,
+  "hasPerTaskComplete": true,
+  "hasPerTaskFailed": true
+}

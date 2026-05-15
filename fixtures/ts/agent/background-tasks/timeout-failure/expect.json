@@ -1,0 +1,11 @@
+{
+  "chunkTypes": "~background-task-failed",
+  "hasBackgroundStarted": true,
+  "hasBackgroundRunning": true,
+  "hasBackgroundFailed": true,
+  "hasNoBackgroundCompleted": true,
+  "hasMatchingTaskId": true,
+  "failedErrorIncludesTimeout": true,
+  "timedOutStatus": "timed_out",
+  "timedOutTaskCount": "*"
+}

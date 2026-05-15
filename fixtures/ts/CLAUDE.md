@@ -1,6 +1,8 @@
 # TS Fixtures
 
-166 fixtures across 17 categories. Each fixture is `index.ts` + optional `expect.json`.
+329 fixtures across 23 categories. Each fixture is `index.ts` + optional `expect.json`.
+The general `test/fixtures` runner discovers 327 of them because `cross-kit`
+and `plugin` are intentionally excluded and run through specialized runners.
 
 Read the category CLAUDE.md before adding or editing fixtures in that category.
 
@@ -58,8 +60,16 @@ Use environment variables. The runner/campaigns set these:
 
 ### After editing a fixture
 1. Run: `go test ./test/fixtures/ -run 'TestFixtures/<path>'`
-2. If it needs AI, verify with `OPENAI_API_KEY` set
-3. If it needs containers, verify with Podman running
+2. If it needs AI, verify with `BRAINKIT_TEST_LIVE_AI=1`; the runner loads the
+   root `.env` and uses the real `OPENAI_API_KEY`. Do not use fake models as
+   proof for Mastra behavior fixtures.
+3. For provider features, distinguish contract fixtures from provider support.
+   A small in-fixture implementation can prove Brainkit-owned plumbing, but it
+   does not close a concrete Mastra provider row. Browser provider work, for
+   example, must use the real provider package and a real browser/CDP lifecycle
+   before `@mastra/agent-browser`, `@mastra/stagehand`, or
+   `@mastra/browser-viewer` can be marked supported.
+4. If it needs containers, verify with Podman running
 
 ## Classification (from classify.go)
 
@@ -69,29 +79,44 @@ Use environment variables. The runner/campaigns set these:
 | `mongodb`, `mongodb-scram` | MongoDB container |
 | `libsql` (under vector/ only) | libsql-server container |
 | `upstash` | UPSTASH_REDIS_REST_URL credential |
-| Category `agent`, `ai`, `observability`, `composition` | OPENAI_API_KEY |
+| Category `agent`, `ai`, `harness`, `observability`, `composition`, `voice`, `processors` | OPENAI_API_KEY |
+| Category `browser` | modules/browser mounted |
 | Category `memory` + segment `storage` | OPENAI_API_KEY |
-| Segment `with-agent-step`, `vector-query-tool`, `with-llm-judge`, `semantic-recall`, `generate-title`, `working-memory` | OPENAI_API_KEY |
+| Segment `with-agent-step`, `agent-stream-data-persistence`, `agent-stream-data-transient`, `agent-stream-writer`, `agent-stream-subagent-writer`, `create-with-schema`, `vector-query-tool`, `with-llm-judge`, `semantic-recall`, `generate-title`, `working-memory`, `rerank`, `graph-rag`, `prebuilt` | OPENAI_API_KEY |
 | Category `mcp` | In-process MCP server |
 
 ## Categories
 
 | Category | Count | Needs AI | Needs Containers |
 |----------|-------|----------|-----------------|
-| agent | 30 | all | memory/mongodb, memory/postgres need containers; memory/upstash needs credential |
-| ai | 21 | all | none |
-| bus | 13 | none | none |
+| agent | 56 | all | memory/mongodb, memory/postgres need containers; memory/upstash needs credential |
+| ai | 32 | all | none |
+| browser | 1 | none | modules/browser mounted |
+| bus | 17 | none | none |
 | composition | 2 | all | none |
 | cross-feature | 5 | none | none |
 | cross-kit | 1 | none | none |
-| evals | 5 | with-llm-judge only | none |
+| ecosystem | 1 | none | none |
+| evals | 22 | prebuilt LLM scorers and with-llm-judge | none |
+| harness | 10 | all | none |
 | kit | 17 | none | none |
 | mcp | 2 | none | MCP server (in-process) |
-| memory | 22 | 13 of 22 | storage/postgres*, storage/mongodb* need containers |
-| observability | 2 | all | none |
+| memory | 26 | semantic recall, working memory, title generation, storage | storage/postgres*, storage/mongodb* need containers |
+| observability | 9 | all | none |
 | plugin | 1 | none | none |
-| polyfill | 10 | none | none |
-| rag | 9 | vector-query-tool only | vector-query-tool needs libsql-server |
-| tools | 6 | create-with-schema only | none |
-| vector | 6 | none | pgvector→postgres, mongodb→mongodb, libsql→libsql-server |
-| workflow | 14 | with-agent-step only | none |
+| polyfill | 17 | none | none |
+| processors | 16 | all by category | none |
+| rag | 22 | vector-query-tool, graph-rag, rerank | vector-query-tool needs libsql-server |
+| storage | 1 | none | none |
+| tools | 15 | create-with-schema, agent-stream-data-persistence, agent-stream-data-transient, agent-stream-writer, agent-stream-subagent-writer | none |
+| vector | 9 | none | pgvector -> postgres, mongodb -> mongodb, libsql -> libsql-server |
+| voice | 15 | all by category | provider-specific credentials for live provider paths |
+| workflow | 32 | with-agent-step only | none |
+
+## Category Documentation
+
+Each active category should have its own `CLAUDE.md` except categories that are
+intentionally tiny and covered elsewhere. Current category docs include
+agent, ai, browser, bus, composition, cross-feature, cross-kit, ecosystem, evals,
+harness, kit, mcp, memory, observability, plugin, polyfill, processors, rag,
+tools, vector, voice, and workflow.

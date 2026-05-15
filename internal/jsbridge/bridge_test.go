@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1469,6 +1470,84 @@ func TestFetchResponseBodyPipeThrough(t *testing.T) {
 	}
 }
 
+func TestFetchResponseBodyResponsesSSEPipeline(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"created_at\":123,\"model\":\"gpt\"}}\n\n")
+		fmt.Fprint(w, "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_0\"}}\n\n")
+		fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_0\",\"delta\":\"One\"}\n\n")
+		fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_0\",\"delta\":\"Two\"}\n\n")
+		fmt.Fprint(w, "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_0\"}}\n\n")
+		fmt.Fprint(w, "data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":4,\"output_tokens\":2}}}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	b := newTestBridge(t, Encoding(), Streams(), Fetch(FetchClient(srv.Client())))
+
+	val, err := b.EvalAsync("responses-sse.js", fmt.Sprintf(`(async () => {
+		class EventSourceParserStream extends TransformStream {
+			constructor() {
+				let data = "";
+				super({
+					transform(chunk, controller) {
+						data += chunk;
+						let idx;
+						while ((idx = data.indexOf("\n\n")) >= 0) {
+							const frame = data.slice(0, idx);
+							data = data.slice(idx + 2);
+							for (const line of frame.split("\n")) {
+								if (line.startsWith("data: ")) {
+									controller.enqueue({ data: line.slice(6) });
+								}
+							}
+						}
+					}
+				});
+			}
+		}
+
+		const resp = await fetch("%s/responses");
+		const stream = resp.body
+			.pipeThrough(new TextDecoderStream())
+			.pipeThrough(new EventSourceParserStream())
+			.pipeThrough(new TransformStream({
+				async transform(event, controller) {
+					if (event.data === "[DONE]") return;
+					controller.enqueue(JSON.parse(event.data));
+				}
+			}));
+		const reader = stream.getReader();
+		const events = [];
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			events.push(value.type);
+		}
+		return JSON.stringify(events);
+	})()`, srv.URL))
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
+
+	var events []string
+	if err := json.Unmarshal([]byte(val.String()), &events); err != nil {
+		t.Fatalf("unmarshal events: %v (raw: %s)", err, val.String())
+	}
+	want := []string{
+		"response.created",
+		"response.output_item.added",
+		"response.output_text.delta",
+		"response.output_text.delta",
+		"response.output_item.done",
+		"response.completed",
+	}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %#v, want %#v", events, want)
+	}
+}
+
 // --- Streams ---
 
 func TestReadableStreamBasic(t *testing.T) {
@@ -1500,6 +1579,63 @@ func TestReadableStreamBasic(t *testing.T) {
 	json.Unmarshal([]byte(val.String()), &chunks)
 	if len(chunks) != 2 || chunks[0] != "hello" || chunks[1] != "world" {
 		t.Errorf("chunks = %v, want [hello, world]", chunks)
+	}
+}
+
+func TestReadableStreamAsyncStartDeferredUntilRead(t *testing.T) {
+	b := newTestBridge(t, Encoding(), Streams(), Timers())
+
+	val, err := b.EvalAsync("test.js", `(async () => {
+		const events = [];
+		const stream = new ReadableStream({
+			async start(controller) {
+				events.push("start");
+				await new Promise((resolve) => setTimeout(resolve, 1));
+				controller.enqueue("ready");
+				controller.close();
+			}
+		});
+		events.push("constructed");
+
+		const beforeRead = events.join(",");
+		const reader = stream.getReader();
+		const first = await reader.read();
+		const second = await reader.read();
+		return JSON.stringify({
+			beforeRead,
+			afterRead: events.join(","),
+			first,
+			second,
+		});
+	})()`)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	defer val.Free()
+
+	var result struct {
+		BeforeRead string `json:"beforeRead"`
+		AfterRead  string `json:"afterRead"`
+		First      struct {
+			Done  bool   `json:"done"`
+			Value string `json:"value"`
+		} `json:"first"`
+		Second struct {
+			Done bool `json:"done"`
+		} `json:"second"`
+	}
+	json.Unmarshal([]byte(val.String()), &result)
+	if result.BeforeRead != "constructed" {
+		t.Fatalf("async start ran during construction: beforeRead = %q", result.BeforeRead)
+	}
+	if result.AfterRead != "constructed,start" {
+		t.Fatalf("afterRead = %q, want constructed,start", result.AfterRead)
+	}
+	if result.First.Done || result.First.Value != "ready" {
+		t.Fatalf("first read = %+v, want ready chunk", result.First)
+	}
+	if !result.Second.Done {
+		t.Fatalf("second read = %+v, want done", result.Second)
 	}
 }
 

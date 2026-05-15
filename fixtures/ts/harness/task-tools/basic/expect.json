@@ -1,0 +1,15 @@
+{
+  "writeOk": true,
+  "updateOk": true,
+  "rejectedMultipleInProgress": true,
+  "completeOk": true,
+  "taskCount": 2,
+  "finalStatuses": "research:completed,tests:completed",
+  "checkAllCompleted": true,
+  "checkCompleted": 2,
+  "checkIncomplete": 0,
+  "incompleteCount": 0,
+  "taskUpdatedEvents": 3,
+  "displayTaskCount": 2,
+  "displayAllCompleted": true
+}

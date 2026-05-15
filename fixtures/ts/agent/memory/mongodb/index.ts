@@ -2,8 +2,15 @@ import { Agent, Memory, MongoDBStore } from "agent";
 import { model, output } from "kit";
 const url = process.env.MONGODB_URL;
 if (!url) throw new Error("MONGODB_URL not set");
+const mongoUrl = url.includes("?")
+  ? `${url}&directConnection=true&serverSelectionTimeoutMS=5000`
+  : `${url}?authSource=admin&directConnection=true&serverSelectionTimeoutMS=5000`;
 try {
-  const store = new MongoDBStore({ id: "agent-mongo", url, dbName: "agent_mem_test" });
+  const store = new MongoDBStore({
+    id: "agent-mongo",
+    url: mongoUrl,
+    dbName: "agent_mem_test",
+  });
   await store.init();
   const mem = new Memory({ storage: store, options: { lastMessages: 10 } });
   const agent = new Agent({ name: "mongo-mem", model: model("openai", "gpt-4o-mini"), instructions: "Remember what the user tells you.", memory: mem });
